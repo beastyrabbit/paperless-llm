@@ -1,0 +1,97 @@
+# Paperless Local LLM Configuration
+# Copy this file to config.yaml and fill in your values
+# config.yaml is gitignored and will not be committed
+
+# =============================================================================
+# External Services
+# =============================================================================
+
+# Paperless-ngx Connection
+paperless:
+  url: "http://your-paperless-server:8000"
+  token: "your-paperless-api-token"
+
+# Mistral AI (for OCR)
+mistral:
+  api_key: "your-mistral-api-key"
+  model: "mistral-ocr-latest"
+
+# Ollama Server (Local LLM)
+ollama:
+  url: "http://your-ollama-server:11434"
+  model_large: "gpt-oss:120b"      # Primary analysis model
+  model_small: "gpt-oss:20b"       # Confirmation/verification model
+  embedding_model: "qwen2.5:1.5b"      # For Qdrant embeddings (or nomic-embed-text)
+  
+  # Thinking mode settings
+  thinking:
+    enabled: true
+    level: "high"                  # low, medium, high
+
+# Qdrant Vector Database
+qdrant:
+  url: "http://your-qdrant-server:6333"
+  collection: "paperless-documents"
+
+# =============================================================================
+# Processing Settings
+# =============================================================================
+
+# Auto-Processing (Background Worker)
+auto_processing:
+  enabled: false
+  interval_minutes: 10             # Check for new documents every X minutes
+  pause_on_user_activity: true     # Pause when user is in Manual Processing mode
+
+# Confirmation Loop Settings
+confirmation:
+  max_retries: 3                   # Max rounds of 120B ↔ 20B discussion
+  require_user_for_new_entities: true  # Require user approval for new tags/correspondents
+
+# =============================================================================
+# Workflow Tags
+# =============================================================================
+
+# Tags used to track document processing state in Paperless
+# These will be created automatically if they don't exist
+tags:
+  pending: "llm-pending"                     # Documents waiting to be processed
+  ocr_done: "llm-ocr-done"                   # OCR completed
+  correspondent_done: "llm-correspondent-done"  # Correspondent assigned
+  document_type_done: "llm-document-type-done"  # Document type assigned
+  title_done: "llm-title-done"               # Title assigned
+  tags_done: "llm-tags-done"                 # Tags assigned
+  processed: "llm-processed"                 # Fully processed
+
+# =============================================================================
+# Processing Pipeline
+# =============================================================================
+
+# Enable/disable individual processing steps
+# Order: OCR → Correspondent → Document Type → Title → Tags → Custom Fields
+pipeline:
+  ocr: true                        # Mistral OCR
+  correspondent: true              # Correspondent assignment
+  document_type: true              # Document type assignment
+  title: true                      # Title generation
+  tags: true                       # Tag assignment
+  custom_fields: true              # Custom fields (optional based on document type)
+
+# =============================================================================
+# Qdrant / Vector Search Settings
+# =============================================================================
+
+vector_search:
+  enabled: true                    # Use Qdrant to find similar documents for context
+  top_k: 5                         # Number of similar documents to retrieve
+  min_score: 0.7                   # Minimum similarity score (0-1)
+
+# =============================================================================
+# Development / Debug Settings
+# =============================================================================
+
+debug:
+  log_level: "INFO"                # DEBUG, INFO, WARNING, ERROR
+  log_prompts: false               # Log full prompts sent to LLM
+  log_responses: false             # Log full LLM responses
+  save_processing_history: true    # Save processing history for each document

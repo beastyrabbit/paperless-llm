@@ -1,7 +1,35 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# Configuration (contains secrets)
+config.yaml
+backend/.env
+
+# IDE
+.idea/
+.vscode/
+
+# Tool-specific
+.serena/
+
+# Python
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+.uv/
+
+# LangGraph database
+*.db
+langgraph.db
+
 # dependencies
 /node_modules
+backend/.venv
 /.pnp
 .pnp.*
 .yarn/*

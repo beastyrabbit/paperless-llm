@@ -1,36 +1,199 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Paperless Local LLM
 
-## Getting Started
+KI-gestütztes Dokumentenanalyse-System für Paperless-ngx mit Mistral OCR und lokalen Ollama-Modellen.
 
-First, run the development server:
+## Features
+
+- 🔍 **OCR Processing**: Mistral AI für hochwertige Texterkennung
+- 🏷️ **Automatische Metadaten**: Titel, Korrespondenten, Tags via LLM
+- 🔄 **Bestätigungs-Loop**: Large Model Analyse → Small Model Bestätigung → Retry/User-Queue
+- 📊 **Vektor-Suche**: Ähnliche Dokumente für Kontext via Qdrant
+- 🎯 **Tag-basierter Workflow**: Unabhängige Verarbeitungsschritte
+- 🖥️ **Live-Streaming**: LLM-Antworten in Echtzeit im Frontend
+
+## Architektur
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  Next.js        │────▶│  FastAPI        │────▶│  Paperless-ngx  │
+│  Frontend       │     │  Backend        │     │                 │
+└─────────────────┘     └────────┬────────┘     └─────────────────┘
+                                 │
+                    ┌────────────┼────────────┐
+                    ▼            ▼            ▼
+              ┌──────────┐ ┌──────────┐ ┌──────────┐
+              │  Ollama  │ │ Mistral  │ │  Qdrant  │
+              │   LLMs   │ │   OCR    │ │ VectorDB │
+              └──────────┘ └──────────┘ └──────────┘
+```
+
+## Quick Start
+
+### Voraussetzungen
+
+- [Bun](https://bun.sh/) für das Frontend
+- [uv](https://github.com/astral-sh/uv) für das Python Backend
+- Docker & Docker Compose (optional)
+- Laufende Instanzen von:
+  - Paperless-ngx
+  - Ollama mit deinen bevorzugten Modellen
+  - Qdrant (oder via Docker Compose)
+
+### Installation
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
+# Repository klonen
+git clone https://github.com/your-username/paperless_local_llm.git
+cd paperless_local_llm
+
+# Frontend Dependencies
+bun install
+
+# Backend Dependencies
+cd backend
+uv sync
+```
+
+### Konfiguration
+
+1. Kopiere die Beispiel-Konfiguration:
+```bash
+cp config.example.yaml config.yaml
+```
+
+2. Bearbeite `config.yaml` mit deinen Einstellungen:
+```yaml
+paperless:
+  url: "http://your-paperless-server:8000"
+  token: "your-paperless-api-token"
+
+mistral:
+  api_key: "your-mistral-api-key"
+
+ollama:
+  url: "http://your-ollama-server:11434"
+  model_large: "your-large-model"
+  model_small: "your-small-model"
+
+qdrant:
+  url: "http://your-qdrant-server:6333"
+  collection: "paperless-documents"
+```
+
+> ⚠️ **Wichtig**: `config.yaml` ist in `.gitignore` und wird nicht committed. Deine Secrets bleiben lokal.
+
+### Entwicklung
+
+**Terminal 1 - Backend:**
+```bash
+cd backend
+uv run uvicorn main:app --reload --port 8000
+```
+
+**Terminal 2 - Frontend:**
+```bash
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Mit Docker Compose
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# Umgebungsvariablen setzen (oder in .env Datei)
+export PAPERLESS_URL=http://your-paperless:8000
+export PAPERLESS_TOKEN=your-token
+export MISTRAL_API_KEY=your-key
+export OLLAMA_URL=http://your-ollama:11434
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Alle Services starten
+docker compose up -d
 
-## Learn More
+# Logs anzeigen
+docker compose logs -f
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Workflow
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Der Verarbeitungs-Workflow wird über Tags gesteuert:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Phase | Input-Tag | Output-Tag | Beschreibung |
+|-------|-----------|------------|--------------|
+| OCR | `llm-pending` | `llm-ocr-done` | Mistral AI OCR |
+| Titel | `llm-ocr-done` | `llm-title-done` | Titel generieren |
+| Korrespondent | `llm-title-done` | `llm-correspondent-done` | Korrespondent zuweisen |
+| Tags | `llm-correspondent-done` | `llm-tags-done` | Tags zuweisen |
+| Complete | `llm-tags-done` | `llm-processed` | Fertig |
 
-## Deploy on Vercel
+## API Endpoints
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Settings
+- `GET /api/settings` - Aktuelle Einstellungen
+- `PATCH /api/settings` - Einstellungen aktualisieren
+- `POST /api/settings/test-connection/{service}` - Verbindung testen
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Documents
+- `GET /api/documents/queue` - Queue-Statistiken
+- `GET /api/documents/pending` - Wartende Dokumente
+- `GET /api/documents/{id}` - Dokument-Details
+
+### Processing
+- `POST /api/processing/{id}/start` - Verarbeitung starten
+- `GET /api/processing/{id}/stream` - SSE-Stream der LLM-Antworten
+- `POST /api/processing/{id}/confirm` - Ergebnis bestätigen
+
+### Prompts
+- `GET /api/prompts` - Alle Prompts auflisten
+- `GET /api/prompts/{name}` - Einzelner Prompt
+
+## Projektstruktur
+
+```
+paperless_local_llm/
+├── app/                      # Next.js Frontend
+│   ├── page.tsx              # Dashboard
+│   ├── settings/             # Einstellungen
+│   ├── documents/            # Dokument-Übersicht
+│   ├── pending/              # Wartende Bestätigungen
+│   └── prompts/              # Prompt-Übersicht
+├── components/               # React Komponenten
+│   ├── ui/                   # shadcn/ui Komponenten
+│   └── sidebar.tsx           # Navigation
+├── lib/                      # Utilities
+│   ├── utils.ts              # Tailwind Utilities
+│   └── api.ts                # API Client
+├── backend/                  # Python FastAPI
+│   ├── main.py               # FastAPI App
+│   ├── config.py             # Konfiguration (liest config.yaml)
+│   ├── routers/              # API Routes
+│   ├── services/             # Paperless, Qdrant Clients
+│   ├── agents/               # LangGraph Agents
+│   ├── models/               # Pydantic Models
+│   ├── prompts/              # Prompt Templates
+│   └── worker.py             # Background Worker
+├── config.example.yaml       # Beispiel-Konfiguration
+├── docker-compose.yml        # Docker Setup
+└── README.md
+```
+
+## Tech Stack
+
+**Frontend:**
+- Next.js 16
+- React 19
+- TailwindCSS 4
+- shadcn/ui
+
+**Backend:**
+- Python 3.12
+- FastAPI
+- LangGraph + LangChain
+- Pydantic
+
+**External:**
+- Paperless-ngx
+- Ollama (beliebige Modelle)
+- Mistral AI (OCR)
+- Qdrant Vector DB
+
+## License
+
+MIT
