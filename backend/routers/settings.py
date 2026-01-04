@@ -6,7 +6,7 @@ import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from config import Settings, get_settings, save_settings_to_yaml, clear_settings_cache
+from config import Settings, clear_settings_cache, get_settings, save_settings_to_yaml
 from services.paperless import PaperlessClient
 
 router = APIRouter()
@@ -165,9 +165,7 @@ async def get_current_settings(settings: Settings = Depends(get_settings)):
         qdrant_collection=_get_setting("qdrant_collection", settings),
         # Processing Settings
         auto_processing_enabled=_get_setting("auto_processing_enabled", settings),
-        auto_processing_interval_minutes=_get_setting(
-            "auto_processing_interval_minutes", settings
-        ),
+        auto_processing_interval_minutes=_get_setting("auto_processing_interval_minutes", settings),
         auto_processing_pause_on_user_activity=_get_setting(
             "auto_processing_pause_on_user_activity", settings
         ),
@@ -190,9 +188,7 @@ async def get_current_settings(settings: Settings = Depends(get_settings)):
         debug_log_level=_get_setting("debug_log_level", settings),
         debug_log_prompts=_get_setting("debug_log_prompts", settings),
         debug_log_responses=_get_setting("debug_log_responses", settings),
-        debug_save_processing_history=_get_setting(
-            "debug_save_processing_history", settings
-        ),
+        debug_save_processing_history=_get_setting("debug_save_processing_history", settings),
         # Tags
         tags={
             "pending": _get_setting("tag_pending", settings),
@@ -487,20 +483,17 @@ async def check_workflow_tags_status(settings: Settings = Depends(get_settings))
             tag_id = existing_tag_map.get(tag_name)
             if not exists:
                 missing_count += 1
-            tag_statuses.append(
-                TagStatus(key=key, name=tag_name, exists=exists, tag_id=tag_id)
-            )
+            tag_statuses.append(TagStatus(key=key, name=tag_name, exists=exists, tag_id=tag_id))
 
         return TagsStatusResponse(
             tags=tag_statuses,
             all_exist=missing_count == 0,
             missing_count=missing_count,
         )
-    except Exception as e:
+    except Exception:
         return TagsStatusResponse(
             tags=[
-                TagStatus(key=key, name=name, exists=False)
-                for key, name in workflow_tags.items()
+                TagStatus(key=key, name=name, exists=False) for key, name in workflow_tags.items()
             ],
             all_exist=False,
             missing_count=len(workflow_tags),
@@ -593,7 +586,7 @@ async def get_custom_fields(settings: Settings = Depends(get_settings)):
         selected = _runtime_settings.get("custom_fields_enabled", [])
 
         return CustomFieldsResponse(fields=field_defs, selected_fields=selected)
-    except Exception as e:
+    except Exception:
         return CustomFieldsResponse(fields=[], selected_fields=[])
 
 
@@ -673,7 +666,7 @@ async def get_ai_tags(settings: Settings = Depends(get_settings)):
             selected = [t.id for t in tag_infos]
 
         return AiTagsResponse(tags=tag_infos, selected_tag_ids=selected)
-    except Exception as e:
+    except Exception:
         return AiTagsResponse(tags=[], selected_tag_ids=[])
 
 

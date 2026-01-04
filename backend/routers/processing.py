@@ -1,8 +1,7 @@
 """Processing API endpoints with streaming support."""
 
-import asyncio
 import json
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -57,7 +56,7 @@ async def start_processing(
     client: PaperlessClient = Depends(get_paperless_client),
 ):
     """Start processing a document (non-streaming).
-    
+
     Pipeline Order: OCR → Correspondent → Document Type → Title → Tags
     """
     try:
@@ -71,7 +70,7 @@ async def start_processing(
 
         try:
             pipeline = get_pipeline()
-            
+
             if request.step:
                 # Process a single step
                 result = await pipeline.process_step(doc_id, request.step)
@@ -102,9 +101,9 @@ async def stream_processing(
     settings: Settings = Depends(get_settings),
 ):
     """Stream LLM processing output via Server-Sent Events.
-    
+
     Pipeline Order: OCR → Correspondent → Document Type → Title → Tags
-    
+
     This endpoint streams the full processing pipeline with real-time
     output from both the analysis (120B) and confirmation (20B) models.
     """

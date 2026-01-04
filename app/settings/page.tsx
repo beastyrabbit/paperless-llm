@@ -40,7 +40,6 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ModelCombobox } from "@/components/model-combobox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import Link from "next/link";
 import { FileText, ArrowRight } from "lucide-react";
 
 // Types
@@ -240,15 +239,7 @@ export default function SettingsPage() {
   const [aiTagsSuccess, setAiTagsSuccess] = useState<string | null>(null);
   const [aiTagsHasChanges, setAiTagsHasChanges] = useState(false);
 
-  // Load settings, auto-test connections, check tags, and fetch custom fields on mount
-  useEffect(() => {
-    loadSettings();
-    fetchTagsStatus();
-    fetchCustomFields();
-    fetchAiTags();
-  }, []);
-
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE}/api/settings`);
       if (response.ok) {
@@ -260,7 +251,16 @@ export default function SettingsPage() {
     } catch (error) {
       console.error("Failed to load settings:", error);
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load settings, auto-test connections, check tags, and fetch custom fields on mount
+  useEffect(() => {
+    loadSettings();
+    fetchTagsStatus();
+    fetchCustomFields();
+    fetchAiTags();
+  }, [loadSettings]);
 
   const autoTestConnections = async (loadedSettings: Partial<Settings>) => {
     // Test each service if it has the required config
@@ -361,7 +361,9 @@ export default function SettingsPage() {
     }
   };
 
-  const loadOllamaModels = useCallback(async () => {
+  // Load Ollama models (available for future use)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _loadOllamaModels = useCallback(async () => {
     if (!settings.ollama_url) return;
     setLoadingModels((prev) => ({ ...prev, ollama: true }));
     try {
@@ -1347,9 +1349,9 @@ export default function SettingsPage() {
                               <p className="font-medium">{field.name}</p>
                               <p className="text-sm text-zinc-500 capitalize">
                                 {field.data_type}
-                                {field.extra_data?.select_options && (
+                                {Array.isArray(field.extra_data?.select_options) && (
                                   <span className="ml-2">
-                                    ({(field.extra_data.select_options as string[]).length} options)
+                                    ({(field.extra_data.select_options as unknown[]).length} options)
                                   </span>
                                 )}
                               </p>

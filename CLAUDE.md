@@ -38,6 +38,28 @@ docker compose logs -f         # View logs
 docker compose down            # Stop services
 ```
 
+### Pre-Commit Hooks
+```bash
+# Install hooks (einmalig)
+cd backend && uv sync --all-extras  # Installiert pre-commit
+uv run pre-commit install           # Aktiviert die Hooks
+
+# Manuell ausführen
+uv run pre-commit run --all-files
+
+# Oder via bun
+bun run precommit
+```
+
+**Aktive Checks:**
+- **gitleaks**: Erkennt versehentlich committete Secrets/API-Keys
+- **ruff**: Python Linting & Formatting
+- **mypy**: Python Type Checking
+- **TypeScript**: `tsc --noEmit` Type Checking
+- **ESLint**: JavaScript/TypeScript Linting
+
+Bei Fehlern wird der Commit abgebrochen.
+
 ## Architecture
 
 **Two-service architecture:**

@@ -3,22 +3,22 @@
 Pipeline Order: OCR → Correspondent → Document Type → Title → Tags → Custom Fields
 """
 
-from typing import Any, AsyncGenerator
-
-from config import get_settings
-from models.document import ProcessingState
-from services.paperless import PaperlessClient
+from collections.abc import AsyncGenerator
+from typing import Any
 
 from agents.correspondent_agent import CorrespondentAgent
 from agents.document_type_agent import DocumentTypeAgent
 from agents.ocr_agent import OCRAgent
 from agents.tags_agent import TagsAgent
 from agents.title_agent import TitleAgent
+from config import get_settings
+from models.document import ProcessingState
+from services.paperless import PaperlessClient
 
 
 class ProcessingPipeline:
     """Orchestrates document processing through all agents.
-    
+
     Pipeline Order: OCR → Correspondent → Document Type → Title → Tags
     """
 
@@ -54,7 +54,7 @@ class ProcessingPipeline:
 
     async def _process_sync(self, doc_id: int) -> dict[str, Any]:
         """Process document synchronously.
-        
+
         Order: OCR → Correspondent → Document Type → Title → Tags
         """
         results = {
@@ -125,19 +125,15 @@ class ProcessingPipeline:
         # Complete
         if current_state == ProcessingState.TAGS_DONE:
             # Mark as fully processed
-            await self.paperless.remove_tag_from_document(
-                doc_id, self.settings.tag_tags_done
-            )
-            await self.paperless.add_tag_to_document(
-                doc_id, self.settings.tag_processed
-            )
+            await self.paperless.remove_tag_from_document(doc_id, self.settings.tag_tags_done)
+            await self.paperless.add_tag_to_document(doc_id, self.settings.tag_processed)
             results["steps"]["complete"] = {"success": True}
 
         return results
 
     async def _process_stream(self, doc_id: int) -> AsyncGenerator[dict, None]:
         """Process document with streaming output.
-        
+
         Order: OCR → Correspondent → Document Type → Title → Tags
         """
         yield {"type": "pipeline_start", "doc_id": doc_id}
@@ -264,7 +260,7 @@ class ProcessingPipeline:
 
     def _get_current_state(self, tag_names: list[str]) -> ProcessingState:
         """Determine current processing state from tags.
-        
+
         Order: PENDING → OCR_DONE → CORRESPONDENT_DONE → DOCUMENT_TYPE_DONE → TITLE_DONE → TAGS_DONE → PROCESSED
         """
         if self.settings.tag_processed in tag_names:

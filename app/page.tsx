@@ -22,6 +22,7 @@ interface QueueStats {
   ocr_done: number;
   title_done: number;
   correspondent_done: number;
+  document_type_done: number;
   tags_done: number;
   processed: number;
   total_in_pipeline: number;
@@ -122,6 +123,8 @@ export default function Dashboard() {
   }, [fetchSettings, fetchQueueStats, testConnections]);
 
   useEffect(() => {
+    // Initial load - intentionally calling refresh on mount
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
   }, [refresh]);
 

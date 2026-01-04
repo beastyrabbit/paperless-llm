@@ -9,7 +9,6 @@ import {
   Clock,
   Code2,
   Zap,
-  Tag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 

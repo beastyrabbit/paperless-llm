@@ -138,7 +138,11 @@ class DocumentTypeAgent:
         analysis: DocumentTypeAnalysis,
     ) -> ConfirmationResult:
         """Confirm document type with smaller model."""
-        confirmation_prompt = load_prompt("document_type_confirmation") or load_prompt("confirmation") or self._default_confirmation_prompt()
+        confirmation_prompt = (
+            load_prompt("document_type_confirmation")
+            or load_prompt("confirmation")
+            or self._default_confirmation_prompt()
+        )
 
         # Format analysis result
         analysis_result = f"""**Suggested Document Type:** {analysis.suggested_document_type}
@@ -191,9 +195,7 @@ class DocumentTypeAgent:
             await self.paperless.remove_tag_from_document(
                 doc_id, self.settings.tag_correspondent_done
             )
-            await self.paperless.add_tag_to_document(
-                doc_id, self.settings.tag_document_type_done
-            )
+            await self.paperless.add_tag_to_document(doc_id, self.settings.tag_document_type_done)
             return {"applied": True, "document_type_id": doc_type_id}
 
         return {"applied": False, "reason": "Document type not found"}

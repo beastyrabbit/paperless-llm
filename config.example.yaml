@@ -22,7 +22,7 @@ ollama:
   model_large: "gpt-oss:120b"      # Primary analysis model
   model_small: "gpt-oss:20b"       # Confirmation/verification model
   embedding_model: "qwen2.5:1.5b"      # For Qdrant embeddings (or nomic-embed-text)
-  
+
   # Thinking mode settings
   thinking:
     enabled: true

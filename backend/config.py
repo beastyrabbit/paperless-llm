@@ -247,7 +247,9 @@ def _unflatten_to_yaml(flat_settings: dict[str, Any]) -> dict[str, Any]:
         if any(k.startswith("ollama_thinking") for k in flat_settings):
             yaml_config["ollama"]["thinking"] = {}
             if "ollama_thinking_enabled" in flat_settings:
-                yaml_config["ollama"]["thinking"]["enabled"] = flat_settings["ollama_thinking_enabled"]
+                yaml_config["ollama"]["thinking"]["enabled"] = flat_settings[
+                    "ollama_thinking_enabled"
+                ]
             if "ollama_thinking_level" in flat_settings:
                 yaml_config["ollama"]["thinking"]["level"] = flat_settings["ollama_thinking_level"]
 
@@ -265,9 +267,13 @@ def _unflatten_to_yaml(flat_settings: dict[str, Any]) -> dict[str, Any]:
         if "auto_processing_enabled" in flat_settings:
             yaml_config["auto_processing"]["enabled"] = flat_settings["auto_processing_enabled"]
         if "auto_processing_interval_minutes" in flat_settings:
-            yaml_config["auto_processing"]["interval_minutes"] = flat_settings["auto_processing_interval_minutes"]
+            yaml_config["auto_processing"]["interval_minutes"] = flat_settings[
+                "auto_processing_interval_minutes"
+            ]
         if "auto_processing_pause_on_user_activity" in flat_settings:
-            yaml_config["auto_processing"]["pause_on_user_activity"] = flat_settings["auto_processing_pause_on_user_activity"]
+            yaml_config["auto_processing"]["pause_on_user_activity"] = flat_settings[
+                "auto_processing_pause_on_user_activity"
+            ]
 
     # Confirmation
     if any(k.startswith("confirmation_") for k in flat_settings):
@@ -275,7 +281,9 @@ def _unflatten_to_yaml(flat_settings: dict[str, Any]) -> dict[str, Any]:
         if "confirmation_max_retries" in flat_settings:
             yaml_config["confirmation"]["max_retries"] = flat_settings["confirmation_max_retries"]
         if "confirmation_require_user_for_new_entities" in flat_settings:
-            yaml_config["confirmation"]["require_user_for_new_entities"] = flat_settings["confirmation_require_user_for_new_entities"]
+            yaml_config["confirmation"]["require_user_for_new_entities"] = flat_settings[
+                "confirmation_require_user_for_new_entities"
+            ]
 
     # Tags
     tag_keys = [k for k in flat_settings if k.startswith("tag_")]
@@ -313,7 +321,9 @@ def _unflatten_to_yaml(flat_settings: dict[str, Any]) -> dict[str, Any]:
         if "debug_log_responses" in flat_settings:
             yaml_config["debug"]["log_responses"] = flat_settings["debug_log_responses"]
         if "debug_save_processing_history" in flat_settings:
-            yaml_config["debug"]["save_processing_history"] = flat_settings["debug_save_processing_history"]
+            yaml_config["debug"]["save_processing_history"] = flat_settings[
+                "debug_save_processing_history"
+            ]
 
     return yaml_config
 

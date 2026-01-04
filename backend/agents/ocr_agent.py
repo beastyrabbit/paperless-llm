@@ -1,13 +1,11 @@
 """OCR Agent using Mistral AI."""
 
 import base64
-from pathlib import Path
 from typing import Any
 
 from mistralai import Mistral
 
 from config import get_settings
-from models.document import DocumentInfo
 from services.paperless import PaperlessClient
 from services.qdrant import QdrantService
 
@@ -76,7 +74,7 @@ class OCRAgent:
 
     async def _run_mistral_ocr(self, pdf_base64: str) -> dict[str, Any]:
         """Run Mistral OCR on a PDF document.
-        
+
         Uses Mistral's dedicated OCR API for document processing.
         """
         # Try the dedicated OCR API first (mistral-ocr-latest)
@@ -89,14 +87,14 @@ class OCRAgent:
                     "document_url": f"data:application/pdf;base64,{pdf_base64}",
                 },
             )
-            
+
             # Extract text from OCR response
             extracted_text = ""
             pages = 0
             for page in response.pages:
                 extracted_text += page.markdown + "\n\n"
                 pages += 1
-            
+
             return {
                 "text": extracted_text.strip(),
                 "pages": pages,

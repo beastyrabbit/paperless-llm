@@ -4,9 +4,9 @@ import asyncio
 from datetime import datetime
 from typing import Any
 
+from agents.pipeline import ProcessingPipeline
 from config import get_settings
 from services.paperless import PaperlessClient
-from agents.pipeline import ProcessingPipeline
 
 
 class BackgroundWorker:

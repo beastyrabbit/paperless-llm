@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 class ProcessingState(str, Enum):
     """Document processing state.
-    
+
     Order: PENDING → OCR_DONE → CORRESPONDENT_DONE → DOCUMENT_TYPE_DONE → TITLE_DONE → TAGS_DONE → PROCESSED
     """
 

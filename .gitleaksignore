@@ -1,0 +1,9 @@
+# Gitleaks ignore file
+# Add file paths or patterns for known false positives
+
+# Example config files with placeholder values
+config.example.yaml
+
+# Lock files
+bun.lock
+backend/uv.lock

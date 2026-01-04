@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  
+
   // Proxy API requests to Python backend
   async rewrites() {
     return [

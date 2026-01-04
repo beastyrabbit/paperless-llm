@@ -164,9 +164,7 @@ async def get_preview_data():
     try:
         correspondents = await paperless.get_correspondents()
         if correspondents:
-            correspondents_list = "\n".join(
-                f"- {c['name']}" for c in correspondents[:20]
-            )
+            correspondents_list = "\n".join(f"- {c['name']}" for c in correspondents[:20])
     except Exception:
         correspondents_list = "[Could not fetch correspondents]"
 
@@ -175,9 +173,7 @@ async def get_preview_data():
     try:
         document_types = await paperless.get_document_types()
         if document_types:
-            types_list = "\n".join(
-                f"- {dt['name']}" for dt in document_types[:20]
-            )
+            types_list = "\n".join(f"- {dt['name']}" for dt in document_types[:20])
     except Exception:
         types_list = "[Could not fetch document types]"
 
@@ -204,16 +200,24 @@ async def get_preview_data():
         pass
 
     # Document content placeholder
-    doc_content_display = sample_content if sample_content else (
-        "[Document content will appear here during processing]\n\n"
-        "This is where the first 3000 characters of the OCR'd document\n"
-        "content will be inserted when the agent processes a document."
+    doc_content_display = (
+        sample_content
+        if sample_content
+        else (
+            "[Document content will appear here during processing]\n\n"
+            "This is where the first 3000 characters of the OCR'd document\n"
+            "content will be inserted when the agent processes a document."
+        )
     )
 
-    doc_excerpt_display = sample_content[:1500] if sample_content else (
-        "[Document excerpt will appear here during processing]\n\n"
-        "This is where the first 1500 characters of the document\n"
-        "will be shown for confirmation review."
+    doc_excerpt_display = (
+        sample_content[:1500]
+        if sample_content
+        else (
+            "[Document excerpt will appear here during processing]\n\n"
+            "This is where the first 1500 characters of the document\n"
+            "will be shown for confirmation review."
+        )
     )
 
     # Similar docs placeholder (would need Qdrant + actual document for real similar docs)

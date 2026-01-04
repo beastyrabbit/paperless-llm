@@ -30,7 +30,7 @@ interface StreamEvent {
 export default function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const docId = resolvedParams.id;
-  
+
   const [processing, setProcessing] = useState(false);
   const [streamOutput, setStreamOutput] = useState<StreamEvent[]>([]);
   const [currentStep, setCurrentStep] = useState<string | null>(null);
@@ -111,7 +111,7 @@ Vielen Dank für Ihren Einkauf bei Amazon!`,
       await new Promise((resolve) => setTimeout(resolve, 100));
       setStreamOutput((prev) => [...prev, events[i]]);
       setProgress((i / events.length) * 100);
-      
+
       if (events[i].step) {
         setCurrentStep(events[i].step ?? null);
       }
@@ -216,7 +216,7 @@ Vielen Dank für Ihren Einkauf bei Amazon!`,
                 <Progress value={progress} />
               </div>
             )}
-            
+
             <ScrollArea className="h-[300px] rounded-lg border border-zinc-200 bg-zinc-950 p-4 dark:border-zinc-800">
               <div className="font-mono text-sm text-emerald-400 space-y-1">
                 {streamOutput.length === 0 && !processing && (

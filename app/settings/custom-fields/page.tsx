@@ -291,9 +291,9 @@ export default function CustomFieldsPage() {
                           </Label>
                           <p className="text-sm text-zinc-500">
                             Type: {DATA_TYPE_LABELS[field.data_type] || field.data_type}
-                            {field.extra_data?.select_options && (
+                            {Array.isArray(field.extra_data?.select_options) && (
                               <span className="ml-2">
-                                ({(field.extra_data.select_options as string[]).length} options)
+                                ({(field.extra_data.select_options as unknown[]).length} options)
                               </span>
                             )}
                           </p>

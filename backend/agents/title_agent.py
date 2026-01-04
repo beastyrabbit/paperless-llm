@@ -1,7 +1,8 @@
 """Title Agent for generating document titles."""
 
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any, AsyncGenerator
+from typing import Any
 
 from langchain_core.messages import HumanMessage
 
@@ -182,8 +183,7 @@ class TitleAgent:
 
         # Format similar docs
         similar_titles = "\n".join(
-            f"- {doc['metadata'].get('title', 'Unknown')}"
-            for doc in similar_docs[:5]
+            f"- {doc['metadata'].get('title', 'Unknown')}" for doc in similar_docs[:5]
         )
 
         # Format the prompt with variables
@@ -210,8 +210,7 @@ class TitleAgent:
         prompt_template = load_prompt("title") or self._default_title_prompt()
 
         similar_titles = "\n".join(
-            f"- {doc['metadata'].get('title', 'Unknown')}"
-            for doc in similar_docs[:5]
+            f"- {doc['metadata'].get('title', 'Unknown')}" for doc in similar_docs[:5]
         )
 
         # Format the prompt with variables
@@ -241,7 +240,11 @@ class TitleAgent:
         analysis: TitleAnalysis,
     ) -> ConfirmationResult:
         """Confirm title with smaller model."""
-        confirmation_prompt = load_prompt("title_confirmation") or load_prompt("confirmation") or self._default_confirmation_prompt()
+        confirmation_prompt = (
+            load_prompt("title_confirmation")
+            or load_prompt("confirmation")
+            or self._default_confirmation_prompt()
+        )
 
         # Format analysis result
         analysis_result = f"""**Suggested Title:** {analysis.suggested_title}
@@ -261,7 +264,7 @@ class TitleAgent:
 
     async def _apply_title(self, doc_id: int, title: str):
         """Apply the title and update tags.
-        
+
         Title comes after Document Type in the pipeline.
         """
         await self.paperless.update_document(doc_id, title=title)

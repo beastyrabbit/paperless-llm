@@ -72,9 +72,7 @@ class PaperlessClient:
         # Enrich with tag and correspondent data
         for doc in docs:
             doc["tags_data"] = await self._get_tags_data(doc.get("tags", []))
-            doc["correspondent_name"] = await self._get_correspondent_name(
-                doc.get("correspondent")
-            )
+            doc["correspondent_name"] = await self._get_correspondent_name(doc.get("correspondent"))
 
         return docs
 
@@ -89,7 +87,7 @@ class PaperlessClient:
         tag_document_type_done: str | None = None,
     ) -> dict[str, int]:
         """Get document counts for each processing stage.
-        
+
         Pipeline Order: OCR → Correspondent → Document Type → Title → Tags
         """
         stats = {
@@ -126,9 +124,14 @@ class PaperlessClient:
                 stats[stat_key] = result.get("count", 0) if result else 0
 
         stats["total_in_pipeline"] = sum(
-            stats[k] for k in [
-                "pending", "ocr_done", "correspondent_done",
-                "document_type_done", "title_done", "tags_done"
+            stats[k]
+            for k in [
+                "pending",
+                "ocr_done",
+                "correspondent_done",
+                "document_type_done",
+                "title_done",
+                "tags_done",
             ]
         )
 

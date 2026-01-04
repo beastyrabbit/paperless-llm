@@ -89,9 +89,7 @@ class ConfirmationResult(BaseModel):
     """Result of the confirmation step (smaller model)."""
 
     confirmed: bool = Field(description="Whether the analysis is confirmed")
-    feedback: str = Field(
-        description="Feedback on the analysis, especially if not confirmed"
-    )
+    feedback: str = Field(description="Feedback on the analysis, especially if not confirmed")
     suggested_changes: str | None = Field(
         default=None,
         description="Specific changes suggested if not confirmed",

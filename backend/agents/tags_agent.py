@@ -118,15 +118,15 @@ class TagsAgent:
                 tags_str = ", ".join(doc_tags)
             else:
                 tags_str = str(doc_tags)
-            similar_info.append(
-                f"- {doc['metadata'].get('title', 'Unknown')}: [{tags_str}]"
-            )
+            similar_info.append(f"- {doc['metadata'].get('title', 'Unknown')}: [{tags_str}]")
 
         # Format the prompt with variables
         formatted_prompt = prompt_template.format(
             document_content=content[:3000],
             existing_tags=tags_list or "No tags yet.",
-            similar_docs=chr(10).join(similar_info) if similar_info else "No similar documents found.",
+            similar_docs=chr(10).join(similar_info)
+            if similar_info
+            else "No similar documents found.",
             feedback=feedback or "None",
         )
 
@@ -141,7 +141,11 @@ class TagsAgent:
         analysis: TagsAnalysis,
     ) -> ConfirmationResult:
         """Confirm tags with smaller model."""
-        confirmation_prompt = load_prompt("tags_confirmation") or load_prompt("confirmation") or self._default_confirmation_prompt()
+        confirmation_prompt = (
+            load_prompt("tags_confirmation")
+            or load_prompt("confirmation")
+            or self._default_confirmation_prompt()
+        )
 
         tag_summary = "\n".join(
             f"- {t.name} ({'NEW' if t.is_new else 'existing'}): {t.relevance}"
@@ -199,12 +203,8 @@ class TagsAgent:
             await self.paperless.update_document(doc_id, tags=current_tag_ids)
 
         # Update workflow tags (Tags comes after Title in the pipeline)
-        await self.paperless.remove_tag_from_document(
-            doc_id, self.settings.tag_title_done
-        )
-        await self.paperless.add_tag_to_document(
-            doc_id, self.settings.tag_tags_done
-        )
+        await self.paperless.remove_tag_from_document(doc_id, self.settings.tag_title_done)
+        await self.paperless.add_tag_to_document(doc_id, self.settings.tag_tags_done)
 
         return {
             "applied_tags": applied_tags,

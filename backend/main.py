@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI):
     print(f"   Ollama URL: {settings_instance.ollama_url}")
     print(f"   Qdrant URL: {settings_instance.qdrant_url}")
     print(f"   Auto-Processing: {settings_instance.auto_processing_enabled}")
-    print(f"   Pipeline: OCR → Correspondent → Document Type → Title → Tags")
+    print("   Pipeline: OCR → Correspondent → Document Type → Title → Tags")
 
     # Start background worker if auto-processing is enabled
     worker = get_worker()

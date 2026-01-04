@@ -138,7 +138,11 @@ class CorrespondentAgent:
         analysis: CorrespondentAnalysis,
     ) -> ConfirmationResult:
         """Confirm correspondent with smaller model."""
-        confirmation_prompt = load_prompt("correspondent_confirmation") or load_prompt("confirmation") or self._default_confirmation_prompt()
+        confirmation_prompt = (
+            load_prompt("correspondent_confirmation")
+            or load_prompt("confirmation")
+            or self._default_confirmation_prompt()
+        )
 
         # Format analysis result
         analysis_result = f"""**Suggested Correspondent:** {analysis.suggested_correspondent}
@@ -189,12 +193,8 @@ class CorrespondentAgent:
         if correspondent_id:
             await self.paperless.update_document(doc_id, correspondent=correspondent_id)
             # Correspondent comes after OCR in the pipeline
-            await self.paperless.remove_tag_from_document(
-                doc_id, self.settings.tag_ocr_done
-            )
-            await self.paperless.add_tag_to_document(
-                doc_id, self.settings.tag_correspondent_done
-            )
+            await self.paperless.remove_tag_from_document(doc_id, self.settings.tag_ocr_done)
+            await self.paperless.add_tag_to_document(doc_id, self.settings.tag_correspondent_done)
             return {"applied": True, "correspondent_id": correspondent_id}
 
         return {"applied": False, "reason": "Correspondent not found"}

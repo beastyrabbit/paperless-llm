@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { promptsApi, PromptGroup, PromptInfo, PreviewData } from "@/lib/api";
+import { promptsApi, PromptGroup, PreviewData } from "@/lib/api";
 
 // Variable descriptions for tooltips
 const VARIABLE_DESCRIPTIONS: Record<string, string> = {
@@ -64,20 +64,8 @@ export default function PromptsPage() {
     return selectedGroup.confirmation;
   }, [selectedGroup, promptType]);
 
-  // Fetch groups and preview data on mount
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  // Update edited content when prompt changes
-  useEffect(() => {
-    if (currentPrompt) {
-      setEditedContent(currentPrompt.content);
-      setHasChanges(false);
-    }
-  }, [currentPrompt]);
-
-  const fetchData = async () => {
+  // Fetch groups and preview data
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -88,10 +76,11 @@ export default function PromptsPage() {
 
     if (groupsRes.error) {
       setError(groupsRes.error);
-    } else if (groupsRes.data) {
-      setGroups(groupsRes.data);
-      if (groupsRes.data.length > 0 && !selectedGroup) {
-        setSelectedGroup(groupsRes.data[0]);
+    } else     if (groupsRes.data) {
+      const data = groupsRes.data;
+      setGroups(data);
+      if (data.length > 0) {
+        setSelectedGroup((prev) => prev ?? data[0]);
       }
     }
 
@@ -100,7 +89,22 @@ export default function PromptsPage() {
     }
 
     setLoading(false);
-  };
+  }, []);
+
+  // Fetch on mount
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchData();
+  }, [fetchData]);
+
+  // Update edited content when prompt changes
+  useEffect(() => {
+    if (currentPrompt) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setEditedContent(currentPrompt.content);
+      setHasChanges(false);
+    }
+  }, [currentPrompt]);
 
   const handleContentChange = useCallback(
     (value: string) => {
@@ -168,8 +172,9 @@ export default function PromptsPage() {
     return content;
   }, [editedContent, previewData, currentPrompt]);
 
-  // Highlight variables in edit view
-  const highlightedParts = useMemo(() => {
+  // Highlight variables in edit view (prepared for future syntax highlighting)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _highlightedParts = useMemo(() => {
     const parts: { text: string; isVariable: boolean; variable?: string }[] =
       [];
     let lastIndex = 0;
