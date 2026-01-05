@@ -4,6 +4,9 @@ Stores items that need user review before being applied:
 - New correspondents
 - New document types
 - New tags
+- Schema cleanup suggestions
+- Metadata description suggestions
+- Schema analysis suggestions (new correspondents, document types, tags, custom fields)
 """
 
 import json
@@ -13,6 +16,20 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+# Type alias for pending review item types
+PendingReviewType = Literal[
+    "correspondent",
+    "document_type",
+    "tag",
+    "schema_cleanup",
+    "metadata_description",
+    # Schema analysis suggestion types
+    "schema_correspondent",
+    "schema_document_type",
+    "schema_tag",
+    "schema_custom_field",
+]
+
 
 class PendingReviewItem(BaseModel):
     """An item pending user review."""
@@ -20,7 +37,7 @@ class PendingReviewItem(BaseModel):
     id: str
     doc_id: int
     doc_title: str
-    type: Literal["correspondent", "document_type", "tag"]
+    type: PendingReviewType
     suggestion: str
     reasoning: str
     alternatives: list[str] = Field(default_factory=list)
@@ -71,7 +88,7 @@ class PendingReviewsService:
         self,
         doc_id: int,
         doc_title: str,
-        item_type: Literal["correspondent", "document_type", "tag"],
+        item_type: PendingReviewType,
         suggestion: str,
         reasoning: str,
         alternatives: list[str] | None = None,
@@ -118,7 +135,7 @@ class PendingReviewsService:
 
     def get_all(
         self,
-        item_type: Literal["correspondent", "document_type", "tag"] | None = None,
+        item_type: PendingReviewType | None = None,
     ) -> list[PendingReviewItem]:
         """Get all pending items, optionally filtered by type."""
         items = self._load()
@@ -183,7 +200,18 @@ class PendingReviewsService:
     def get_counts(self) -> dict[str, int]:
         """Get counts by type."""
         items = self._load()
-        counts = {"correspondent": 0, "document_type": 0, "tag": 0, "total": len(items)}
+        counts = {
+            "correspondent": 0,
+            "document_type": 0,
+            "tag": 0,
+            "schema_cleanup": 0,
+            "metadata_description": 0,
+            "schema_correspondent": 0,
+            "schema_document_type": 0,
+            "schema_tag": 0,
+            "schema_custom_field": 0,
+            "total": len(items),
+        }
         for item in items:
             item_type = item.get("type")
             if item_type in counts:

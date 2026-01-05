@@ -70,8 +70,8 @@ class DocumentTypeAgent:
                 feedback,
             )
 
-            # Confirm with smaller model
-            confirmation = await self._confirm_document_type(content, analysis)
+            # Confirm with smaller model (pass existing types for verification)
+            confirmation = await self._confirm_document_type(content, analysis, doc_type_names)
 
             if confirmation.confirmed:
                 # Apply document type
@@ -151,6 +151,7 @@ class DocumentTypeAgent:
         self,
         content: str,
         analysis: DocumentTypeAnalysis,
+        existing_doc_types: list[str],
     ) -> ConfirmationResult:
         """Confirm document type with smaller model."""
         confirmation_prompt = (
@@ -166,10 +167,14 @@ class DocumentTypeAgent:
 **Confidence:** {analysis.confidence}
 **Alternatives:** {', '.join(analysis.alternatives) if analysis.alternatives else 'None'}"""
 
+        # Format existing types for verification
+        existing_types_list = ", ".join(existing_doc_types) if existing_doc_types else "Keine"
+
         # Format the prompt with variables
         formatted_prompt = confirmation_prompt.format(
             analysis_result=analysis_result,
             document_excerpt=content[:1500],
+            existing_types=existing_types_list,
         )
 
         messages = [HumanMessage(content=formatted_prompt)]
@@ -215,9 +220,12 @@ class DocumentTypeAgent:
                 analysis.suggested_document_type
             )
         else:
-            # Find existing document type ID
+            # Find existing document type ID - require exact match
+            # (The prompt instructs the model to use exact names from the list)
+            suggestion = analysis.suggested_document_type.lower().strip()
+
             for dt in existing_doc_types:
-                if dt["name"].lower() == analysis.suggested_document_type.lower():
+                if dt["name"].lower() == suggestion:
                     doc_type_id = dt["id"]
                     break
 

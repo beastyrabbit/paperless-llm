@@ -121,7 +121,23 @@
     "more": "more...",
     "less": "less",
     "loading": "Loading pending items...",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "rejectModal": {
+      "title": "Reject Suggestion",
+      "description": "Rejecting \"{suggestion}\" as {type}",
+      "justReject": "Just reject (don't block)",
+      "blockPerType": "Block as {type} only",
+      "blockGlobal": "Block everywhere (never suggest)",
+      "whyOptional": "Why? (optional)",
+      "duplicate": "Duplicate of existing",
+      "tooGeneric": "Too generic",
+      "irrelevant": "Irrelevant",
+      "wrongFormat": "Wrong format",
+      "other": "Other",
+      "additionalContext": "Additional context (optional)",
+      "cancel": "Cancel",
+      "confirmReject": "Reject"
+    }
   },
   "prompts": {
     "title": "Prompts",

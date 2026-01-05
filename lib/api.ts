@@ -123,6 +123,11 @@ export const pendingApi = {
     fetchApi<{ success: boolean }>(`/api/pending/${itemId}/reject`, {
       method: "POST",
     }),
+  rejectWithFeedback: (reviewId: string, request: RejectWithFeedbackRequest) =>
+    fetchApi<RejectWithFeedbackResponse>(`/api/pending/${reviewId}/reject-with-feedback`, {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
 };
 
 // Metadata API
@@ -163,6 +168,42 @@ export const metadataApi = {
     fetchApi<CustomFieldMetadata[]>("/api/metadata/custom-fields/bulk", {
       method: "POST",
       body: JSON.stringify(items),
+    }),
+};
+
+// Schema API (Blocked Suggestions)
+export const schemaApi = {
+  getBlocked: (blockType?: string) =>
+    fetchApi<BlockedSuggestion[]>(
+      `/api/schema/blocked${blockType ? `?block_type=${blockType}` : ""}`
+    ),
+  block: (request: BlockSuggestionRequest) =>
+    fetchApi<BlockedSuggestion>("/api/schema/blocked", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+  unblock: (id: number) =>
+    fetchApi<void>(`/api/schema/blocked/${id}`, {
+      method: "DELETE",
+    }),
+  checkBlocked: (name: string, blockType: string) =>
+    fetchApi<{ is_blocked: boolean }>(
+      `/api/schema/blocked/check?name=${encodeURIComponent(name)}&block_type=${blockType}`
+    ),
+};
+
+// Jobs API
+export const jobsApi = {
+  getStatus: () => fetchApi<Record<string, JobStatus>>("/api/jobs/status"),
+  getJobStatus: (jobName: string) =>
+    fetchApi<JobStatus>(`/api/jobs/status/${jobName}`),
+  triggerMetadataEnhancement: () =>
+    fetchApi<{ message: string; status: string }>("/api/jobs/metadata-enhancement/run", {
+      method: "POST",
+    }),
+  triggerSchemaCleanup: () =>
+    fetchApi<{ message: string; status: string }>("/api/jobs/schema-cleanup/run", {
+      method: "POST",
     }),
 };
 
@@ -431,4 +472,57 @@ export interface TranslationEntry {
   translated_text: string;
   model_used: string | null;
   created_at: string;
+}
+
+// Blocked Suggestions Types
+export type BlockType = "global" | "correspondent" | "document_type" | "tag";
+export type RejectionCategory =
+  | "duplicate"
+  | "too_generic"
+  | "irrelevant"
+  | "wrong_format"
+  | "other";
+
+export interface BlockedSuggestion {
+  id: number;
+  suggestion_name: string;
+  normalized_name: string;
+  block_type: BlockType;
+  rejection_reason: string | null;
+  rejection_category: RejectionCategory | null;
+  doc_id: number | null;
+  created_at: string;
+}
+
+export interface BlockSuggestionRequest {
+  suggestion_name: string;
+  block_type: BlockType;
+  rejection_reason?: string | null;
+  rejection_category?: RejectionCategory | null;
+  doc_id?: number | null;
+}
+
+// Jobs Types
+export type JobStatusType = "idle" | "running" | "completed" | "failed";
+
+export interface JobStatus {
+  job_name: string;
+  status: JobStatusType;
+  last_run: string | null;
+  last_result: Record<string, unknown> | null;
+}
+
+// Reject with Feedback Types
+export type RejectBlockType = "none" | "global" | "per_type";
+
+export interface RejectWithFeedbackRequest {
+  block_type: RejectBlockType;
+  rejection_reason?: string | null;
+  rejection_category?: RejectionCategory | null;
+}
+
+export interface RejectWithFeedbackResponse {
+  success: boolean;
+  blocked: boolean;
+  block_type: string | null;
 }

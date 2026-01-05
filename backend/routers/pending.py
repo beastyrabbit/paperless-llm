@@ -37,6 +37,16 @@ class UpdateSuggestionRequest(BaseModel):
     new_suggestion: str
 
 
+class RejectWithFeedbackRequest(BaseModel):
+    """Request to reject a pending item with optional blocking feedback."""
+
+    block_type: Literal["none", "global", "per_type"] = "none"
+    rejection_reason: str | None = None
+    rejection_category: (
+        Literal["duplicate", "too_generic", "irrelevant", "wrong_format", "other"] | None
+    ) = None
+
+
 def get_paperless_client(settings: Settings = Depends(get_settings)) -> PaperlessClient:
     """Get Paperless client dependency."""
     return PaperlessClient(settings.paperless_url, settings.paperless_token)
@@ -187,6 +197,78 @@ async def reject_pending_item(
     service.remove(item_id)
 
     return {"id": item_id, "rejected": True, "type": item.type}
+
+
+@router.post("/{item_id}/reject-with-feedback")
+async def reject_with_feedback(
+    item_id: str,
+    request: RejectWithFeedbackRequest,
+    service: PendingReviewsService = Depends(get_pending_reviews_service),
+    client: PaperlessClient = Depends(get_paperless_client),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Reject a pending review with optional blocking feedback.
+
+    This will:
+    1. Optionally add the suggestion to the blocked list
+    2. Update pipeline tags to continue processing
+    3. Remove from pending reviews
+    """
+    from models.blocked import BlockSuggestionRequest, BlockType, RejectionCategory
+    from services.database import get_database_service
+
+    # Get the pending review first
+    item = service.get_by_id(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Pending review not found")
+
+    # If blocking requested, add to blocked suggestions
+    if request.block_type != "none":
+        db = get_database_service()
+
+        # Determine the actual block type
+        if request.block_type == "global":
+            actual_block_type = BlockType.GLOBAL
+        else:  # per_type
+            # Get entity type from the review's type field
+            type_mapping = {
+                "correspondent": BlockType.CORRESPONDENT,
+                "document_type": BlockType.DOCUMENT_TYPE,
+                "tag": BlockType.TAG,
+            }
+            actual_block_type = type_mapping.get(item.type, BlockType.GLOBAL)
+
+        # Convert rejection category string to enum if provided
+        rejection_category = None
+        if request.rejection_category:
+            rejection_category = RejectionCategory(request.rejection_category)
+
+        block_request = BlockSuggestionRequest(
+            suggestion_name=item.suggestion,
+            block_type=actual_block_type,
+            rejection_reason=request.rejection_reason,
+            rejection_category=rejection_category,
+            doc_id=item.doc_id,
+        )
+        db.add_blocked_suggestion(block_request)
+
+    # Update pipeline tag to continue processing (skip this step)
+    if item.type == "correspondent":
+        await client.remove_tag_from_document(item.doc_id, settings.tag_ocr_done)
+        await client.add_tag_to_document(item.doc_id, settings.tag_correspondent_done)
+    elif item.type == "document_type":
+        await client.remove_tag_from_document(item.doc_id, settings.tag_correspondent_done)
+        await client.add_tag_to_document(item.doc_id, settings.tag_document_type_done)
+    # Tags don't block the pipeline, so no tag update needed
+
+    # Remove from pending reviews
+    service.remove(item_id)
+
+    return {
+        "success": True,
+        "blocked": request.block_type != "none",
+        "block_type": request.block_type if request.block_type != "none" else None,
+    }
 
 
 @router.delete("/{item_id}")

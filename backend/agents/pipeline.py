@@ -1,11 +1,11 @@
 """Document Processing Pipeline orchestrating all agents.
 
-Pipeline Order: OCR → Correspondent → Document Type → Title → Tags → Custom Fields
+Pipeline Order: OCR → Schema Analysis → Correspondent → Document Type → Title → Tags → Custom Fields
 """
 
 import json
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from agents.correspondent_agent import CorrespondentAgent
 from agents.custom_fields_agent import CustomFieldsAgent
@@ -17,6 +17,9 @@ from config import get_settings
 from models.document import ProcessingState
 from services.paperless import PaperlessClient
 from services.qdrant import QdrantService
+
+if TYPE_CHECKING:
+    from agents.schema_analysis_agent import SchemaAnalysisAgent
 
 
 # #region agent log
@@ -46,9 +49,10 @@ def _debug_log(location: str, message: str, data: dict, hypothesis_id: str = "")
 class ProcessingPipeline:
     """Orchestrates document processing through all agents.
 
-    Pipeline Order: OCR → Correspondent → Document Type → Title → Tags
+    Pipeline Order: OCR → Schema Analysis → Correspondent → Document Type → Title → Tags → Custom Fields
 
     Optional: After OCR, if vector_search_enabled, embed content into Qdrant.
+    Optional: After OCR, if schema_analysis_enabled, analyze document for schema improvements.
     """
 
     def __init__(self, mock_ocr: bool = False):
@@ -63,6 +67,13 @@ class ProcessingPipeline:
         self.title_agent = TitleAgent()
         self.tags_agent = TagsAgent()
         self.custom_fields_agent = CustomFieldsAgent()
+
+        # Optional schema analysis agent
+        self.schema_analysis_agent: "SchemaAnalysisAgent | None" = None  # noqa: UP037
+        if self.settings.schema_analysis_enabled:
+            from agents.schema_analysis_agent import SchemaAnalysisAgent
+
+            self.schema_analysis_agent = SchemaAnalysisAgent()
 
         # Optional Qdrant service for vector search
         self.qdrant: QdrantService | None = None
@@ -95,7 +106,7 @@ class ProcessingPipeline:
     async def _process_sync(self, doc_id: int) -> dict[str, Any]:
         """Process document synchronously.
 
-        Order: OCR → Correspondent → Document Type → Title → Tags
+        Order: OCR → Schema Analysis → Correspondent → Document Type → Title → Tags → Custom Fields
         """
         results = {
             "doc_id": doc_id,
@@ -126,8 +137,30 @@ class ProcessingPipeline:
             content = doc.get("content", "") if doc else ""
             current_state = ProcessingState.OCR_DONE
 
-        # Step 2: Correspondent
-        if current_state == ProcessingState.OCR_DONE:
+        # Step 2: Schema Analysis (optional, after OCR)
+        if current_state == ProcessingState.OCR_DONE and self.schema_analysis_agent:
+            result = await self.schema_analysis_agent.process(doc_id, content)
+            results["steps"]["schema_analysis"] = result
+
+            if result.get("has_suggestions"):
+                # Queue suggestions for review
+                await self._queue_schema_suggestions(doc_id, result)
+
+                if self.settings.schema_analysis_pause_for_review:
+                    results["needs_review"] = True
+                    results["schema_review_needed"] = True
+                    return results
+
+            # Update tags to mark schema analysis as done
+            await self.paperless.remove_tag_from_document(doc_id, self.settings.tag_ocr_done)
+            await self.paperless.add_tag_to_document(doc_id, self.settings.tag_schema_analysis_done)
+            current_state = ProcessingState.SCHEMA_ANALYSIS_DONE
+        elif current_state == ProcessingState.OCR_DONE:
+            # Skip schema analysis if not enabled - move to next state
+            current_state = ProcessingState.SCHEMA_ANALYSIS_DONE
+
+        # Step 3: Correspondent
+        if current_state == ProcessingState.SCHEMA_ANALYSIS_DONE:
             result = await self.correspondent_agent.process(doc_id, content)
             results["steps"]["correspondent"] = result
             if result.get("needs_review"):
@@ -135,7 +168,7 @@ class ProcessingPipeline:
                 return results
             current_state = ProcessingState.CORRESPONDENT_DONE
 
-        # Step 3: Document Type
+        # Step 4: Document Type
         if current_state == ProcessingState.CORRESPONDENT_DONE:
             result = await self.document_type_agent.process(doc_id, content)
             results["steps"]["document_type"] = result
@@ -144,7 +177,7 @@ class ProcessingPipeline:
                 return results
             current_state = ProcessingState.DOCUMENT_TYPE_DONE
 
-        # Step 4: Title
+        # Step 5: Title
         if current_state == ProcessingState.DOCUMENT_TYPE_DONE:
             result = await self.title_agent.process(doc_id, content)
             results["steps"]["title"] = result
@@ -153,7 +186,7 @@ class ProcessingPipeline:
                 return results
             current_state = ProcessingState.TITLE_DONE
 
-        # Step 5: Tags
+        # Step 6: Tags
         if current_state == ProcessingState.TITLE_DONE:
             # Get document type and current tags for context
             doc = await self.paperless.get_document(doc_id)
@@ -177,7 +210,7 @@ class ProcessingPipeline:
                 return results
             current_state = ProcessingState.TAGS_DONE
 
-        # Step 6: Custom Fields (if enabled)
+        # Step 7: Custom Fields (if enabled)
         if current_state == ProcessingState.TAGS_DONE:
             if self.settings.pipeline_custom_fields:
                 result = await self.custom_fields_agent.process(doc_id, content)
@@ -209,7 +242,7 @@ class ProcessingPipeline:
     async def _process_stream(self, doc_id: int) -> AsyncGenerator[dict, None]:
         """Process document with streaming output.
 
-        Order: OCR → Correspondent → Document Type → Title → Tags
+        Order: OCR → Schema Analysis → Correspondent → Document Type → Title → Tags → Custom Fields
         """
         yield {"type": "pipeline_start", "doc_id": doc_id}
 
@@ -326,8 +359,48 @@ class ProcessingPipeline:
                 yield {"type": "error", "step": "ocr", "message": str(e)}
                 return
 
-        # Step 2: Correspondent
+        # Step 2: Schema Analysis (optional, after OCR)
         if current_state == ProcessingState.OCR_DONE:
+            if self.schema_analysis_agent:
+                yield {"type": "step_start", "step": "schema_analysis"}
+                try:
+                    result = await self.schema_analysis_agent.process(doc_id, content)
+
+                    if result.get("has_suggestions"):
+                        # Queue suggestions for review
+                        await self._queue_schema_suggestions(doc_id, result)
+
+                        yield {
+                            "type": "schema_review_needed",
+                            "step": "schema_analysis",
+                            "result": result,
+                        }
+
+                        if self.settings.schema_analysis_pause_for_review:
+                            yield {"type": "pipeline_paused", "reason": "schema_review_needed"}
+                            return  # Stop pipeline here
+
+                    yield {"type": "step_complete", "step": "schema_analysis", "result": result}
+
+                    # Update tags to mark schema analysis as done
+                    await self.paperless.remove_tag_from_document(
+                        doc_id, self.settings.tag_ocr_done
+                    )
+                    await self.paperless.add_tag_to_document(
+                        doc_id, self.settings.tag_schema_analysis_done
+                    )
+                except Exception as e:
+                    # Schema analysis is optional - log warning but continue pipeline
+                    yield {
+                        "type": "warning",
+                        "step": "schema_analysis",
+                        "message": f"Schema analysis skipped: {e}",
+                    }
+            # Move to next state (whether schema analysis ran or not)
+            current_state = ProcessingState.SCHEMA_ANALYSIS_DONE
+
+        # Step 3: Correspondent
+        if current_state == ProcessingState.SCHEMA_ANALYSIS_DONE:
             yield {"type": "step_start", "step": "correspondent"}
             try:
                 result = await self.correspondent_agent.process(doc_id, content)
@@ -340,7 +413,7 @@ class ProcessingPipeline:
                 yield {"type": "error", "step": "correspondent", "message": str(e)}
                 return
 
-        # Step 3: Document Type
+        # Step 4: Document Type
         if current_state == ProcessingState.CORRESPONDENT_DONE:
             yield {"type": "step_start", "step": "document_type"}
             try:
@@ -354,7 +427,7 @@ class ProcessingPipeline:
                 yield {"type": "error", "step": "document_type", "message": str(e)}
                 return
 
-        # Step 4: Title
+        # Step 5: Title
         if current_state == ProcessingState.DOCUMENT_TYPE_DONE:
             yield {"type": "step_start", "step": "title"}
             try:
@@ -368,7 +441,7 @@ class ProcessingPipeline:
                 yield {"type": "error", "step": "title", "message": str(e)}
                 return
 
-        # Step 5: Tags
+        # Step 6: Tags
         if current_state == ProcessingState.TITLE_DONE:
             yield {"type": "step_start", "step": "tags"}
             try:
@@ -397,7 +470,7 @@ class ProcessingPipeline:
                 yield {"type": "error", "step": "tags", "message": str(e)}
                 return
 
-        # Step 6: Custom Fields (if enabled)
+        # Step 7: Custom Fields (if enabled)
         if current_state == ProcessingState.TAGS_DONE:
             if self.settings.pipeline_custom_fields:
                 yield {"type": "step_start", "step": "custom_fields"}
@@ -474,6 +547,10 @@ class ProcessingPipeline:
                 document_type=doc_type_name,
                 current_tag_ids=current_tag_ids,
             )
+        elif step == "schema_analysis":
+            if self.schema_analysis_agent:
+                return await self.schema_analysis_agent.process(doc_id, content)
+            return {"success": True, "skipped": True, "reason": "Schema analysis not enabled"}
         elif step == "custom_fields":
             return await self.custom_fields_agent.process(doc_id, content)
         else:
@@ -482,7 +559,7 @@ class ProcessingPipeline:
     def _get_current_state(self, tag_names: list[str]) -> ProcessingState:
         """Determine current processing state from tags.
 
-        Order: PENDING → OCR_DONE → CORRESPONDENT_DONE → DOCUMENT_TYPE_DONE → TITLE_DONE → TAGS_DONE → CUSTOM_FIELDS_DONE → PROCESSED
+        Order: PENDING → OCR_DONE → SCHEMA_ANALYSIS_DONE → CORRESPONDENT_DONE → DOCUMENT_TYPE_DONE → TITLE_DONE → TAGS_DONE → CUSTOM_FIELDS_DONE → PROCESSED
         """
         if self.settings.tag_processed in tag_names:
             return ProcessingState.PROCESSED
@@ -496,8 +573,37 @@ class ProcessingPipeline:
             return ProcessingState.DOCUMENT_TYPE_DONE
         if self.settings.tag_correspondent_done in tag_names:
             return ProcessingState.CORRESPONDENT_DONE
+        if self.settings.tag_schema_analysis_done in tag_names:
+            return ProcessingState.SCHEMA_ANALYSIS_DONE
         if self.settings.tag_ocr_done in tag_names:
             return ProcessingState.OCR_DONE
         if self.settings.tag_pending in tag_names:
             return ProcessingState.PENDING
         return ProcessingState.PENDING
+
+    async def _queue_schema_suggestions(self, doc_id: int, result: dict) -> None:
+        """Queue schema suggestions for user review."""
+        from services.pending_reviews import get_pending_reviews_service
+
+        pending = get_pending_reviews_service()
+        doc = await self.paperless.get_document(doc_id)
+        doc_title = doc.get("title", f"Document {doc_id}") if doc else f"Document {doc_id}"
+
+        for suggestion in result.get("suggestions", []):
+            # Only queue suggestions meeting minimum confidence
+            confidence = suggestion.get("confidence", 0)
+            if confidence < self.settings.schema_analysis_min_confidence:
+                continue
+
+            pending.add(
+                doc_id=doc_id,
+                doc_title=doc_title,
+                item_type=f"schema_{suggestion['entity_type']}",
+                suggestion=suggestion["suggested_name"],
+                reasoning=suggestion["reasoning"],
+                alternatives=suggestion.get("similar_to_existing", []),
+                metadata={
+                    "entity_type": suggestion["entity_type"],
+                    "confidence": confidence,
+                },
+            )

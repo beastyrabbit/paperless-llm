@@ -9,11 +9,12 @@ from pydantic import BaseModel, Field
 class ProcessingState(str, Enum):
     """Document processing state.
 
-    Order: PENDING → OCR_DONE → CORRESPONDENT_DONE → DOCUMENT_TYPE_DONE → TITLE_DONE → TAGS_DONE → CUSTOM_FIELDS_DONE → PROCESSED
+    Order: PENDING → OCR_DONE → SCHEMA_ANALYSIS_DONE → CORRESPONDENT_DONE → DOCUMENT_TYPE_DONE → TITLE_DONE → TAGS_DONE → CUSTOM_FIELDS_DONE → PROCESSED
     """
 
     PENDING = "pending"
     OCR_DONE = "ocr_done"
+    SCHEMA_ANALYSIS_DONE = "schema_analysis_done"
     CORRESPONDENT_DONE = "correspondent_done"
     DOCUMENT_TYPE_DONE = "document_type_done"
     TITLE_DONE = "title_done"

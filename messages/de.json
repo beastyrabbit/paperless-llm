@@ -121,7 +121,23 @@
     "more": "mehr...",
     "less": "weniger",
     "loading": "Lade ausstehende Elemente...",
-    "refresh": "Aktualisieren"
+    "refresh": "Aktualisieren",
+    "rejectModal": {
+      "title": "Vorschlag ablehnen",
+      "description": "\"{suggestion}\" als {type} ablehnen",
+      "justReject": "Nur ablehnen (nicht blockieren)",
+      "blockPerType": "Nur als {type} blockieren",
+      "blockGlobal": "Überall blockieren (nie vorschlagen)",
+      "whyOptional": "Warum? (optional)",
+      "duplicate": "Duplikat eines bestehenden",
+      "tooGeneric": "Zu allgemein",
+      "irrelevant": "Irrelevant",
+      "wrongFormat": "Falsches Format",
+      "other": "Sonstiges",
+      "additionalContext": "Zusätzlicher Kontext (optional)",
+      "cancel": "Abbrechen",
+      "confirmReject": "Ablehnen"
+    }
   },
   "prompts": {
     "title": "Prompts",

@@ -16,8 +16,32 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { pendingApi, PendingItem, PendingCounts } from "@/lib/api";
+import {
+  pendingApi,
+  PendingItem,
+  PendingCounts,
+  RejectBlockType,
+  RejectionCategory,
+} from "@/lib/api";
 
 const sections = [
   { key: "correspondent", labelKey: "correspondents", icon: User },
@@ -44,6 +68,13 @@ export default function PendingPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [selectedValues, setSelectedValues] = useState<Record<string, string>>({});
+
+  // Rejection modal state
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [rejectingItem, setRejectingItem] = useState<PendingItem | null>(null);
+  const [blockType, setBlockType] = useState<RejectBlockType>("none");
+  const [rejectionCategory, setRejectionCategory] = useState<RejectionCategory | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -117,26 +148,63 @@ export default function PendingPage() {
     }
   };
 
-  const handleReject = async (id: string) => {
-    setActionLoading(id);
+  // Reset rejection modal form
+  const resetRejectForm = () => {
+    setRejectingItem(null);
+    setBlockType("none");
+    setRejectionCategory(null);
+    setRejectionReason("");
+  };
+
+  // Open rejection modal for schema items, direct reject for non-schema items
+  const openRejectModal = (item: PendingItem) => {
+    // For schema items (correspondent, document_type, tag), show the modal
+    // These are the items where blocking makes sense
+    setRejectingItem(item);
+    setRejectModalOpen(true);
+  };
+
+  // Handle reject with feedback (from modal)
+  const handleRejectWithFeedback = async () => {
+    if (!rejectingItem) return;
+
+    setActionLoading(rejectingItem.id);
     try {
-      const response = await pendingApi.reject(id);
+      const response = await pendingApi.rejectWithFeedback(rejectingItem.id, {
+        block_type: blockType,
+        rejection_category: rejectionCategory,
+        rejection_reason: rejectionReason || null,
+      });
+
       if (response.error) {
         setError(response.error);
       } else {
         // Remove item from local state and update counts
-        setItems((prev) => prev.filter((item) => item.id !== id));
-        const item = items.find((i) => i.id === id);
-        if (item) {
-          setCounts((prev) => ({
-            ...prev,
-            [item.type]: prev[item.type] - 1,
-            total: prev.total - 1,
-          }));
-        }
+        setItems((prev) => prev.filter((item) => item.id !== rejectingItem.id));
+        setCounts((prev) => ({
+          ...prev,
+          [rejectingItem.type]: prev[rejectingItem.type] - 1,
+          total: prev.total - 1,
+        }));
+        setRejectModalOpen(false);
+        resetRejectForm();
       }
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  // Get display name for item type
+  const getTypeDisplayName = (type: string) => {
+    switch (type) {
+      case "correspondent":
+        return t("correspondents").toLowerCase().replace(/s$/, "");
+      case "document_type":
+        return t("documentTypes").toLowerCase().replace(/s$/, "");
+      case "tag":
+        return t("tags").toLowerCase().replace(/s$/, "");
+      default:
+        return type;
     }
   };
 
@@ -346,7 +414,7 @@ export default function PendingPage() {
                         size="sm"
                         variant="ghost"
                         className="text-zinc-500 hover:text-red-600"
-                        onClick={() => handleReject(item.id)}
+                        onClick={() => openRejectModal(item)}
                         disabled={isLoading}
                       >
                         {isLoading ? (
@@ -377,6 +445,113 @@ export default function PendingPage() {
           </div>
         )}
       </div>
+
+      {/* Rejection Modal */}
+      <Dialog
+        open={rejectModalOpen}
+        onOpenChange={(open) => {
+          setRejectModalOpen(open);
+          if (!open) resetRejectForm();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("rejectModal.title")}</DialogTitle>
+            <DialogDescription>
+              {rejectingItem &&
+                t("rejectModal.description", {
+                  suggestion: rejectingItem.suggestion,
+                  type: getTypeDisplayName(rejectingItem.type),
+                })}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <RadioGroup
+              value={blockType}
+              onValueChange={(v: string) => setBlockType(v as RejectBlockType)}
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="none" id="none" />
+                <Label htmlFor="none">{t("rejectModal.justReject")}</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="per_type" id="per_type" />
+                <Label htmlFor="per_type">
+                  {rejectingItem &&
+                    t("rejectModal.blockPerType", {
+                      type: getTypeDisplayName(rejectingItem.type),
+                    })}
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="global" id="global" />
+                <Label htmlFor="global">{t("rejectModal.blockGlobal")}</Label>
+              </div>
+            </RadioGroup>
+
+            {blockType !== "none" && (
+              <>
+                <Select
+                  value={rejectionCategory || ""}
+                  onValueChange={(v) =>
+                    setRejectionCategory(v as RejectionCategory)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={t("rejectModal.whyOptional")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="duplicate">
+                      {t("rejectModal.duplicate")}
+                    </SelectItem>
+                    <SelectItem value="too_generic">
+                      {t("rejectModal.tooGeneric")}
+                    </SelectItem>
+                    <SelectItem value="irrelevant">
+                      {t("rejectModal.irrelevant")}
+                    </SelectItem>
+                    <SelectItem value="wrong_format">
+                      {t("rejectModal.wrongFormat")}
+                    </SelectItem>
+                    <SelectItem value="other">{t("rejectModal.other")}</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Input
+                  placeholder={t("rejectModal.additionalContext")}
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                />
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRejectModalOpen(false);
+                resetRejectForm();
+              }}
+            >
+              {t("rejectModal.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRejectWithFeedback}
+              disabled={actionLoading === rejectingItem?.id}
+            >
+              {actionLoading === rejectingItem?.id ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <X className="h-4 w-4 mr-1" />
+              )}
+              {t("rejectModal.confirmReject")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
