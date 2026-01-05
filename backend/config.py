@@ -106,6 +106,12 @@ class Settings(BaseSettings):
     vector_search_min_score: float = Field(default=0.7)
 
     # =========================================================================
+    # Language Settings
+    # =========================================================================
+
+    prompt_language: str = Field(default="en")
+
+    # =========================================================================
     # Debug Settings
     # =========================================================================
 
@@ -198,6 +204,10 @@ def _flatten_yaml_config(yaml_config: dict[str, Any]) -> dict[str, Any]:
         flat["debug_log_prompts"] = debug.get("log_prompts")
         flat["debug_log_responses"] = debug.get("log_responses")
         flat["debug_save_processing_history"] = debug.get("save_processing_history")
+
+    # Language
+    if "language" in yaml_config:
+        flat["prompt_language"] = yaml_config["language"].get("prompt")
 
     return flat
 
@@ -324,6 +334,10 @@ def _unflatten_to_yaml(flat_settings: dict[str, Any]) -> dict[str, Any]:
             yaml_config["debug"]["save_processing_history"] = flat_settings[
                 "debug_save_processing_history"
             ]
+
+    # Language
+    if "prompt_language" in flat_settings:
+        yaml_config["language"] = {"prompt": flat_settings["prompt_language"]}
 
     return yaml_config
 

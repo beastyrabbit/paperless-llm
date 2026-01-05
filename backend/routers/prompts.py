@@ -3,15 +3,29 @@
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from agents.prompts import DEFAULT_LANGUAGE, PROMPTS_DIR, get_available_languages
 from config import get_settings
 from services.paperless import PaperlessClient
 
 router = APIRouter()
 
-PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+# Human-readable language names
+LANGUAGE_NAMES = {
+    "en": "English",
+    "de": "Deutsch",
+    "fr": "Français",
+    "es": "Español",
+    "it": "Italiano",
+    "nl": "Nederlands",
+    "pt": "Português",
+    "pl": "Polski",
+    "ru": "Русский",
+    "ja": "日本語",
+    "zh": "中文",
+}
 
 # Define prompt groups (main prompt -> confirmation prompt)
 PROMPT_GROUPS = {
@@ -60,15 +74,94 @@ class PreviewData(BaseModel):
     document_excerpt: str
 
 
+class LanguageInfo(BaseModel):
+    """Information about an available language."""
+
+    code: str
+    name: str
+    prompt_count: int
+    is_complete: bool
+
+
+class AvailableLanguagesResponse(BaseModel):
+    """Response containing available languages."""
+
+    languages: list[LanguageInfo]
+    default: str
+    current: str
+
+
+# Expected prompts for completeness check
+EXPECTED_PROMPTS = [
+    "title",
+    "title_confirmation",
+    "correspondent",
+    "correspondent_confirmation",
+    "document_type",
+    "document_type_confirmation",
+    "tags",
+    "tags_confirmation",
+    "confirmation",
+    "custom_fields",
+]
+
+
+def _get_prompts_dir(lang: str | None = None) -> Path:
+    """Get the prompts directory for a specific language."""
+    settings = get_settings()
+    lang = lang or settings.prompt_language or DEFAULT_LANGUAGE
+
+    lang_dir = PROMPTS_DIR / lang
+    if lang_dir.exists():
+        return lang_dir
+
+    # Fall back to default language
+    default_dir = PROMPTS_DIR / DEFAULT_LANGUAGE
+    if default_dir.exists():
+        return default_dir
+
+    # Legacy fallback (flat structure)
+    return PROMPTS_DIR
+
+
+@router.get("/languages", response_model=AvailableLanguagesResponse)
+async def list_available_languages():
+    """List all available prompt languages."""
+    settings = get_settings()
+    languages = get_available_languages()
+
+    lang_infos = []
+    for lang in languages:
+        lang_dir = PROMPTS_DIR / lang
+        existing = [p for p in EXPECTED_PROMPTS if (lang_dir / f"{p}.md").exists()]
+        lang_infos.append(
+            LanguageInfo(
+                code=lang,
+                name=LANGUAGE_NAMES.get(lang, lang.upper()),
+                prompt_count=len(existing),
+                is_complete=len(existing) == len(EXPECTED_PROMPTS),
+            )
+        )
+
+    return AvailableLanguagesResponse(
+        languages=lang_infos,
+        default=DEFAULT_LANGUAGE,
+        current=settings.prompt_language,
+    )
+
+
 @router.get("", response_model=list[PromptInfo])
-async def list_prompts():
-    """List all available prompts."""
+async def list_prompts(
+    lang: str | None = Query(None, description="Language code (e.g., 'en', 'de')"),
+):
+    """List all available prompts for a specific language."""
     prompts = []
 
-    if not PROMPTS_DIR.exists():
+    prompts_dir = _get_prompts_dir(lang)
+    if not prompts_dir.exists():
         return prompts
 
-    for prompt_file in sorted(PROMPTS_DIR.glob("*.md")):
+    for prompt_file in sorted(prompts_dir.glob("*.md")):
         content = prompt_file.read_text()
         variables = _extract_variables(content)
         description = _extract_description(content)
@@ -87,13 +180,16 @@ async def list_prompts():
 
 
 @router.get("/groups", response_model=list[PromptGroup])
-async def list_prompt_groups():
-    """List prompts grouped by main + confirmation."""
+async def list_prompt_groups(
+    lang: str | None = Query(None, description="Language code (e.g., 'en', 'de')"),
+):
+    """List prompts grouped by main + confirmation for a specific language."""
     groups = []
+    prompts_dir = _get_prompts_dir(lang)
 
     for main_name, confirmation_name in PROMPT_GROUPS.items():
-        main_file = PROMPTS_DIR / f"{main_name}.md"
-        confirmation_file = PROMPTS_DIR / f"{confirmation_name}.md"
+        main_file = prompts_dir / f"{main_name}.md"
+        confirmation_file = prompts_dir / f"{confirmation_name}.md"
 
         if not main_file.exists():
             continue
@@ -127,7 +223,7 @@ async def list_prompt_groups():
         )
 
     # Add the generic confirmation prompt as a standalone group
-    generic_conf = PROMPTS_DIR / "confirmation.md"
+    generic_conf = prompts_dir / "confirmation.md"
     if generic_conf.exists():
         conf_content = generic_conf.read_text()
         groups.append(
@@ -253,9 +349,12 @@ async def get_preview_data():
 
 
 @router.get("/{prompt_name}", response_model=PromptInfo)
-async def get_prompt(prompt_name: str):
-    """Get a specific prompt by name."""
-    prompt_file = PROMPTS_DIR / f"{prompt_name}.md"
+async def get_prompt(
+    prompt_name: str, lang: str | None = Query(None, description="Language code (e.g., 'en', 'de')")
+):
+    """Get a specific prompt by name for a specific language."""
+    prompts_dir = _get_prompts_dir(lang)
+    prompt_file = prompts_dir / f"{prompt_name}.md"
 
     if not prompt_file.exists():
         raise HTTPException(status_code=404, detail=f"Prompt '{prompt_name}' not found")
@@ -274,9 +373,14 @@ async def get_prompt(prompt_name: str):
 
 
 @router.put("/{prompt_name}", response_model=PromptInfo)
-async def update_prompt(prompt_name: str, update: PromptUpdate):
-    """Update a prompt's content."""
-    prompt_file = PROMPTS_DIR / f"{prompt_name}.md"
+async def update_prompt(
+    prompt_name: str,
+    update: PromptUpdate,
+    lang: str | None = Query(None, description="Language code (e.g., 'en', 'de')"),
+):
+    """Update a prompt's content for a specific language."""
+    prompts_dir = _get_prompts_dir(lang)
+    prompt_file = prompts_dir / f"{prompt_name}.md"
 
     if not prompt_file.exists():
         raise HTTPException(status_code=404, detail=f"Prompt '{prompt_name}' not found")

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages } from "next-intl/server";
 import "./globals.css";
 import { Sidebar } from "@/components/sidebar";
 
@@ -18,22 +20,25 @@ export const metadata: Metadata = {
   description: "KI-gestütztes Dokumentenanalyse-System für Paperless-ngx",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await getLocale();
+  const messages = await getMessages();
+
   return (
-    <html lang="de">
+    <html lang={locale}>
       <body
         className={`${spaceGrotesk.variable} ${jetbrainsMono.variable} antialiased`}
       >
-        <div className="flex h-screen bg-background">
-          <Sidebar />
-          <main className="flex-1 overflow-auto">
-            {children}
-          </main>
-        </div>
+        <NextIntlClientProvider messages={messages}>
+          <div className="flex h-screen bg-background">
+            <Sidebar />
+            <main className="flex-1 overflow-auto">{children}</main>
+          </div>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

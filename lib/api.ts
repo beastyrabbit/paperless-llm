@@ -85,15 +85,19 @@ export const processingApi = {
 
 // Prompts API
 export const promptsApi = {
-  list: () => fetchApi<PromptInfo[]>("/api/prompts"),
-  listGroups: () => fetchApi<PromptGroup[]>("/api/prompts/groups"),
+  list: (lang?: string) =>
+    fetchApi<PromptInfo[]>(`/api/prompts${lang ? `?lang=${lang}` : ""}`),
+  listGroups: (lang?: string) =>
+    fetchApi<PromptGroup[]>(`/api/prompts/groups${lang ? `?lang=${lang}` : ""}`),
   getPreviewData: () => fetchApi<PreviewData>("/api/prompts/preview-data"),
-  get: (name: string) => fetchApi<PromptInfo>(`/api/prompts/${name}`),
-  update: (name: string, content: string) =>
-    fetchApi<PromptInfo>(`/api/prompts/${name}`, {
+  get: (name: string, lang?: string) =>
+    fetchApi<PromptInfo>(`/api/prompts/${name}${lang ? `?lang=${lang}` : ""}`),
+  update: (name: string, content: string, lang?: string) =>
+    fetchApi<PromptInfo>(`/api/prompts/${name}${lang ? `?lang=${lang}` : ""}`, {
       method: "PUT",
       body: JSON.stringify({ content }),
     }),
+  getLanguages: () => fetchApi<AvailableLanguagesResponse>("/api/prompts/languages"),
 };
 
 // Types
@@ -107,6 +111,7 @@ export interface Settings {
   qdrant_collection: string;
   auto_processing_enabled: boolean;
   auto_processing_interval_minutes: number;
+  prompt_language: string;
   tags: {
     pending: string;
     ocr_done: string;
@@ -191,4 +196,17 @@ export interface PreviewData {
   feedback: string;
   analysis_result: string;
   document_excerpt: string;
+}
+
+export interface LanguageInfo {
+  code: string;
+  name: string;
+  prompt_count: number;
+  is_complete: boolean;
+}
+
+export interface AvailableLanguagesResponse {
+  languages: LanguageInfo[];
+  default: string;
+  current: string;
 }

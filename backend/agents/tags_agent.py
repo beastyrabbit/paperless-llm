@@ -1,25 +1,15 @@
 """Tags Agent for assigning document tags."""
 
-from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import HumanMessage
 
 from agents.base import get_large_model, get_small_model
+from agents.prompts import load_prompt
 from config import get_settings
 from models.analysis import ConfirmationResult, TagsAnalysis
 from services.paperless import PaperlessClient
 from services.qdrant import QdrantService
-
-PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
-
-
-def load_prompt(name: str) -> str:
-    """Load a prompt template from file."""
-    prompt_file = PROMPTS_DIR / f"{name}.md"
-    if prompt_file.exists():
-        return prompt_file.read_text()
-    return ""
 
 
 class TagsAgent:

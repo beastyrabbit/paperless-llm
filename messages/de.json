@@ -1,0 +1,43 @@
+{
+  "common": {
+    "loading": "Laden...",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "close": "Schließen",
+    "error": "Fehler",
+    "success": "Erfolgreich",
+    "comingSoon": "Demnächst verfügbar"
+  },
+  "navigation": {
+    "dashboard": "Dashboard",
+    "documents": "Dokumente",
+    "pending": "Zur Überprüfung",
+    "prompts": "Prompts",
+    "tags": "Tags",
+    "settings": "Einstellungen"
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "connection": "Verbindung",
+    "processing": "Verarbeitung",
+    "tags": "Tags",
+    "language": "Sprache",
+    "promptLanguage": "Prompt-Sprache",
+    "promptLanguageDescription": "Wählen Sie die Sprache für LLM-Prompts, die bei der Dokumentenverarbeitung verwendet werden.",
+    "uiLanguage": "Benutzeroberflächen-Sprache",
+    "uiLanguageDescription": "Wählen Sie die Sprache für die Benutzeroberfläche.",
+    "availableLanguages": "Verfügbare Sprachen",
+    "complete": "vollständig",
+    "prompts": "Prompts"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "processingQueue": "Verarbeitungs-Warteschlange",
+    "recentDocuments": "Kürzlich bearbeitete Dokumente"
+  },
+  "documents": {
+    "title": "Dokumente",
+    "noDocuments": "Keine Dokumente gefunden",
+    "processing": "Verarbeitung..."
+  }
+}

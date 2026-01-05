@@ -22,6 +22,7 @@ import {
   Check,
   X,
   AlertCircle,
+  Globe,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -110,6 +111,8 @@ interface Settings {
   vector_search_enabled: boolean;
   vector_search_top_k: number;
   vector_search_min_score: number;
+  // Language
+  prompt_language: string;
   // Debug
   debug_log_level: "DEBUG" | "INFO" | "WARNING" | "ERROR";
   debug_log_prompts: boolean;
@@ -125,6 +128,13 @@ interface Settings {
     tags_done: string;
     processed: string;
   };
+}
+
+interface LanguageInfo {
+  code: string;
+  name: string;
+  prompt_count: number;
+  is_complete: boolean;
 }
 
 type ConnectionStatus = "idle" | "testing" | "success" | "error";
@@ -171,6 +181,7 @@ export default function SettingsPage() {
     vector_search_enabled: true,
     vector_search_top_k: 5,
     vector_search_min_score: 0.7,
+    prompt_language: "en",
     debug_log_level: "INFO",
     debug_log_prompts: false,
     debug_log_responses: false,
@@ -239,6 +250,10 @@ export default function SettingsPage() {
   const [aiTagsSuccess, setAiTagsSuccess] = useState<string | null>(null);
   const [aiTagsHasChanges, setAiTagsHasChanges] = useState(false);
 
+  // Language state
+  const [availableLanguages, setAvailableLanguages] = useState<LanguageInfo[]>([]);
+  const [languagesLoading, setLanguagesLoading] = useState(false);
+
   const loadSettings = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE}/api/settings`);
@@ -254,12 +269,29 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Fetch available languages
+  const fetchLanguages = async () => {
+    setLanguagesLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/prompts/languages`);
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableLanguages(data.languages || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch languages:", error);
+    } finally {
+      setLanguagesLoading(false);
+    }
+  };
+
   // Load settings, auto-test connections, check tags, and fetch custom fields on mount
   useEffect(() => {
     loadSettings();
     fetchTagsStatus();
     fetchCustomFields();
     fetchAiTags();
+    fetchLanguages();
   }, [loadSettings]);
 
   const autoTestConnections = async (loadedSettings: Partial<Settings>) => {
@@ -669,6 +701,10 @@ export default function SettingsPage() {
             <TabsTrigger value="workflow-tags" className="gap-2">
               <GitBranch className="h-4 w-4" />
               Workflow Tags
+            </TabsTrigger>
+            <TabsTrigger value="language" className="gap-2">
+              <Globe className="h-4 w-4" />
+              Language
             </TabsTrigger>
             <TabsTrigger value="advanced" className="gap-2">
               <Bug className="h-4 w-4" />
@@ -1716,6 +1752,144 @@ export default function SettingsPage() {
                 </p>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* ============================================================= */}
+          {/* LANGUAGE TAB */}
+          {/* ============================================================= */}
+          <TabsContent value="language" className="space-y-6">
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Prompt Language */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Globe className="h-5 w-5" />
+                    Prompt Language
+                  </CardTitle>
+                  <CardDescription>
+                    Select the language for LLM prompts used during document processing
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Language</Label>
+                    <div className="flex gap-2">
+                      <Select
+                        value={settings.prompt_language}
+                        onValueChange={(v) => updateSetting("prompt_language", v)}
+                        disabled={languagesLoading}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Select language..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableLanguages.map((lang) => (
+                            <SelectItem key={lang.code} value={lang.code}>
+                              <div className="flex items-center gap-2">
+                                <span>{lang.name}</span>
+                                {!lang.is_complete && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {lang.prompt_count} prompts
+                                  </Badge>
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={fetchLanguages}
+                        disabled={languagesLoading}
+                      >
+                        <RefreshCw className={`h-4 w-4 ${languagesLoading ? "animate-spin" : ""}`} />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-zinc-500">
+                      This controls the language of prompts sent to the LLM for document analysis.
+                    </p>
+                  </div>
+
+                  {/* Available Languages Info */}
+                  {availableLanguages.length > 0 && (
+                    <>
+                      <Separator />
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Available Languages</Label>
+                        <div className="grid gap-2">
+                          {availableLanguages.map((lang) => (
+                            <div
+                              key={lang.code}
+                              className={`flex items-center justify-between rounded-lg border p-3 ${
+                                settings.prompt_language === lang.code
+                                  ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/20"
+                                  : ""
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div
+                                  className={`h-8 w-8 rounded-full flex items-center justify-center ${
+                                    lang.is_complete
+                                      ? "bg-emerald-100 dark:bg-emerald-900/30"
+                                      : "bg-amber-100 dark:bg-amber-900/30"
+                                  }`}
+                                >
+                                  {lang.is_complete ? (
+                                    <Check className="h-4 w-4 text-emerald-600" />
+                                  ) : (
+                                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="font-medium">{lang.name}</p>
+                                  <p className="text-xs text-zinc-500">
+                                    {lang.prompt_count} prompt{lang.prompt_count !== 1 ? "s" : ""}
+                                  </p>
+                                </div>
+                              </div>
+                              <Badge
+                                variant={lang.is_complete ? "default" : "secondary"}
+                                className={lang.is_complete ? "bg-emerald-600" : ""}
+                              >
+                                {lang.is_complete ? "Complete" : "Partial"}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* UI Language (Coming Soon) */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Globe className="h-5 w-5" />
+                    UI Language
+                    <Badge variant="secondary" className="ml-2">Coming Soon</Badge>
+                  </CardTitle>
+                  <CardDescription>
+                    Select the language for the user interface
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Language</Label>
+                    <Select disabled>
+                      <SelectTrigger className="opacity-50">
+                        <SelectValue placeholder="English" />
+                      </SelectTrigger>
+                    </Select>
+                    <p className="text-xs text-zinc-500">
+                      UI translation support is planned for a future release.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           {/* ============================================================= */}

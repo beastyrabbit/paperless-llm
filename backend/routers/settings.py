@@ -54,6 +54,9 @@ class SettingsResponse(BaseModel):
     vector_search_top_k: int
     vector_search_min_score: float
 
+    # Language Settings
+    prompt_language: str
+
     # Debug Settings
     debug_log_level: str
     debug_log_prompts: bool
@@ -100,6 +103,9 @@ class SettingsUpdate(BaseModel):
     vector_search_enabled: bool | None = None
     vector_search_top_k: int | None = None
     vector_search_min_score: float | None = None
+
+    # Language Settings
+    prompt_language: str | None = None
 
     # Debug Settings
     debug_log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] | None = None
@@ -184,6 +190,8 @@ async def get_current_settings(settings: Settings = Depends(get_settings)):
         vector_search_enabled=_get_setting("vector_search_enabled", settings),
         vector_search_top_k=_get_setting("vector_search_top_k", settings),
         vector_search_min_score=_get_setting("vector_search_min_score", settings),
+        # Language Settings
+        prompt_language=_get_setting("prompt_language", settings),
         # Debug Settings
         debug_log_level=_get_setting("debug_log_level", settings),
         debug_log_prompts=_get_setting("debug_log_prompts", settings),

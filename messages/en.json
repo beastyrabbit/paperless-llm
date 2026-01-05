@@ -1,0 +1,43 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "error": "Error",
+    "success": "Success",
+    "comingSoon": "Coming Soon"
+  },
+  "navigation": {
+    "dashboard": "Dashboard",
+    "documents": "Documents",
+    "pending": "Pending Review",
+    "prompts": "Prompts",
+    "tags": "Tags",
+    "settings": "Settings"
+  },
+  "settings": {
+    "title": "Settings",
+    "connection": "Connection",
+    "processing": "Processing",
+    "tags": "Tags",
+    "language": "Language",
+    "promptLanguage": "Prompt Language",
+    "promptLanguageDescription": "Select the language for LLM prompts used during document processing.",
+    "uiLanguage": "UI Language",
+    "uiLanguageDescription": "Select the language for the user interface.",
+    "availableLanguages": "Available Languages",
+    "complete": "complete",
+    "prompts": "prompts"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "processingQueue": "Processing Queue",
+    "recentDocuments": "Recent Documents"
+  },
+  "documents": {
+    "title": "Documents",
+    "noDocuments": "No documents found",
+    "processing": "Processing..."
+  }
+}
