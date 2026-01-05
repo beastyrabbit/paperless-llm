@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import {
   FileText,
   Search,
@@ -36,16 +37,18 @@ interface Document {
   processing_status: string | null;
 }
 
-const statusConfig: Record<string, { label: string; color: string; variant: "warning" | "info" | "secondary" | "success" | "destructive" }> = {
-  pending: { label: "Pending", color: "bg-amber-500", variant: "warning" },
-  ocr_done: { label: "OCR Done", color: "bg-blue-500", variant: "info" },
-  title_done: { label: "Title Done", color: "bg-purple-500", variant: "secondary" },
-  correspondent_done: { label: "Corr. Done", color: "bg-pink-500", variant: "secondary" },
-  tags_done: { label: "Tags Done", color: "bg-orange-500", variant: "secondary" },
-  processed: { label: "Complete", color: "bg-emerald-500", variant: "success" },
+const statusConfig: Record<string, { labelKey: string; color: string; variant: "warning" | "info" | "secondary" | "success" | "destructive" }> = {
+  pending: { labelKey: "statusPending", color: "bg-amber-500", variant: "warning" },
+  ocr_done: { labelKey: "statusOcrDone", color: "bg-blue-500", variant: "info" },
+  title_done: { labelKey: "statusTitleDone", color: "bg-purple-500", variant: "secondary" },
+  correspondent_done: { labelKey: "statusCorrDone", color: "bg-pink-500", variant: "secondary" },
+  tags_done: { labelKey: "statusTagsDone", color: "bg-orange-500", variant: "secondary" },
+  processed: { labelKey: "statusProcessed", color: "bg-emerald-500", variant: "success" },
 };
 
 export default function DocumentsPage() {
+  const t = useTranslations("documents");
+  const tCommon = useTranslations("common");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -81,15 +84,15 @@ export default function DocumentsPage() {
         const data = await response.json();
         setDocuments(data);
       } else {
-        setError("Failed to fetch documents");
+        setError(t("failedToFetch"));
       }
     } catch (err) {
-      setError("Unable to connect to backend");
+      setError(t("unableToConnect"));
       console.error("Failed to fetch documents:", err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchDocuments(statusFilter);
@@ -112,17 +115,17 @@ export default function DocumentsPage() {
       <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/80">
         <div className="flex h-16 items-center justify-between px-8">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Documents</h1>
+            <h1 className="text-xl font-bold tracking-tight">{t("title")}</h1>
             <p className="text-sm text-zinc-500">
-              View and process documents in the queue
+              {t("subtitle")}
             </p>
           </div>
           <div className="flex items-center gap-3">
             <Button variant="outline" size="sm" onClick={handleRefresh} disabled={loading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-              Refresh
+              {tCommon("refresh")}
             </Button>
-            <Badge variant="secondary">{documents.length} documents</Badge>
+            <Badge variant="secondary">{tCommon("documents", { count: documents.length })}</Badge>
           </div>
         </div>
       </header>
@@ -143,7 +146,7 @@ export default function DocumentsPage() {
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
             <Input
-              placeholder="Search documents..."
+              placeholder={t("search")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
@@ -152,16 +155,16 @@ export default function DocumentsPage() {
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-48">
               <Filter className="mr-2 h-4 w-4" />
-              <SelectValue placeholder="Filter by status" />
+              <SelectValue placeholder={t("filterByStatus")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="ocr_done">OCR Done</SelectItem>
-              <SelectItem value="title_done">Title Done</SelectItem>
-              <SelectItem value="correspondent_done">Corr. Done</SelectItem>
-              <SelectItem value="tags_done">Tags Done</SelectItem>
-              <SelectItem value="processed">Processed</SelectItem>
+              <SelectItem value="all">{t("allStatus")}</SelectItem>
+              <SelectItem value="pending">{t("statusPending")}</SelectItem>
+              <SelectItem value="ocr_done">{t("statusOcrDone")}</SelectItem>
+              <SelectItem value="title_done">{t("statusTitleDone")}</SelectItem>
+              <SelectItem value="correspondent_done">{t("statusCorrDone")}</SelectItem>
+              <SelectItem value="tags_done">{t("statusTagsDone")}</SelectItem>
+              <SelectItem value="processed">{t("statusProcessed")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -169,13 +172,13 @@ export default function DocumentsPage() {
         {/* Document List */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Document Queue</CardTitle>
+            <CardTitle className="text-base">{t("documentQueue")}</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {loading ? (
               <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
                 <Loader2 className="h-8 w-8 animate-spin mb-4 text-zinc-400" />
-                <p className="text-sm">Loading documents...</p>
+                <p className="text-sm">{t("loadingDocuments")}</p>
               </div>
             ) : (
               <ScrollArea className="h-[600px]">
@@ -196,7 +199,7 @@ export default function DocumentsPage() {
                           <h3 className="font-medium truncate">{doc.title}</h3>
                           {doc.processing_status && statusConfig[doc.processing_status] && (
                             <Badge variant={statusConfig[doc.processing_status].variant}>
-                              {statusConfig[doc.processing_status].label}
+                              {t(statusConfig[doc.processing_status].labelKey)}
                             </Badge>
                           )}
                         </div>
@@ -231,13 +234,13 @@ export default function DocumentsPage() {
                         {doc.processing_status !== "processed" && (
                           <Button size="sm" variant="outline">
                             <Play className="mr-1 h-3 w-3" />
-                            Process
+                            {tCommon("process")}
                           </Button>
                         )}
                         <Link href={`/documents/${doc.id}`}>
                           <Button size="sm" variant="ghost">
                             <Eye className="mr-1 h-3 w-3" />
-                            View
+                            {tCommon("view")}
                           </Button>
                         </Link>
                         <ChevronRight className="h-4 w-4 text-zinc-400" />
@@ -248,8 +251,8 @@ export default function DocumentsPage() {
                   {filteredDocs.length === 0 && !loading && (
                     <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
                       <FileText className="h-12 w-12 mb-4 text-zinc-300" />
-                      <p className="text-lg font-medium">No documents found</p>
-                      <p className="text-sm">Try adjusting your search or filter</p>
+                      <p className="text-lg font-medium">{t("noDocuments")}</p>
+                      <p className="text-sm">{t("tryAdjusting")}</p>
                     </div>
                   )}
                 </div>

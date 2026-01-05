@@ -1,6 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { useTranslations, useLocale } from "next-intl";
+import { locales, localeNames, type Locale } from "@/i18n/config";
+import { setLocale } from "@/lib/locale";
 import {
   Save,
   TestTube,
@@ -154,7 +158,30 @@ function StatusIndicator({ status }: { status: ConnectionStatus }) {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+const VALID_TABS = ["connections", "processing", "pipeline", "customFields", "aiTags", "workflowTags", "language", "advanced"] as const;
+type SettingsTab = typeof VALID_TABS[number];
+
 export default function SettingsPage() {
+  const t = useTranslations("settings");
+  const tCommon = useTranslations("common");
+  const currentLocale = useLocale() as Locale;
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // Get initial tab from URL or default to "connections"
+  const tabParam = searchParams.get("tab");
+  const initialTab: SettingsTab = VALID_TABS.includes(tabParam as SettingsTab)
+    ? (tabParam as SettingsTab)
+    : "connections";
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+
+  // Update URL when tab changes
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab as SettingsTab);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", tab);
+    router.replace(`/settings?${params.toString()}`, { scroll: false });
+  };
   const [settings, setSettings] = useState<Settings>({
     paperless_url: "",
     paperless_token: "",
@@ -213,6 +240,7 @@ export default function SettingsPage() {
 
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
+  const [pendingUiLocale, setPendingUiLocale] = useState<Locale | null>(null);
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({
     paperless_token: false,
     mistral_api_key: false,
@@ -438,7 +466,13 @@ export default function SettingsPage() {
       });
       if (response.ok) {
         setSaveStatus("success");
-        setTimeout(() => setSaveStatus("idle"), 3000);
+        // Apply UI locale change after successful save
+        if (pendingUiLocale && pendingUiLocale !== currentLocale) {
+          // Brief delay to show success state before reload
+          setTimeout(() => setLocale(pendingUiLocale), 500);
+        } else {
+          setTimeout(() => setSaveStatus("idle"), 3000);
+        }
       } else {
         setSaveStatus("error");
       }
@@ -651,10 +685,10 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between px-8 py-6">
           <div>
             <h1 className="font-serif text-3xl font-light tracking-tight text-zinc-900 dark:text-zinc-100">
-              Settings
+              {t("title")}
             </h1>
             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-              Configure your Paperless Local LLM instance
+              {t("subtitle")}
             </p>
           </div>
           <Button
@@ -669,46 +703,46 @@ export default function SettingsPage() {
             ) : (
               <Save className="mr-2 h-4 w-4" />
             )}
-            {saveStatus === "success" ? "Saved!" : "Save Settings"}
+            {saveStatus === "success" ? tCommon("saved") : t("saveSettings")}
           </Button>
         </div>
       </header>
 
       {/* Content */}
       <main className="p-8">
-        <Tabs defaultValue="connections" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="bg-zinc-100 dark:bg-zinc-800">
             <TabsTrigger value="connections" className="gap-2">
               <Server className="h-4 w-4" />
-              Connections
+              {t("tabs.connections")}
             </TabsTrigger>
             <TabsTrigger value="processing" className="gap-2">
               <Zap className="h-4 w-4" />
-              Processing
+              {t("tabs.processing")}
             </TabsTrigger>
             <TabsTrigger value="pipeline" className="gap-2">
               <GitBranch className="h-4 w-4" />
-              Pipeline
+              {t("tabs.pipeline")}
             </TabsTrigger>
             <TabsTrigger value="custom-fields" className="gap-2">
               <FileText className="h-4 w-4" />
-              Custom Fields
+              {t("tabs.customFields")}
             </TabsTrigger>
             <TabsTrigger value="ai-tags" className="gap-2">
               <Tag className="h-4 w-4" />
-              Tags
+              {t("tabs.aiTags")}
             </TabsTrigger>
             <TabsTrigger value="workflow-tags" className="gap-2">
               <GitBranch className="h-4 w-4" />
-              Workflow Tags
+              {t("tabs.workflowTags")}
             </TabsTrigger>
             <TabsTrigger value="language" className="gap-2">
               <Globe className="h-4 w-4" />
-              Language
+              {t("tabs.language")}
             </TabsTrigger>
             <TabsTrigger value="advanced" className="gap-2">
               <Bug className="h-4 w-4" />
-              Advanced
+              {t("tabs.advanced")}
             </TabsTrigger>
           </TabsList>
 
@@ -722,15 +756,15 @@ export default function SettingsPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <StatusIndicator status={connectionStatus.paperless} />
-                    Paperless-ngx
+                    {t("paperless.title")}
                   </CardTitle>
                   <CardDescription>
-                    Connect to your Paperless-ngx instance
+                    {t("paperless.description")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="paperless_url">Server URL</Label>
+                    <Label htmlFor="paperless_url">{t("paperless.serverUrl")}</Label>
                     <Input
                       id="paperless_url"
                       placeholder="http://your-paperless:8000"
@@ -739,7 +773,7 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="paperless_token">API Token</Label>
+                    <Label htmlFor="paperless_token">{t("paperless.apiToken")}</Label>
                     <div className="flex gap-2">
                       <Input
                         id="paperless_token"
@@ -772,7 +806,7 @@ export default function SettingsPage() {
                     ) : (
                       <TestTube className="mr-2 h-4 w-4" />
                     )}
-                    Test Connection
+                    {t("testConnection")}
                   </Button>
                 </CardContent>
               </Card>
@@ -782,15 +816,15 @@ export default function SettingsPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <StatusIndicator status={connectionStatus.ollama} />
-                    Ollama Server
+                    {t("ollama.title")}
                   </CardTitle>
                   <CardDescription>
-                    Local LLM server for document analysis
+                    {t("ollama.description")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="ollama_url">Server URL</Label>
+                    <Label htmlFor="ollama_url">{t("ollama.serverUrl")}</Label>
                     <div className="flex gap-2">
                       <Input
                         id="ollama_url"
@@ -818,7 +852,7 @@ export default function SettingsPage() {
                     <>
                       <Separator />
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Available Models ({ollamaModels.length})</span>
+                        <span className="text-sm font-medium">{t("ollama.availableModels")} ({ollamaModels.length})</span>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -830,7 +864,7 @@ export default function SettingsPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Large Model (Analysis)</Label>
+                        <Label>{t("ollama.largeModel")}</Label>
                         <ModelCombobox
                           models={ollamaModels}
                           value={settings.ollama_model_large}
@@ -842,7 +876,7 @@ export default function SettingsPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Small Model (Confirmation)</Label>
+                        <Label>{t("ollama.smallModel")}</Label>
                         <ModelCombobox
                           models={ollamaModels}
                           value={settings.ollama_model_small}
@@ -854,7 +888,7 @@ export default function SettingsPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Embedding Model (Vector Search)</Label>
+                        <Label>{t("ollama.embeddingModel")}</Label>
                         <ModelCombobox
                           models={ollamaModels}
                           value={settings.ollama_embedding_model}
@@ -874,10 +908,10 @@ export default function SettingsPage() {
                       <div className="space-y-0.5">
                         <Label className="flex items-center gap-2">
                           <Brain className="h-4 w-4" />
-                          Thinking Mode
+                          {t("ollama.thinkingMode")}
                         </Label>
                         <p className="text-xs text-zinc-500">
-                          Enable extended reasoning for complex analysis
+                          {t("ollama.thinkingModeDesc")}
                         </p>
                       </div>
                       <Switch
@@ -888,7 +922,7 @@ export default function SettingsPage() {
 
                     {settings.ollama_thinking_enabled && (
                       <div className="space-y-2">
-                        <Label>Thinking Level</Label>
+                        <Label>{t("ollama.thinkingLevel")}</Label>
                         <Select
                           value={settings.ollama_thinking_level}
                           onValueChange={(v) => updateSetting("ollama_thinking_level", v as "low" | "medium" | "high")}
@@ -897,9 +931,9 @@ export default function SettingsPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="low">Low - Fast, less detailed</SelectItem>
-                            <SelectItem value="medium">Medium - Balanced</SelectItem>
-                            <SelectItem value="high">High - Thorough reasoning</SelectItem>
+                            <SelectItem value="low">{t("ollama.thinkingLow")}</SelectItem>
+                            <SelectItem value="medium">{t("ollama.thinkingMedium")}</SelectItem>
+                            <SelectItem value="high">{t("ollama.thinkingHigh")}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -913,15 +947,15 @@ export default function SettingsPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <StatusIndicator status={connectionStatus.mistral} />
-                    Mistral AI
+                    {t("mistral.title")}
                   </CardTitle>
                   <CardDescription>
-                    OCR and document understanding API
+                    {t("mistral.description")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="mistral_api_key">API Key</Label>
+                    <Label htmlFor="mistral_api_key">{t("mistral.apiKey")}</Label>
                     <div className="flex gap-2">
                       <Input
                         id="mistral_api_key"
@@ -959,7 +993,7 @@ export default function SettingsPage() {
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>OCR Model</Label>
+                      <Label>{t("mistral.ocrModel")}</Label>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -988,15 +1022,15 @@ export default function SettingsPage() {
                   <CardTitle className="flex items-center gap-2">
                     <StatusIndicator status={connectionStatus.qdrant} />
                     <Database className="h-4 w-4" />
-                    Qdrant Vector Database
+                    {t("qdrant.title")}
                   </CardTitle>
                   <CardDescription>
-                    Vector storage for semantic document search
+                    {t("qdrant.description")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="qdrant_url">Server URL</Label>
+                    <Label htmlFor="qdrant_url">{t("qdrant.serverUrl")}</Label>
                     <div className="flex gap-2">
                       <Input
                         id="qdrant_url"
@@ -1019,7 +1053,7 @@ export default function SettingsPage() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="qdrant_collection">Collection Name</Label>
+                    <Label htmlFor="qdrant_collection">{t("qdrant.collectionName")}</Label>
                     <Input
                       id="qdrant_collection"
                       placeholder="paperless-documents"
@@ -1033,9 +1067,9 @@ export default function SettingsPage() {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="space-y-0.5">
-                        <Label>Vector Search</Label>
+                        <Label>{t("qdrant.vectorSearch")}</Label>
                         <p className="text-xs text-zinc-500">
-                          Find similar documents for context
+                          {t("qdrant.vectorSearchDesc")}
                         </p>
                       </div>
                       <Switch
@@ -1047,7 +1081,7 @@ export default function SettingsPage() {
                     {settings.vector_search_enabled && (
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>Top K Results</Label>
+                          <Label>{t("qdrant.topKResults")}</Label>
                           <Input
                             type="number"
                             min={1}
@@ -1057,7 +1091,7 @@ export default function SettingsPage() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>Min Score (0-1)</Label>
+                          <Label>{t("qdrant.minScore")}</Label>
                           <Input
                             type="number"
                             min={0}
@@ -1085,18 +1119,18 @@ export default function SettingsPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Clock className="h-5 w-5" />
-                    Auto-Processing
+                    {t("autoProcessing.title")}
                   </CardTitle>
                   <CardDescription>
-                    Automatically process new documents in the background
+                    {t("autoProcessing.description")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label>Enable Auto-Processing</Label>
+                      <Label>{t("autoProcessing.enable")}</Label>
                       <p className="text-xs text-zinc-500">
-                        Process documents with &quot;llm-pending&quot; tag
+                        {t("autoProcessing.enableDesc")}
                       </p>
                     </div>
                     <Switch
@@ -1109,7 +1143,7 @@ export default function SettingsPage() {
                     <>
                       <Separator />
                       <div className="space-y-2">
-                        <Label>Check Interval (minutes)</Label>
+                        <Label>{t("autoProcessing.checkInterval")}</Label>
                         <Select
                           value={settings.auto_processing_interval_minutes.toString()}
                           onValueChange={(v) => updateSetting("auto_processing_interval_minutes", parseInt(v))}
@@ -1118,20 +1152,20 @@ export default function SettingsPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="1">Every minute</SelectItem>
-                            <SelectItem value="5">Every 5 minutes</SelectItem>
-                            <SelectItem value="10">Every 10 minutes</SelectItem>
-                            <SelectItem value="30">Every 30 minutes</SelectItem>
-                            <SelectItem value="60">Every hour</SelectItem>
+                            <SelectItem value="1">{t("autoProcessing.everyMinute")}</SelectItem>
+                            <SelectItem value="5">{t("autoProcessing.every5Minutes")}</SelectItem>
+                            <SelectItem value="10">{t("autoProcessing.every10Minutes")}</SelectItem>
+                            <SelectItem value="30">{t("autoProcessing.every30Minutes")}</SelectItem>
+                            <SelectItem value="60">{t("autoProcessing.everyHour")}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
 
                       <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
-                          <Label>Pause on User Activity</Label>
+                          <Label>{t("autoProcessing.pauseOnActivity")}</Label>
                           <p className="text-xs text-zinc-500">
-                            Pause when using manual processing
+                            {t("autoProcessing.pauseOnActivityDesc")}
                           </p>
                         </div>
                         <Switch
@@ -1149,17 +1183,17 @@ export default function SettingsPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Brain className="h-5 w-5" />
-                    Confirmation Loop
+                    {t("confirmation.title")}
                   </CardTitle>
                   <CardDescription>
-                    Large model analyzes, small model confirms
+                    {t("confirmation.description")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Max Retries</Label>
+                    <Label>{t("confirmation.maxRetries")}</Label>
                     <p className="text-xs text-zinc-500">
-                      Maximum rounds of 120B ↔ 20B discussion before user review
+                      {t("confirmation.maxRetriesDesc")}
                     </p>
                     <Select
                       value={settings.confirmation_max_retries.toString()}
@@ -1169,10 +1203,10 @@ export default function SettingsPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="1">1 retry</SelectItem>
-                        <SelectItem value="2">2 retries</SelectItem>
-                        <SelectItem value="3">3 retries</SelectItem>
-                        <SelectItem value="5">5 retries</SelectItem>
+                        <SelectItem value="1">{t("confirmation.retries", { count: 1 })}</SelectItem>
+                        <SelectItem value="2">{t("confirmation.retries", { count: 2 })}</SelectItem>
+                        <SelectItem value="3">{t("confirmation.retries", { count: 3 })}</SelectItem>
+                        <SelectItem value="5">{t("confirmation.retries", { count: 5 })}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1181,9 +1215,9 @@ export default function SettingsPage() {
 
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label>Require User for New Entities</Label>
+                      <Label>{t("confirmation.requireUser")}</Label>
                       <p className="text-xs text-zinc-500">
-                        Ask before creating new tags or correspondents
+                        {t("confirmation.requireUserDesc")}
                       </p>
                     </div>
                     <Switch
@@ -1202,24 +1236,24 @@ export default function SettingsPage() {
           <TabsContent value="pipeline" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Processing Pipeline</CardTitle>
+                <CardTitle>{t("pipeline.title")}</CardTitle>
                 <CardDescription>
-                  Enable or disable individual processing steps
+                  {t("pipeline.description")}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   {[
-                    { key: "pipeline_ocr" as const, label: "OCR Processing", desc: "Extract text from PDFs using Mistral AI" },
-                    { key: "pipeline_title" as const, label: "Title Generation", desc: "Generate descriptive document titles" },
-                    { key: "pipeline_correspondent" as const, label: "Correspondent Assignment", desc: "Identify and assign document sender/recipient" },
-                    { key: "pipeline_tags" as const, label: "Tag Assignment", desc: "Automatically assign relevant tags" },
-                    { key: "pipeline_custom_fields" as const, label: "Custom Fields", desc: "Fill custom fields based on document type" },
+                    { key: "pipeline_ocr" as const, labelKey: "pipeline.ocr", descKey: "pipeline.ocrDesc" },
+                    { key: "pipeline_title" as const, labelKey: "pipeline.titleGeneration", descKey: "pipeline.titleDesc" },
+                    { key: "pipeline_correspondent" as const, labelKey: "pipeline.correspondent", descKey: "pipeline.correspondentDesc" },
+                    { key: "pipeline_tags" as const, labelKey: "pipeline.tags", descKey: "pipeline.tagsDesc" },
+                    { key: "pipeline_custom_fields" as const, labelKey: "pipeline.customFields", descKey: "pipeline.customFieldsDesc" },
                   ].map((item) => (
                     <div key={item.key} className="flex items-center justify-between rounded-lg border p-4">
                       <div className="space-y-0.5">
-                        <Label>{item.label}</Label>
-                        <p className="text-xs text-zinc-500">{item.desc}</p>
+                        <Label>{t(item.labelKey)}</Label>
+                        <p className="text-xs text-zinc-500">{t(item.descKey)}</p>
                       </div>
                       <Switch
                         checked={settings[item.key]}
@@ -1243,10 +1277,10 @@ export default function SettingsPage() {
                   <div>
                     <CardTitle className="flex items-center gap-2">
                       <FileText className="h-5 w-5" />
-                      Custom Fields Configuration
+                      {t("customFields.title")}
                     </CardTitle>
                     <CardDescription className="mt-1">
-                      Select which custom fields the LLM should attempt to fill during document processing.
+                      {t("customFields.description")}
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1257,7 +1291,7 @@ export default function SettingsPage() {
                       disabled={customFieldsLoading}
                     >
                       <RefreshCw className={`h-4 w-4 mr-2 ${customFieldsLoading ? "animate-spin" : ""}`} />
-                      Refresh
+                      {tCommon("refresh")}
                     </Button>
                     <Button
                       size="sm"
@@ -1270,7 +1304,7 @@ export default function SettingsPage() {
                       ) : (
                         <Save className="h-4 w-4 mr-2" />
                       )}
-                      Save Selection
+                      {t("customFields.saveSelection")}
                     </Button>
                   </div>
                 </div>
@@ -1281,14 +1315,14 @@ export default function SettingsPage() {
             {customFieldsSuccess && (
               <Alert className="border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <AlertTitle>Success</AlertTitle>
+                <AlertTitle>{tCommon("success")}</AlertTitle>
                 <AlertDescription>{customFieldsSuccess}</AlertDescription>
               </Alert>
             )}
             {customFieldsError && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Error</AlertTitle>
+                <AlertTitle>{tCommon("error")}</AlertTitle>
                 <AlertDescription>{customFieldsError}</AlertDescription>
               </Alert>
             )}
@@ -1299,7 +1333,7 @@ export default function SettingsPage() {
                 <CardContent className="py-12">
                   <div className="flex flex-col items-center justify-center gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-zinc-400" />
-                    <p className="text-sm text-zinc-500">Loading custom fields from Paperless...</p>
+                    <p className="text-sm text-zinc-500">{t("customFields.loadingFields")}</p>
                   </div>
                 </CardContent>
               </Card>
@@ -1311,9 +1345,9 @@ export default function SettingsPage() {
                 <CardContent className="py-12">
                   <div className="flex flex-col items-center justify-center gap-3 text-zinc-500">
                     <FileText className="h-12 w-12 text-zinc-300" />
-                    <p className="text-lg font-medium">No Custom Fields Found</p>
+                    <p className="text-lg font-medium">{t("customFields.noFieldsFound")}</p>
                     <p className="text-sm">
-                      Custom fields need to be created in Paperless-ngx first.
+                      {t("customFields.noFieldsDesc")}
                     </p>
                   </div>
                 </CardContent>
@@ -1326,9 +1360,9 @@ export default function SettingsPage() {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle>Available Custom Fields</CardTitle>
+                      <CardTitle>{t("customFields.availableFields")}</CardTitle>
                       <CardDescription>
-                        {selectedCustomFields.length} of {customFields.length} fields selected
+                        {t("customFields.fieldsSelected", { selected: selectedCustomFields.length, total: customFields.length })}
                       </CardDescription>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1341,7 +1375,7 @@ export default function SettingsPage() {
                           setCustomFieldsSuccess(null);
                         }}
                       >
-                        Select All
+                        {tCommon("selectAll")}
                       </Button>
                       <Button
                         variant="outline"
@@ -1352,7 +1386,7 @@ export default function SettingsPage() {
                           setCustomFieldsSuccess(null);
                         }}
                       >
-                        Clear
+                        {tCommon("clear")}
                       </Button>
                     </div>
                   </div>
@@ -1387,7 +1421,7 @@ export default function SettingsPage() {
                                 {field.data_type}
                                 {Array.isArray(field.extra_data?.select_options) && (
                                   <span className="ml-2">
-                                    ({(field.extra_data.select_options as unknown[]).length} options)
+                                    ({t("customFields.options", { count: (field.extra_data.select_options as unknown[]).length })})
                                   </span>
                                 )}
                               </p>
@@ -1398,7 +1432,7 @@ export default function SettingsPage() {
                           variant={selectedCustomFields.includes(field.id) ? "default" : "secondary"}
                           className={selectedCustomFields.includes(field.id) ? "bg-emerald-600" : ""}
                         >
-                          {selectedCustomFields.includes(field.id) ? "Enabled" : "Disabled"}
+                          {selectedCustomFields.includes(field.id) ? tCommon("enabled") : tCommon("disabled")}
                         </Badge>
                       </div>
                     ))}
@@ -1419,11 +1453,10 @@ export default function SettingsPage() {
                   <div>
                     <CardTitle className="flex items-center gap-2">
                       <Tag className="h-5 w-5" />
-                      AI Tag Selection
+                      {t("aiTags.title")}
                     </CardTitle>
                     <CardDescription className="mt-1">
-                      Select which tags the AI can suggest when processing documents.
-                      Unselected tags will never be added by the AI.
+                      {t("aiTags.description")}
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1434,7 +1467,7 @@ export default function SettingsPage() {
                       disabled={aiTagsLoading}
                     >
                       <RefreshCw className={`h-4 w-4 mr-2 ${aiTagsLoading ? "animate-spin" : ""}`} />
-                      Refresh
+                      {tCommon("refresh")}
                     </Button>
                     <Button
                       size="sm"
@@ -1447,7 +1480,7 @@ export default function SettingsPage() {
                       ) : (
                         <Save className="h-4 w-4 mr-2" />
                       )}
-                      Save Selection
+                      {t("aiTags.saveSelection")}
                     </Button>
                   </div>
                 </div>
@@ -1458,14 +1491,14 @@ export default function SettingsPage() {
             {aiTagsSuccess && (
               <Alert className="border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <AlertTitle>Success</AlertTitle>
+                <AlertTitle>{tCommon("success")}</AlertTitle>
                 <AlertDescription>{aiTagsSuccess}</AlertDescription>
               </Alert>
             )}
             {aiTagsError && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Error</AlertTitle>
+                <AlertTitle>{tCommon("error")}</AlertTitle>
                 <AlertDescription>{aiTagsError}</AlertDescription>
               </Alert>
             )}
@@ -1476,7 +1509,7 @@ export default function SettingsPage() {
                 <CardContent className="py-12">
                   <div className="flex flex-col items-center justify-center gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-zinc-400" />
-                    <p className="text-sm text-zinc-500">Loading tags from Paperless...</p>
+                    <p className="text-sm text-zinc-500">{t("aiTags.loadingTags")}</p>
                   </div>
                 </CardContent>
               </Card>
@@ -1488,9 +1521,9 @@ export default function SettingsPage() {
                 <CardContent className="py-12">
                   <div className="flex flex-col items-center justify-center gap-3 text-zinc-500">
                     <Tag className="h-12 w-12 text-zinc-300" />
-                    <p className="text-lg font-medium">No Tags Found</p>
+                    <p className="text-lg font-medium">{t("aiTags.noTagsFound")}</p>
                     <p className="text-sm">
-                      Tags need to be created in Paperless-ngx first.
+                      {t("aiTags.noTagsDesc")}
                     </p>
                   </div>
                 </CardContent>
@@ -1503,9 +1536,9 @@ export default function SettingsPage() {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle>Available Tags</CardTitle>
+                      <CardTitle>{t("aiTags.availableTags")}</CardTitle>
                       <CardDescription>
-                        {selectedAiTags.length} of {allTags.length} tags enabled for AI
+                        {t("aiTags.tagsEnabled", { selected: selectedAiTags.length, total: allTags.length })}
                       </CardDescription>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1513,12 +1546,12 @@ export default function SettingsPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          setSelectedAiTags(allTags.map((t) => t.id));
+                          setSelectedAiTags(allTags.map((tg) => tg.id));
                           setAiTagsHasChanges(true);
                           setAiTagsSuccess(null);
                         }}
                       >
-                        Select All
+                        {tCommon("selectAll")}
                       </Button>
                       <Button
                         variant="outline"
@@ -1529,7 +1562,7 @@ export default function SettingsPage() {
                           setAiTagsSuccess(null);
                         }}
                       >
-                        Clear
+                        {tCommon("clear")}
                       </Button>
                     </div>
                   </div>
@@ -1569,7 +1602,7 @@ export default function SettingsPage() {
                             <div>
                               <p className="font-medium">{tag.name}</p>
                               <p className="text-sm text-zinc-500">
-                                {tag.document_count} document{tag.document_count !== 1 ? "s" : ""}
+                                {t("aiTags.documentCount", { count: tag.document_count })}
                               </p>
                             </div>
                           </div>
@@ -1578,7 +1611,7 @@ export default function SettingsPage() {
                           variant={selectedAiTags.includes(tag.id) ? "default" : "secondary"}
                           className={selectedAiTags.includes(tag.id) ? "bg-emerald-600" : ""}
                         >
-                          {selectedAiTags.includes(tag.id) ? "AI Enabled" : "AI Disabled"}
+                          {selectedAiTags.includes(tag.id) ? t("aiTags.aiEnabled") : t("aiTags.aiDisabled")}
                         </Badge>
                       </div>
                     ))}
@@ -1609,15 +1642,15 @@ export default function SettingsPage() {
                     <div>
                       <CardTitle>
                         {tagsLoading
-                          ? "Checking Tags..."
+                          ? t("workflowTags.checkingTags")
                           : tagsStatus?.all_exist
-                          ? "All Workflow Tags Exist"
-                          : `${tagsStatus?.missing_count || 0} Missing Tag${(tagsStatus?.missing_count || 0) > 1 ? "s" : ""}`}
+                          ? t("workflowTags.allTagsExist")
+                          : t("workflowTags.missingTags", { count: tagsStatus?.missing_count || 0 })}
                       </CardTitle>
                       <CardDescription>
                         {tagsStatus?.all_exist
-                          ? "Your Paperless instance has all required workflow tags."
-                          : "Some tags need to be created for the pipeline to work."}
+                          ? t("workflowTags.allTagsExistDesc")
+                          : t("workflowTags.missingTagsDesc")}
                       </CardDescription>
                     </div>
                   </div>
@@ -1629,7 +1662,7 @@ export default function SettingsPage() {
                       disabled={tagsLoading}
                     >
                       <RefreshCw className={`h-4 w-4 mr-2 ${tagsLoading ? "animate-spin" : ""}`} />
-                      Refresh
+                      {tCommon("refresh")}
                     </Button>
                     {tagsStatus && tagsStatus.missing_count > 0 && (
                       <Button
@@ -1643,7 +1676,7 @@ export default function SettingsPage() {
                         ) : (
                           <Plus className="h-4 w-4 mr-2" />
                         )}
-                        Create Missing Tags
+                        {t("workflowTags.createMissingTags")}
                       </Button>
                     )}
                   </div>
@@ -1655,14 +1688,14 @@ export default function SettingsPage() {
             {tagsSuccess && (
               <Alert className="border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <AlertTitle>Success</AlertTitle>
+                <AlertTitle>{tCommon("success")}</AlertTitle>
                 <AlertDescription>{tagsSuccess}</AlertDescription>
               </Alert>
             )}
             {tagsError && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Error</AlertTitle>
+                <AlertTitle>{tCommon("error")}</AlertTitle>
                 <AlertDescription>{tagsError}</AlertDescription>
               </Alert>
             )}
@@ -1673,10 +1706,10 @@ export default function SettingsPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Tag className="h-5 w-5" />
-                    Workflow Tags Status
+                    {t("workflowTags.title")}
                   </CardTitle>
                   <CardDescription>
-                    These tags track document processing status through the pipeline.
+                    {t("workflowTags.description")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1713,7 +1746,7 @@ export default function SettingsPage() {
                           variant={tag.exists ? "default" : "secondary"}
                           className={tag.exists ? "bg-emerald-600" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"}
                         >
-                          {tag.exists ? "Exists" : "Missing"}
+                          {tag.exists ? tCommon("exists") : tCommon("missing")}
                         </Badge>
                       </div>
                     ))}
@@ -1725,9 +1758,9 @@ export default function SettingsPage() {
             {/* Tag Names Configuration */}
             <Card>
               <CardHeader>
-                <CardTitle>Tag Names</CardTitle>
+                <CardTitle>{t("workflowTags.tagNames")}</CardTitle>
                 <CardDescription>
-                  Customize the tag names used for each workflow stage
+                  {t("workflowTags.tagNamesDesc")}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1748,7 +1781,7 @@ export default function SettingsPage() {
                   ))}
                 </div>
                 <p className="text-xs text-zinc-500 mt-4">
-                  After changing tag names, click &quot;Save Settings&quot; and then &quot;Refresh&quot; to verify the new tags exist.
+                  {t("workflowTags.tagNamesNote")}
                 </p>
               </CardContent>
             </Card>
@@ -1764,15 +1797,15 @@ export default function SettingsPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Globe className="h-5 w-5" />
-                    Prompt Language
+                    {t("language.promptLanguage")}
                   </CardTitle>
                   <CardDescription>
-                    Select the language for LLM prompts used during document processing
+                    {t("language.promptLanguageDesc")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Language</Label>
+                    <Label>{t("language.title")}</Label>
                     <div className="flex gap-2">
                       <Select
                         value={settings.prompt_language}
@@ -1780,7 +1813,7 @@ export default function SettingsPage() {
                         disabled={languagesLoading}
                       >
                         <SelectTrigger className="flex-1">
-                          <SelectValue placeholder="Select language..." />
+                          <SelectValue placeholder={t("language.selectLanguage")} />
                         </SelectTrigger>
                         <SelectContent>
                           {availableLanguages.map((lang) => (
@@ -1789,7 +1822,7 @@ export default function SettingsPage() {
                                 <span>{lang.name}</span>
                                 {!lang.is_complete && (
                                   <Badge variant="outline" className="text-xs">
-                                    {lang.prompt_count} prompts
+                                    {tCommon("prompts", { count: lang.prompt_count })}
                                   </Badge>
                                 )}
                               </div>
@@ -1807,7 +1840,7 @@ export default function SettingsPage() {
                       </Button>
                     </div>
                     <p className="text-xs text-zinc-500">
-                      This controls the language of prompts sent to the LLM for document analysis.
+                      {t("language.controlsPromptLanguage")}
                     </p>
                   </div>
 
@@ -1816,7 +1849,7 @@ export default function SettingsPage() {
                     <>
                       <Separator />
                       <div className="space-y-2">
-                        <Label className="text-sm font-medium">Available Languages</Label>
+                        <Label className="text-sm font-medium">{t("language.availableLanguages")}</Label>
                         <div className="grid gap-2">
                           {availableLanguages.map((lang) => (
                             <div
@@ -1844,7 +1877,7 @@ export default function SettingsPage() {
                                 <div>
                                   <p className="font-medium">{lang.name}</p>
                                   <p className="text-xs text-zinc-500">
-                                    {lang.prompt_count} prompt{lang.prompt_count !== 1 ? "s" : ""}
+                                    {tCommon("prompts", { count: lang.prompt_count })}
                                   </p>
                                 </div>
                               </div>
@@ -1852,7 +1885,7 @@ export default function SettingsPage() {
                                 variant={lang.is_complete ? "default" : "secondary"}
                                 className={lang.is_complete ? "bg-emerald-600" : ""}
                               >
-                                {lang.is_complete ? "Complete" : "Partial"}
+                                {lang.is_complete ? tCommon("complete") : tCommon("partial")}
                               </Badge>
                             </div>
                           ))}
@@ -1863,28 +1896,37 @@ export default function SettingsPage() {
                 </CardContent>
               </Card>
 
-              {/* UI Language (Coming Soon) */}
+              {/* UI Language */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Globe className="h-5 w-5" />
-                    UI Language
-                    <Badge variant="secondary" className="ml-2">Coming Soon</Badge>
+                    {t("language.uiLanguage")}
                   </CardTitle>
                   <CardDescription>
-                    Select the language for the user interface
+                    {t("language.uiLanguageDesc")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Language</Label>
-                    <Select disabled>
-                      <SelectTrigger className="opacity-50">
-                        <SelectValue placeholder="English" />
+                    <Label>{t("language.title")}</Label>
+                    <Select
+                      value={pendingUiLocale ?? currentLocale}
+                      onValueChange={(value) => setPendingUiLocale(value as Locale)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={localeNames[currentLocale]} />
                       </SelectTrigger>
+                      <SelectContent>
+                        {locales.map((locale) => (
+                          <SelectItem key={locale} value={locale}>
+                            {localeNames[locale]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
                     </Select>
                     <p className="text-xs text-zinc-500">
-                      UI translation support is planned for a future release.
+                      {t("language.controlsUiLanguage")}
                     </p>
                   </div>
                 </CardContent>
@@ -1898,14 +1940,14 @@ export default function SettingsPage() {
           <TabsContent value="advanced" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Debug Settings</CardTitle>
+                <CardTitle>{t("debug.title")}</CardTitle>
                 <CardDescription>
-                  Development and troubleshooting options
+                  {t("debug.description")}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Log Level</Label>
+                  <Label>{t("debug.logLevel")}</Label>
                   <Select
                     value={settings.debug_log_level}
                     onValueChange={(v) => updateSetting("debug_log_level", v as "DEBUG" | "INFO" | "WARNING" | "ERROR")}
@@ -1914,10 +1956,10 @@ export default function SettingsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="DEBUG">Debug - All messages</SelectItem>
-                      <SelectItem value="INFO">Info - Normal operation</SelectItem>
-                      <SelectItem value="WARNING">Warning - Issues only</SelectItem>
-                      <SelectItem value="ERROR">Error - Errors only</SelectItem>
+                      <SelectItem value="DEBUG">{t("debug.logLevelDebug")}</SelectItem>
+                      <SelectItem value="INFO">{t("debug.logLevelInfo")}</SelectItem>
+                      <SelectItem value="WARNING">{t("debug.logLevelWarning")}</SelectItem>
+                      <SelectItem value="ERROR">{t("debug.logLevelError")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1926,14 +1968,14 @@ export default function SettingsPage() {
 
                 <div className="space-y-4">
                   {[
-                    { key: "debug_log_prompts" as const, label: "Log Prompts", desc: "Log full prompts sent to LLM" },
-                    { key: "debug_log_responses" as const, label: "Log Responses", desc: "Log full LLM responses" },
-                    { key: "debug_save_processing_history" as const, label: "Save Processing History", desc: "Keep history of all processing steps" },
+                    { key: "debug_log_prompts" as const, labelKey: "debug.logPrompts", descKey: "debug.logPromptsDesc" },
+                    { key: "debug_log_responses" as const, labelKey: "debug.logResponses", descKey: "debug.logResponsesDesc" },
+                    { key: "debug_save_processing_history" as const, labelKey: "debug.saveHistory", descKey: "debug.saveHistoryDesc" },
                   ].map((item) => (
                     <div key={item.key} className="flex items-center justify-between">
                       <div className="space-y-0.5">
-                        <Label>{item.label}</Label>
-                        <p className="text-xs text-zinc-500">{item.desc}</p>
+                        <Label>{t(item.labelKey)}</Label>
+                        <p className="text-xs text-zinc-500">{t(item.descKey)}</p>
                       </div>
                       <Switch
                         checked={settings[item.key]}

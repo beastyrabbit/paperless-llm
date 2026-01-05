@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import {
   FileText,
   CheckCircle2,
@@ -43,6 +44,9 @@ interface ServiceInfo {
 }
 
 export default function Dashboard() {
+  const t = useTranslations("dashboard");
+  const tCommon = useTranslations("common");
+  const tServices = useTranslations("services");
   const [stats, setStats] = useState<QueueStats | null>(null);
   const [connections, setConnections] = useState<ConnectionStatus>({
     paperless: "checking",
@@ -60,16 +64,16 @@ export default function Dashboard() {
       if (response.ok) {
         const data = await response.json();
         setServices([
-          { name: "Paperless-ngx", key: "paperless", url: data.paperless_url || "Not configured" },
-          { name: "Ollama LLM", key: "ollama", url: data.ollama_url || "Not configured" },
-          { name: "Qdrant Vector DB", key: "qdrant", url: data.qdrant_url || "Not configured" },
-          { name: "Mistral OCR", key: "mistral", url: data.mistral_api_key ? "API Key configured" : "Not configured" },
+          { name: tServices("paperless"), key: "paperless", url: data.paperless_url || tCommon("notConfigured") },
+          { name: tServices("ollama"), key: "ollama", url: data.ollama_url || tCommon("notConfigured") },
+          { name: tServices("qdrant"), key: "qdrant", url: data.qdrant_url || tCommon("notConfigured") },
+          { name: tServices("mistral"), key: "mistral", url: data.mistral_api_key ? tCommon("apiKeyConfigured") : tCommon("notConfigured") },
         ]);
       }
     } catch (err) {
       console.error("Failed to fetch settings:", err);
     }
-  }, []);
+  }, [tServices, tCommon]);
 
   const fetchQueueStats = useCallback(async () => {
     try {
@@ -79,13 +83,13 @@ export default function Dashboard() {
         setStats(data);
         setError(null);
       } else {
-        setError("Failed to fetch queue statistics");
+        setError(t("failedToFetchQueue"));
       }
     } catch (err) {
-      setError("Unable to connect to backend");
+      setError(t("unableToConnect"));
       console.error("Failed to fetch queue stats:", err);
     }
-  }, []);
+  }, [t]);
 
   const testConnections = useCallback(async () => {
     const serviceKeys: (keyof ConnectionStatus)[] = ["paperless", "ollama", "qdrant", "mistral"];
@@ -129,12 +133,12 @@ export default function Dashboard() {
   }, [refresh]);
 
   const pipelineSteps = [
-    { name: "Pending", count: stats?.pending ?? 0, color: "bg-amber-500" },
-    { name: "OCR", count: stats?.ocr_done ?? 0, color: "bg-blue-500" },
-    { name: "Correspondent", count: stats?.correspondent_done ?? 0, color: "bg-pink-500" },
-    { name: "Doc Type", count: stats?.document_type_done ?? 0, color: "bg-indigo-500" },
-    { name: "Title", count: stats?.title_done ?? 0, color: "bg-purple-500" },
-    { name: "Tags", count: stats?.tags_done ?? 0, color: "bg-orange-500" },
+    { name: t("pending"), count: stats?.pending ?? 0, color: "bg-amber-500" },
+    { name: t("ocr"), count: stats?.ocr_done ?? 0, color: "bg-blue-500" },
+    { name: t("correspondent"), count: stats?.correspondent_done ?? 0, color: "bg-pink-500" },
+    { name: t("docType"), count: stats?.document_type_done ?? 0, color: "bg-indigo-500" },
+    { name: t("titleStep"), count: stats?.title_done ?? 0, color: "bg-purple-500" },
+    { name: t("tags"), count: stats?.tags_done ?? 0, color: "bg-orange-500" },
   ];
 
   const allConnected = Object.values(connections).every(s => s === "connected");
@@ -146,30 +150,30 @@ export default function Dashboard() {
       <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/80">
         <div className="flex h-16 items-center justify-between px-8">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Dashboard</h1>
+            <h1 className="text-xl font-bold tracking-tight">{t("title")}</h1>
             <p className="text-sm text-zinc-500">
-              Document processing overview
+              {t("subtitle")}
             </p>
           </div>
           <div className="flex items-center gap-3">
             <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-              Refresh
+              {tCommon("refresh")}
             </Button>
             {anyChecking ? (
               <Badge variant="secondary" className="gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                Checking...
+                {tCommon("checking")}
               </Badge>
             ) : allConnected ? (
               <Badge variant="success" className="gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
-                All Systems Online
+                {t("allSystemsOnline")}
               </Badge>
             ) : (
               <Badge variant="destructive" className="gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                Some Services Offline
+                {t("someServicesOffline")}
               </Badge>
             )}
           </div>
@@ -192,7 +196,7 @@ export default function Dashboard() {
           <Card className="overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-zinc-500">
-                Total Documents
+                {t("totalDocuments")}
               </CardTitle>
               <Database className="h-4 w-4 text-zinc-500" />
             </CardHeader>
@@ -201,7 +205,7 @@ export default function Dashboard() {
                 {loading ? "—" : stats?.total_documents ?? 0}
               </div>
               <p className="text-xs text-zinc-500 mt-1">
-                In Paperless-ngx
+                {t("inPaperless")}
               </p>
             </CardContent>
           </Card>
@@ -209,7 +213,7 @@ export default function Dashboard() {
           <Card className="overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-zinc-500">
-                In Pipeline
+                {t("inPipeline")}
               </CardTitle>
               <Clock className="h-4 w-4 text-amber-500" />
             </CardHeader>
@@ -218,7 +222,7 @@ export default function Dashboard() {
                 {loading ? "—" : stats?.total_in_pipeline ?? 0}
               </div>
               <p className="text-xs text-zinc-500 mt-1">
-                Documents being processed
+                {t("documentsBeingProcessed")}
               </p>
             </CardContent>
           </Card>
@@ -226,7 +230,7 @@ export default function Dashboard() {
           <Card className="overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-zinc-500">
-                Pending OCR
+                {t("pendingOcr")}
               </CardTitle>
               <FileText className="h-4 w-4 text-blue-500" />
             </CardHeader>
@@ -235,7 +239,7 @@ export default function Dashboard() {
                 {loading ? "—" : stats?.pending ?? 0}
               </div>
               <p className="text-xs text-zinc-500 mt-1">
-                Awaiting processing
+                {t("awaitingProcessing")}
               </p>
             </CardContent>
           </Card>
@@ -243,7 +247,7 @@ export default function Dashboard() {
           <Card className="overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-zinc-500">
-                Fully Processed
+                {t("fullyProcessed")}
               </CardTitle>
               <CheckCircle2 className="h-4 w-4 text-emerald-500" />
             </CardHeader>
@@ -252,7 +256,7 @@ export default function Dashboard() {
                 {loading ? "—" : stats?.processed ?? 0}
               </div>
               <p className="text-xs text-zinc-500 mt-1">
-                Completed through pipeline
+                {t("completedThroughPipeline")}
               </p>
             </CardContent>
           </Card>
@@ -260,7 +264,7 @@ export default function Dashboard() {
           <Card className="overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-zinc-500">
-                OCR Completed
+                {t("ocrCompleted")}
               </CardTitle>
               <TrendingUp className="h-4 w-4 text-purple-500" />
             </CardHeader>
@@ -268,7 +272,7 @@ export default function Dashboard() {
               <div className="text-3xl font-bold">
                 {loading ? "—" : stats?.ocr_done ?? 0}
               </div>
-              <p className="text-xs text-zinc-500 mt-1">Ready for title assignment</p>
+              <p className="text-xs text-zinc-500 mt-1">{t("readyForTitle")}</p>
             </CardContent>
           </Card>
         </div>
@@ -278,7 +282,7 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-emerald-500" />
-              Processing Pipeline
+              {t("processingPipeline")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -313,7 +317,7 @@ export default function Dashboard() {
           {/* Service Status */}
           <Card>
             <CardHeader>
-              <CardTitle>Service Connections</CardTitle>
+              <CardTitle>{t("serviceConnections")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {services.map((service) => (
@@ -345,7 +349,11 @@ export default function Dashboard() {
                         : "destructive"
                     }
                   >
-                    {connections[service.key]}
+                    {connections[service.key] === "connected"
+                      ? tCommon("connected")
+                      : connections[service.key] === "checking"
+                      ? tCommon("checking")
+                      : tCommon("disconnected")}
                   </Badge>
                 </div>
               ))}
@@ -355,14 +363,14 @@ export default function Dashboard() {
           {/* Quick Actions */}
           <Card>
             <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
+              <CardTitle>{t("quickActions")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <Link href="/documents">
                 <Button className="w-full justify-between" variant="outline">
                   <span className="flex items-center gap-2">
                     <FileText className="h-4 w-4" />
-                    View Document Queue
+                    {t("viewDocumentQueue")}
                   </span>
                   <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -371,7 +379,7 @@ export default function Dashboard() {
                 <Button className="w-full justify-between" variant="outline">
                   <span className="flex items-center gap-2">
                     <AlertCircle className="h-4 w-4" />
-                    Review Pending Items
+                    {t("reviewPendingItems")}
                   </span>
                   <Badge variant="warning" className="ml-2">{stats?.pending ?? 0}</Badge>
                 </Button>
@@ -380,7 +388,7 @@ export default function Dashboard() {
                 <Button className="w-full justify-between" variant="outline">
                   <span className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4" />
-                    Manage Workflow Tags
+                    {t("manageWorkflowTags")}
                   </span>
                   <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -389,7 +397,7 @@ export default function Dashboard() {
                 <Button className="w-full justify-between" variant="outline">
                   <span className="flex items-center gap-2">
                     <Zap className="h-4 w-4" />
-                    Configure Settings
+                    {t("configureSettings")}
                   </span>
                   <ArrowRight className="h-4 w-4" />
                 </Button>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import {
   Code2,
   Save,
@@ -45,6 +46,8 @@ type PromptType = "main" | "confirmation";
 type ViewMode = "edit" | "preview";
 
 export default function PromptsPage() {
+  const t = useTranslations("prompts");
+  const tCommon = useTranslations("common");
   const [groups, setGroups] = useState<PromptGroup[]>([]);
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<PromptGroup | null>(null);
@@ -211,7 +214,7 @@ export default function PromptsPage() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 via-white to-emerald-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-emerald-950/20">
         <div className="flex items-center gap-2 text-zinc-500">
           <Loader2 className="h-5 w-5 animate-spin" />
-          <span>Loading prompts...</span>
+          <span>{t("loadingPrompts")}</span>
         </div>
       </div>
     );
@@ -224,12 +227,12 @@ export default function PromptsPage() {
           <CardContent className="pt-6">
             <div className="flex items-center gap-2 text-red-500 mb-4">
               <AlertCircle className="h-5 w-5" />
-              <span className="font-medium">Failed to load prompts</span>
+              <span className="font-medium">{t("failedToLoad")}</span>
             </div>
             <p className="text-sm text-zinc-500 mb-4">{error}</p>
             <Button onClick={fetchData} variant="outline" size="sm">
               <RefreshCw className="mr-2 h-4 w-4" />
-              Retry
+              {tCommon("retry")}
             </Button>
           </CardContent>
         </Card>
@@ -243,9 +246,9 @@ export default function PromptsPage() {
       <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/80">
         <div className="flex h-16 items-center justify-between px-8">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Prompts</h1>
+            <h1 className="text-xl font-bold tracking-tight">{t("title")}</h1>
             <p className="text-sm text-zinc-500">
-              Edit and preview prompt templates for document processing
+              {t("subtitle")}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -254,7 +257,7 @@ export default function PromptsPage() {
             </Button>
             <Badge variant="secondary">
               <Code2 className="mr-1 h-3 w-3" />
-              {groups.length} prompt groups
+              {tCommon("prompts", { count: groups.length })}
             </Badge>
           </div>
         </div>
@@ -264,9 +267,9 @@ export default function PromptsPage() {
         {/* Prompt Groups List */}
         <Card className="h-fit">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Prompt Groups</CardTitle>
+            <CardTitle className="text-base">{t("promptGroups")}</CardTitle>
             <CardDescription className="text-xs">
-              Each group has a main prompt and confirmation
+              {t("promptGroupsDesc")}
             </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
@@ -289,7 +292,7 @@ export default function PromptsPage() {
                     <div>
                       <p className="font-medium">{group.name}</p>
                       <p className="text-xs text-zinc-500">
-                        {group.confirmation ? "Main + Confirmation" : "Main only"}
+                        {group.confirmation ? t("mainPlusConfirmation") : t("mainOnly")}
                       </p>
                     </div>
                   </div>
@@ -324,7 +327,7 @@ export default function PromptsPage() {
                         onClick={() => setPromptType("main")}
                       >
                         <FileText className="mr-1 h-3 w-3" />
-                        Main
+                        {t("main")}
                       </Button>
                       {selectedGroup.confirmation && (
                         <Button
@@ -336,7 +339,7 @@ export default function PromptsPage() {
                           onClick={() => setPromptType("confirmation")}
                         >
                           <MessageSquare className="mr-1 h-3 w-3" />
-                          Confirmation
+                          {t("confirmation")}
                         </Button>
                       )}
                     </div>
@@ -359,7 +362,7 @@ export default function PromptsPage() {
                         onClick={() => setViewMode("edit")}
                       >
                         <Edit3 className="mr-1 h-3 w-3" />
-                        Edit Template
+                        {t("editTemplate")}
                       </Button>
                       <Button
                         variant={viewMode === "preview" ? "secondary" : "ghost"}
@@ -368,7 +371,7 @@ export default function PromptsPage() {
                         onClick={() => setViewMode("preview")}
                       >
                         <Eye className="mr-1 h-3 w-3" />
-                        Preview
+                        {t("preview")}
                       </Button>
                     </div>
 
@@ -382,7 +385,7 @@ export default function PromptsPage() {
                             onClick={handleDiscard}
                           >
                             <X className="mr-1 h-4 w-4" />
-                            Discard
+                            {tCommon("discard")}
                           </Button>
                           <Button
                             variant="default"
@@ -395,14 +398,14 @@ export default function PromptsPage() {
                             ) : (
                               <Save className="mr-1 h-4 w-4" />
                             )}
-                            Save
+                            {tCommon("save")}
                           </Button>
                         </>
                       )}
                       {saveSuccess && (
                         <Badge variant="outline" className="text-emerald-600">
                           <Check className="mr-1 h-3 w-3" />
-                          Saved
+                          {tCommon("saved")}
                         </Badge>
                       )}
                     </div>
@@ -413,7 +416,7 @@ export default function PromptsPage() {
                   {/* Variables */}
                   <div>
                     <h4 className="text-sm font-medium mb-2">
-                      Template Variables ({currentPrompt.variables.length})
+                      {t("templateVariables")} ({currentPrompt.variables.length})
                     </h4>
                     <div className="flex flex-wrap gap-2">
                       {currentPrompt.variables.map((variable) => (
@@ -435,7 +438,7 @@ export default function PromptsPage() {
                       ))}
                       {currentPrompt.variables.length === 0 && (
                         <span className="text-sm text-zinc-500">
-                          No variables in this template
+                          {t("noVariables")}
                         </span>
                       )}
                     </div>
@@ -445,8 +448,8 @@ export default function PromptsPage() {
                   <div>
                     <h4 className="text-sm font-medium mb-2">
                       {viewMode === "edit"
-                        ? "Template Content"
-                        : "Preview with Real Data"}
+                        ? t("templateContent")
+                        : t("previewWithData")}
                     </h4>
 
                     {viewMode === "edit" ? (
@@ -454,7 +457,7 @@ export default function PromptsPage() {
                         value={editedContent}
                         onChange={(e) => handleContentChange(e.target.value)}
                         className="font-mono text-sm min-h-[500px] bg-zinc-950 text-zinc-300 border-zinc-800"
-                        placeholder="Enter prompt template..."
+                        placeholder={t("enterPromptPlaceholder")}
                       />
                     ) : (
                       <ScrollArea className="h-[500px] rounded-lg border border-zinc-200 bg-zinc-950 p-4 dark:border-zinc-800">
@@ -468,13 +471,12 @@ export default function PromptsPage() {
                   {/* Info Text */}
                   {viewMode === "edit" && hasChanges && (
                     <p className="text-xs text-amber-600">
-                      You have unsaved changes. Click Save to apply them.
+                      {t("unsavedChanges")}
                     </p>
                   )}
                   {viewMode === "preview" && (
                     <p className="text-xs text-zinc-500">
-                      This preview shows the prompt with real data from your
-                      Paperless-ngx instance substituted for template variables.
+                      {t("previewInfo")}
                     </p>
                   )}
                 </CardContent>

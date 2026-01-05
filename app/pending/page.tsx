@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   CheckCircle2,
   User,
@@ -71,14 +72,15 @@ const mockPendingItems: PendingItem[] = [
 ];
 
 const sections = [
-  { key: "correspondent", label: "Correspondents", icon: User },
-  { key: "document_type", label: "Document Types", icon: FileText },
-  { key: "tag", label: "Tags", icon: Tag },
+  { key: "correspondent", labelKey: "correspondents", icon: User },
+  { key: "document_type", labelKey: "documentTypes", icon: FileText },
+  { key: "tag", labelKey: "tags", icon: Tag },
 ] as const;
 
 type SectionKey = (typeof sections)[number]["key"];
 
 export default function PendingPage() {
+  const t = useTranslations("pending");
   const [items, setItems] = useState<PendingItem[]>(mockPendingItems);
   const [activeSection, setActiveSection] = useState<SectionKey>("correspondent");
   const [expandedReasoning, setExpandedReasoning] = useState<Set<number>>(
@@ -146,9 +148,9 @@ export default function PendingPage() {
       <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/80">
         <div className="flex h-16 items-center justify-between px-8">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Pending Review</h1>
+            <h1 className="text-xl font-bold tracking-tight">{t("title")}</h1>
             <p className="text-sm text-zinc-500">
-              {totalCount} items requiring your approval
+              {t("subtitle", { count: totalCount })}
             </p>
           </div>
         </div>
@@ -175,7 +177,7 @@ export default function PendingPage() {
                 )}
               >
                 <Icon className="h-4 w-4" />
-                {section.label}
+                {t(section.labelKey)}
                 <Badge
                   variant={isActive ? "secondary" : "outline"}
                   className={cn(
@@ -195,8 +197,8 @@ export default function PendingPage() {
           <Card className="py-12">
             <CardContent className="flex flex-col items-center justify-center text-center">
               <CheckCircle2 className="h-12 w-12 text-emerald-500 mb-4" />
-              <h3 className="text-lg font-medium">All caught up!</h3>
-              <p className="text-zinc-500 mt-1">No items pending your review</p>
+              <h3 className="text-lg font-medium">{t("allCaughtUp")}</h3>
+              <p className="text-zinc-500 mt-1">{t("noItems")}</p>
             </CardContent>
           </Card>
         ) : (
@@ -216,7 +218,7 @@ export default function PendingPage() {
                         {item.docTitle}
                       </span>
                       <Badge variant="outline" className="text-xs">
-                        Attempt {item.attempts}
+                        {t("attempt", { count: item.attempts })}
                       </Badge>
                     </div>
 
@@ -254,7 +256,7 @@ export default function PendingPage() {
                             onClick={() => toggleReasoning(item.id)}
                             className="ml-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
                           >
-                            more...
+                            {t("more")}
                           </button>
                         )}
                         {isExpanded && hasMore && (
@@ -262,13 +264,13 @@ export default function PendingPage() {
                             onClick={() => toggleReasoning(item.id)}
                             className="ml-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
                           >
-                            less
+                            {t("less")}
                           </button>
                         )}
                       </p>
                       {item.lastFeedback && (
                         <p className="text-xs text-zinc-400 dark:text-zinc-500 italic mt-1">
-                          Feedback: {item.lastFeedback}
+                          {t("feedback")}: {item.lastFeedback}
                         </p>
                       )}
                     </div>
@@ -282,7 +284,7 @@ export default function PendingPage() {
                         onClick={() => handleReject(item.id)}
                       >
                         <X className="h-4 w-4 mr-1" />
-                        Reject
+                        {t("reject")}
                       </Button>
                       <Button
                         size="sm"
@@ -290,7 +292,7 @@ export default function PendingPage() {
                         onClick={() => handleApprove(item.id)}
                       >
                         <Check className="h-4 w-4 mr-1" />
-                        Approve
+                        {t("approve")}
                       </Button>
                     </div>
                   </CardContent>

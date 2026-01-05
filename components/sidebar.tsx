@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   LayoutDashboard,
   FileText,
@@ -13,15 +14,17 @@ import {
 import { cn } from "@/lib/utils";
 
 const navigation = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Documents", href: "/documents", icon: FileText },
-  { name: "Pending Review", href: "/pending", icon: Clock },
-  { name: "Prompts", href: "/prompts", icon: Code2 },
-  { name: "Settings", href: "/settings", icon: Settings },
-];
+  { key: "dashboard", href: "/", icon: LayoutDashboard },
+  { key: "documents", href: "/documents", icon: FileText },
+  { key: "pending", href: "/pending", icon: Clock },
+  { key: "prompts", href: "/prompts", icon: Code2 },
+  { key: "settings", href: "/settings", icon: Settings },
+] as const;
 
 export function Sidebar() {
   const pathname = usePathname();
+  const t = useTranslations("navigation");
+  const tCommon = useTranslations("common");
 
   return (
     <aside className="flex w-64 flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
@@ -31,8 +34,8 @@ export function Sidebar() {
           <Zap className="h-5 w-5 text-white" />
         </div>
         <div>
-          <h1 className="text-sm font-bold tracking-tight">Paperless LLM</h1>
-          <p className="text-xs text-zinc-500">Document AI</p>
+          <h1 className="text-sm font-bold tracking-tight">{t("appName")}</h1>
+          <p className="text-xs text-zinc-500">{t("appTagline")}</p>
         </div>
       </div>
 
@@ -42,7 +45,7 @@ export function Sidebar() {
           const isActive = pathname === item.href;
           return (
             <Link
-              key={item.name}
+              key={item.key}
               href={item.href}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
@@ -59,7 +62,7 @@ export function Sidebar() {
                     : "text-zinc-400"
                 )}
               />
-              {item.name}
+              {t(item.key)}
             </Link>
           );
         })}
@@ -71,10 +74,12 @@ export function Sidebar() {
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-              Auto-Processing
+              {t("autoProcessing")}
             </span>
           </div>
-          <p className="mt-1 text-xs text-zinc-500">Idle - 0 in queue</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            {tCommon("idle")} - {tCommon("inQueue", { count: 0 })}
+          </p>
         </div>
       </div>
     </aside>
