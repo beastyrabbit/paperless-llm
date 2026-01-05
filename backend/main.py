@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings
-from routers import documents, processing, prompts, settings
+from routers import documents, metadata, pending, processing, prompts, settings, translation
 from worker import get_worker
 
 
@@ -56,6 +56,9 @@ app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
 app.include_router(documents.router, prefix="/api/documents", tags=["Documents"])
 app.include_router(processing.router, prefix="/api/processing", tags=["Processing"])
 app.include_router(prompts.router, prefix="/api/prompts", tags=["Prompts"])
+app.include_router(pending.router, prefix="/api/pending", tags=["Pending Reviews"])
+app.include_router(metadata.router, prefix="/api/metadata", tags=["Metadata"])
+app.include_router(translation.router, prefix="/api/translation", tags=["Translation"])
 
 
 @app.get("/")

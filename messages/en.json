@@ -119,7 +119,9 @@
     "attempt": "Attempt {count}",
     "feedback": "Feedback",
     "more": "more...",
-    "less": "less"
+    "less": "less",
+    "loading": "Loading pending items...",
+    "refresh": "Refresh"
   },
   "prompts": {
     "title": "Prompts",
@@ -174,6 +176,7 @@
       "pipeline": "Pipeline",
       "customFields": "Custom Fields",
       "aiTags": "Tags",
+      "aiDocumentTypes": "Document Types",
       "workflowTags": "Workflow Tags",
       "language": "Language",
       "advanced": "Advanced"
@@ -192,6 +195,8 @@
       "largeModel": "Large Model (Analysis)",
       "smallModel": "Small Model (Confirmation)",
       "embeddingModel": "Embedding Model (Vector Search)",
+      "translationModel": "Translation Model (Optional)",
+      "translationModelDesc": "Model for translating prompts. If not set, uses the large model.",
       "thinkingMode": "Thinking Mode",
       "thinkingModeDesc": "Enable extended reasoning for complex analysis",
       "thinkingLevel": "Thinking Level",
@@ -277,6 +282,31 @@
       "savedSuccess": "Saved {count} tag(s) for AI suggestions",
       "aiEnabled": "AI Enabled",
       "aiDisabled": "AI Disabled",
+      "documentCount": "{count} document(s)",
+      "hasDescription": "Has description",
+      "isTranslated": "Translated",
+      "descriptionLabel": "Description",
+      "descriptionHint": "Explain what this tag means to help the AI understand when to use it.",
+      "descriptionPlaceholder": "e.g., 'LBS191 is the street address Lichtenberger Straße 191' or 'Use for documents containing tax information'",
+      "optimize": "Optimize",
+      "translate": "Translate",
+      "optimizeDescription": "Use AI to optimize this description for clarity",
+      "translateDescription": "Translate to all UI and prompt languages",
+      "editingIn": "Editing in {lang}",
+      "alsoAvailableIn": "Also available in: {langs}"
+    },
+    "aiDocumentTypes": {
+      "title": "AI Document Types Selection",
+      "description": "Select which document types the AI can assign when processing documents. Unselected types will never be assigned by the AI.",
+      "loadingDocTypes": "Loading document types from Paperless...",
+      "noTypesFound": "No Document Types Found",
+      "noTypesDesc": "Document types need to be created in Paperless-ngx first.",
+      "availableTypes": "Available Document Types",
+      "typesEnabled": "{selected} of {total} types enabled for AI",
+      "saveSelection": "Save Selection",
+      "savedSuccess": "Saved {count} document type(s) for AI suggestions",
+      "aiEnabled": "AI Enabled",
+      "aiDisabled": "AI Disabled",
       "documentCount": "{count} document(s)"
     },
     "workflowTags": {
@@ -303,7 +333,16 @@
       "availableLanguages": "Available Languages",
       "uiLanguage": "UI Language",
       "uiLanguageDesc": "Select the language for the user interface",
-      "controlsUiLanguage": "Changes the language for menus, labels, and other interface elements. The page will reload to apply the change."
+      "controlsUiLanguage": "Changes the language for menus, labels, and other interface elements. The page will reload to apply the change.",
+      "translatePrompts": "Translate Prompts",
+      "translatePromptsDesc": "Use AI to translate all prompts from one language to another",
+      "sourceLanguage": "Source Language",
+      "targetLanguage": "Target Language",
+      "selectTarget": "Select target...",
+      "translateAll": "Translate All",
+      "translationSuccess": "Successfully translated {successful} of {total} prompts",
+      "translationFailed": "Translation failed for {failed} prompt(s)",
+      "translateNote": "Translations are generated using the configured translation model. Results are cached and saved as new prompt files."
     },
     "debug": {
       "title": "Debug Settings",

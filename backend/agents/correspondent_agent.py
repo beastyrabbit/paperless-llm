@@ -9,6 +9,7 @@ from agents.prompts import load_prompt
 from config import get_settings
 from models.analysis import ConfirmationResult, CorrespondentAnalysis
 from services.paperless import PaperlessClient
+from services.pending_reviews import get_pending_reviews_service
 from services.qdrant import QdrantService
 
 
@@ -23,11 +24,15 @@ class CorrespondentAgent:
             self.settings.paperless_url,
             self.settings.paperless_token,
         )
-        self.qdrant = QdrantService(
-            qdrant_url=self.settings.qdrant_url,
-            collection_name=self.settings.qdrant_collection,
-            ollama_url=self.settings.ollama_url,
-        )
+        # Qdrant is optional - only used for similar document context
+        self.qdrant: QdrantService | None = None
+        if self.settings.vector_search_enabled:
+            self.qdrant = QdrantService(
+                qdrant_url=self.settings.qdrant_url,
+                collection_name=self.settings.qdrant_collection,
+                ollama_url=self.settings.ollama_url,
+                embedding_model=self.settings.ollama_embedding_model,
+            )
 
     async def process(self, doc_id: int, content: str) -> dict[str, Any]:
         """Process document to identify correspondent.
@@ -43,9 +48,15 @@ class CorrespondentAgent:
         existing_correspondents = await self.paperless.get_correspondents()
         correspondent_names = [c["name"] for c in existing_correspondents]
 
-        # Get similar documents for context
-        await self.qdrant.initialize()
-        similar_docs = await self.qdrant.search_similar(content[:2000], k=5)
+        # Get similar documents for context (optional - may fail if Qdrant/Ollama unavailable)
+        similar_docs: list[dict] = []
+        if self.qdrant:
+            try:
+                await self.qdrant.initialize()
+                similar_docs = await self.qdrant.search_similar(content[:2000], k=5)
+            except Exception:
+                # Continue without similar docs - not critical for correspondent detection
+                pass
 
         max_retries = self.settings.confirmation_max_retries
         feedback = None
@@ -65,6 +76,20 @@ class CorrespondentAgent:
             if confirmation.confirmed:
                 # Apply correspondent
                 result = await self._apply_correspondent(doc_id, analysis, existing_correspondents)
+
+                # If queued for review, signal pipeline to stop
+                if result.get("queued_for_review"):
+                    return {
+                        "doc_id": doc_id,
+                        "success": False,
+                        "needs_review": True,
+                        "correspondent": analysis.suggested_correspondent,
+                        "is_new": analysis.is_new,
+                        "reasoning": analysis.reasoning,
+                        "attempts": attempt + 1,
+                        **result,
+                    }
+
                 return {
                     "doc_id": doc_id,
                     "success": True,
@@ -100,8 +125,8 @@ class CorrespondentAgent:
         """Analyze document to identify correspondent."""
         prompt_template = load_prompt("correspondent") or self._default_prompt()
 
-        # Format existing correspondents
-        correspondents_list = "\n".join(f"- {name}" for name in existing_correspondents[:50])
+        # Format existing correspondents (all of them, comma-separated for compactness)
+        correspondents_list = ", ".join(existing_correspondents)
 
         # Format similar docs with their correspondents
         similar_info = "\n".join(
@@ -164,6 +189,22 @@ class CorrespondentAgent:
         if analysis.is_new:
             # Check if we should create automatically or queue for review
             if self.settings.confirmation_require_user_for_new_entities:
+                # Get document title for pending review
+                doc = await self.paperless.get_document(doc_id)
+                doc_title = doc.get("title", f"Document {doc_id}") if doc else f"Document {doc_id}"
+
+                # Store in pending reviews
+                pending_service = get_pending_reviews_service()
+                pending_service.add(
+                    doc_id=doc_id,
+                    doc_title=doc_title,
+                    item_type="correspondent",
+                    suggestion=analysis.suggested_correspondent,
+                    reasoning=analysis.reasoning,
+                    alternatives=analysis.alternatives or [],
+                    metadata={"confidence": analysis.confidence},
+                )
+
                 return {
                     "applied": False,
                     "queued_for_review": True,

@@ -9,6 +9,7 @@ from agents.prompts import load_prompt
 from config import get_settings
 from models.analysis import ConfirmationResult, DocumentTypeAnalysis
 from services.paperless import PaperlessClient
+from services.pending_reviews import get_pending_reviews_service
 from services.qdrant import QdrantService
 
 
@@ -23,11 +24,15 @@ class DocumentTypeAgent:
             self.settings.paperless_url,
             self.settings.paperless_token,
         )
-        self.qdrant = QdrantService(
-            qdrant_url=self.settings.qdrant_url,
-            collection_name=self.settings.qdrant_collection,
-            ollama_url=self.settings.ollama_url,
-        )
+        # Qdrant is optional - only used for similar document context
+        self.qdrant: QdrantService | None = None
+        if self.settings.vector_search_enabled:
+            self.qdrant = QdrantService(
+                qdrant_url=self.settings.qdrant_url,
+                collection_name=self.settings.qdrant_collection,
+                ollama_url=self.settings.ollama_url,
+                embedding_model=self.settings.ollama_embedding_model,
+            )
 
     async def process(self, doc_id: int, content: str) -> dict[str, Any]:
         """Process document to identify document type.
@@ -43,9 +48,15 @@ class DocumentTypeAgent:
         existing_doc_types = await self.paperless.get_document_types()
         doc_type_names = [dt["name"] for dt in existing_doc_types]
 
-        # Get similar documents for context
-        await self.qdrant.initialize()
-        similar_docs = await self.qdrant.search_similar(content[:2000], k=5)
+        # Get similar documents for context (optional)
+        similar_docs: list[dict] = []
+        if self.qdrant:
+            try:
+                await self.qdrant.initialize()
+                similar_docs = await self.qdrant.search_similar(content[:2000], k=5)
+            except Exception:
+                # Continue without similar docs - not critical
+                pass
 
         max_retries = self.settings.confirmation_max_retries
         feedback = None
@@ -65,6 +76,20 @@ class DocumentTypeAgent:
             if confirmation.confirmed:
                 # Apply document type
                 result = await self._apply_document_type(doc_id, analysis, existing_doc_types)
+
+                # If queued for review, signal pipeline to stop
+                if result.get("queued_for_review"):
+                    return {
+                        "doc_id": doc_id,
+                        "success": False,
+                        "needs_review": True,
+                        "document_type": analysis.suggested_document_type,
+                        "is_new": analysis.is_new,
+                        "reasoning": analysis.reasoning,
+                        "attempts": attempt + 1,
+                        **result,
+                    }
+
                 return {
                     "doc_id": doc_id,
                     "success": True,
@@ -100,8 +125,8 @@ class DocumentTypeAgent:
         """Analyze document to identify document type."""
         prompt_template = load_prompt("document_type") or self._default_prompt()
 
-        # Format existing document types
-        doc_types_list = "\n".join(f"- {name}" for name in existing_doc_types[:50])
+        # Format existing document types (all of them, comma-separated for compactness)
+        doc_types_list = ", ".join(existing_doc_types)
 
         # Format similar docs with their document types
         similar_info = "\n".join(
@@ -164,6 +189,22 @@ class DocumentTypeAgent:
         if analysis.is_new:
             # Check if we should create automatically or queue for review
             if self.settings.confirmation_require_user_for_new_entities:
+                # Get document title for pending review
+                doc = await self.paperless.get_document(doc_id)
+                doc_title = doc.get("title", f"Document {doc_id}") if doc else f"Document {doc_id}"
+
+                # Store in pending reviews
+                pending_service = get_pending_reviews_service()
+                pending_service.add(
+                    doc_id=doc_id,
+                    doc_title=doc_title,
+                    item_type="document_type",
+                    suggestion=analysis.suggested_document_type,
+                    reasoning=analysis.reasoning,
+                    alternatives=analysis.alternatives or [],
+                    metadata={"confidence": analysis.confidence},
+                )
+
                 return {
                     "applied": False,
                     "queued_for_review": True,

@@ -27,6 +27,11 @@ import {
   X,
   AlertCircle,
   Globe,
+  ChevronUp,
+  ChevronDown,
+  FileText,
+  Sparkles,
+  Languages,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,7 +50,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ModelCombobox } from "@/components/model-combobox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { FileText, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 // Types
 interface OllamaModel {
@@ -94,6 +99,7 @@ interface Settings {
   ollama_url: string;
   ollama_model_large: string;
   ollama_model_small: string;
+  ollama_model_translation: string;
   ollama_embedding_model: string;
   ollama_thinking_enabled: boolean;
   ollama_thinking_level: "low" | "medium" | "high";
@@ -158,7 +164,7 @@ function StatusIndicator({ status }: { status: ConnectionStatus }) {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-const VALID_TABS = ["connections", "processing", "pipeline", "customFields", "aiTags", "workflowTags", "language", "advanced"] as const;
+const VALID_TABS = ["connections", "processing", "pipeline", "custom-fields", "ai-tags", "ai-document-types", "workflow-tags", "language", "advanced"] as const;
 type SettingsTab = typeof VALID_TABS[number];
 
 export default function SettingsPage() {
@@ -190,6 +196,7 @@ export default function SettingsPage() {
     ollama_url: "",
     ollama_model_large: "",
     ollama_model_small: "",
+    ollama_model_translation: "",
     ollama_embedding_model: "",
     ollama_thinking_enabled: true,
     ollama_thinking_level: "high",
@@ -257,9 +264,7 @@ export default function SettingsPage() {
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [selectedCustomFields, setSelectedCustomFields] = useState<number[]>([]);
   const [customFieldsLoading, setCustomFieldsLoading] = useState(false);
-  const [customFieldsSaving, setCustomFieldsSaving] = useState(false);
   const [customFieldsError, setCustomFieldsError] = useState<string | null>(null);
-  const [customFieldsSuccess, setCustomFieldsSuccess] = useState<string | null>(null);
   const [customFieldsHasChanges, setCustomFieldsHasChanges] = useState(false);
 
   // AI Tags state - which tags AI can suggest
@@ -273,14 +278,47 @@ export default function SettingsPage() {
   const [allTags, setAllTags] = useState<PaperlessTag[]>([]);
   const [selectedAiTags, setSelectedAiTags] = useState<number[]>([]);
   const [aiTagsLoading, setAiTagsLoading] = useState(false);
-  const [aiTagsSaving, setAiTagsSaving] = useState(false);
   const [aiTagsError, setAiTagsError] = useState<string | null>(null);
-  const [aiTagsSuccess, setAiTagsSuccess] = useState<string | null>(null);
   const [aiTagsHasChanges, setAiTagsHasChanges] = useState(false);
+
+  // Tag Descriptions state (metadata)
+  const [tagDescriptions, setTagDescriptions] = useState<Record<number, string>>({});
+  const [expandedTagId, setExpandedTagId] = useState<number | null>(null);
+  const [tagDescriptionsHasChanges, setTagDescriptionsHasChanges] = useState(false);
+
+  // Tag translations state
+  const [tagTranslations, setTagTranslations] = useState<Record<number, Record<string, string>>>({}); // tagId -> {lang -> text}
+  const [tagTranslatedLangs, setTagTranslatedLangs] = useState<Record<number, string[]>>({}); // tagId -> [langs]
+  const [optimizingTagId, setOptimizingTagId] = useState<number | null>(null);
+  const [translatingTagId, setTranslatingTagId] = useState<number | null>(null);
+
+  // AI Document Types state
+  interface DocumentTypeInfo {
+    id: number;
+    name: string;
+    document_count: number;
+  }
+  const [allDocumentTypes, setAllDocumentTypes] = useState<DocumentTypeInfo[]>([]);
+  const [selectedAiDocTypes, setSelectedAiDocTypes] = useState<number[]>([]);
+  const [aiDocTypesLoading, setAiDocTypesLoading] = useState(false);
+  const [aiDocTypesError, setAiDocTypesError] = useState<string | null>(null);
+  const [aiDocTypesHasChanges, setAiDocTypesHasChanges] = useState(false);
 
   // Language state
   const [availableLanguages, setAvailableLanguages] = useState<LanguageInfo[]>([]);
   const [languagesLoading, setLanguagesLoading] = useState(false);
+
+  // Translation state
+  const [translationSourceLang, setTranslationSourceLang] = useState("en");
+  const [translationTargetLang, setTranslationTargetLang] = useState("");
+  const [translating, setTranslating] = useState(false);
+  const [translationResult, setTranslationResult] = useState<{
+    success: boolean;
+    total: number;
+    successful: number;
+    failed: number;
+    results?: Array<{ prompt_name?: string; success: boolean; error?: string }>;
+  } | null>(null);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -313,12 +351,57 @@ export default function SettingsPage() {
     }
   };
 
+  // Translate all prompts
+  const translatePrompts = async () => {
+    if (!translationTargetLang || translationSourceLang === translationTargetLang) return;
+
+    setTranslating(true);
+    setTranslationResult(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/translation/translate/prompts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_lang: translationSourceLang,
+          target_lang: translationTargetLang,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setTranslationResult(data);
+        // Refresh languages list to show new prompt count
+        fetchLanguages();
+      } else {
+        const errorText = await response.text();
+        setTranslationResult({
+          success: false,
+          total: 0,
+          successful: 0,
+          failed: 1,
+          results: [{ success: false, error: errorText }],
+        });
+      }
+    } catch (error) {
+      setTranslationResult({
+        success: false,
+        total: 0,
+        successful: 0,
+        failed: 1,
+        results: [{ success: false, error: String(error) }],
+      });
+    } finally {
+      setTranslating(false);
+    }
+  };
+
   // Load settings, auto-test connections, check tags, and fetch custom fields on mount
   useEffect(() => {
     loadSettings();
     fetchTagsStatus();
     fetchCustomFields();
     fetchAiTags();
+    fetchAiDocTypes();
     fetchLanguages();
   }, [loadSettings]);
 
@@ -459,22 +542,97 @@ export default function SettingsPage() {
     setSaving(true);
     setSaveStatus("idle");
     try {
+      // Save main settings
       const response = await fetch(`${API_BASE}/api/settings`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),
       });
-      if (response.ok) {
-        setSaveStatus("success");
-        // Apply UI locale change after successful save
-        if (pendingUiLocale && pendingUiLocale !== currentLocale) {
-          // Brief delay to show success state before reload
-          setTimeout(() => setLocale(pendingUiLocale), 500);
-        } else {
-          setTimeout(() => setSaveStatus("idle"), 3000);
-        }
-      } else {
+
+      if (!response.ok) {
         setSaveStatus("error");
+        return;
+      }
+
+      // Save custom fields selection if changed
+      if (customFieldsHasChanges) {
+        const cfResponse = await fetch(`${API_BASE}/api/settings/custom-fields`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ selected_field_ids: selectedCustomFields }),
+        });
+        if (cfResponse.ok) {
+          setCustomFieldsHasChanges(false);
+        }
+      }
+
+      // Save AI tags selection if changed
+      if (aiTagsHasChanges) {
+        const tagsResponse = await fetch(`${API_BASE}/api/settings/ai-tags`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ selected_tag_ids: selectedAiTags }),
+        });
+        if (tagsResponse.ok) {
+          setAiTagsHasChanges(false);
+        }
+      }
+
+      // Save AI document types selection if changed
+      if (aiDocTypesHasChanges) {
+        const dtResponse = await fetch(`${API_BASE}/api/settings/ai-document-types`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ selected_type_ids: selectedAiDocTypes }),
+        });
+        if (dtResponse.ok) {
+          setAiDocTypesHasChanges(false);
+        }
+      }
+
+      // Save tag descriptions/translations if changed
+      if (tagDescriptionsHasChanges) {
+        for (const tag of allTags) {
+          const translations = tagTranslations[tag.id];
+          if (!translations) continue;
+
+          // Save each language's translation
+          for (const [lang, text] of Object.entries(translations)) {
+            if (!text?.trim()) continue;
+
+            // Save translation for this language
+            await fetch(`${API_BASE}/api/metadata/tags/${tag.id}/translations/${lang}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                lang,
+                text,
+              }),
+            });
+
+            // Also update main tag metadata with first available description (prefer en)
+            if (lang === "en" || !tagDescriptions[tag.id]) {
+              await fetch(`${API_BASE}/api/metadata/tags/${tag.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  tag_name: tag.name,
+                  description: text,
+                }),
+              });
+            }
+          }
+        }
+        setTagDescriptionsHasChanges(false);
+      }
+
+      setSaveStatus("success");
+      // Apply UI locale change after successful save
+      if (pendingUiLocale && pendingUiLocale !== currentLocale) {
+        // Brief delay to show success state before reload
+        setTimeout(() => setLocale(pendingUiLocale), 500);
+      } else {
+        setTimeout(() => setSaveStatus("idle"), 3000);
       }
     } catch {
       setSaveStatus("error");
@@ -569,31 +727,6 @@ export default function SettingsPage() {
     }
   };
 
-  // Save custom fields selection
-  const saveCustomFieldsSelection = async () => {
-    setCustomFieldsSaving(true);
-    setCustomFieldsError(null);
-    setCustomFieldsSuccess(null);
-    try {
-      const response = await fetch(`${API_BASE}/api/settings/custom-fields`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selected_field_ids: selectedCustomFields }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      setCustomFieldsSuccess(`Saved ${selectedCustomFields.length} custom field(s) for LLM processing`);
-      setCustomFieldsHasChanges(false);
-    } catch (err) {
-      setCustomFieldsError(err instanceof Error ? err.message : "Failed to save selection");
-    } finally {
-      setCustomFieldsSaving(false);
-    }
-  };
-
   // Toggle a custom field selection
   const toggleCustomField = (fieldId: number) => {
     setSelectedCustomFields((prev) => {
@@ -604,7 +737,6 @@ export default function SettingsPage() {
       }
     });
     setCustomFieldsHasChanges(true);
-    setCustomFieldsSuccess(null);
   };
 
   // Fetch all tags from Paperless for AI selection
@@ -620,35 +752,50 @@ export default function SettingsPage() {
       setAllTags(data.tags || []);
       setSelectedAiTags(data.selected_tag_ids || []);
       setAiTagsHasChanges(false);
+
+      // Also fetch tag descriptions (metadata)
+      try {
+        const metaResponse = await fetch(`${API_BASE}/api/metadata/tags`);
+        if (metaResponse.ok) {
+          const metaData = await metaResponse.json();
+          const descriptions: Record<number, string> = {};
+          const tagsWithDescriptions: number[] = [];
+          for (const meta of metaData) {
+            if (meta.description) {
+              descriptions[meta.paperless_tag_id] = meta.description;
+              tagsWithDescriptions.push(meta.paperless_tag_id);
+            }
+          }
+          setTagDescriptions(descriptions);
+
+          // Fetch translations for tags with descriptions
+          const translations: Record<number, Record<string, string>> = {};
+          const translatedLangs: Record<number, string[]> = {};
+
+          for (const tagId of tagsWithDescriptions) {
+            try {
+              const transResponse = await fetch(`${API_BASE}/api/metadata/tags/${tagId}/translations`);
+              if (transResponse.ok) {
+                const transData = await transResponse.json();
+                if (transData.translated_langs && transData.translated_langs.length > 0) {
+                  translations[tagId] = transData.translations;
+                  translatedLangs[tagId] = transData.translated_langs;
+                }
+              }
+            } catch {
+              // Translations are optional, continue
+            }
+          }
+          setTagTranslations(translations);
+          setTagTranslatedLangs(translatedLangs);
+        }
+      } catch {
+        // Metadata is optional, don't fail if unavailable
+      }
     } catch (err) {
       setAiTagsError(err instanceof Error ? err.message : "Failed to fetch tags");
     } finally {
       setAiTagsLoading(false);
-    }
-  };
-
-  // Save AI tags selection
-  const saveAiTagsSelection = async () => {
-    setAiTagsSaving(true);
-    setAiTagsError(null);
-    setAiTagsSuccess(null);
-    try {
-      const response = await fetch(`${API_BASE}/api/settings/ai-tags`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selected_tag_ids: selectedAiTags }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      setAiTagsSuccess(`Saved ${selectedAiTags.length} tag(s) for AI suggestions`);
-      setAiTagsHasChanges(false);
-    } catch (err) {
-      setAiTagsError(err instanceof Error ? err.message : "Failed to save selection");
-    } finally {
-      setAiTagsSaving(false);
     }
   };
 
@@ -662,7 +809,126 @@ export default function SettingsPage() {
       }
     });
     setAiTagsHasChanges(true);
-    setAiTagsSuccess(null);
+  };
+
+  // Optimize a tag description using AI (for current locale)
+  const optimizeTagDescription = async (tagId: number, tagName: string) => {
+    // Get description for current locale, fall back to original
+    const description = tagTranslations[tagId]?.[currentLocale] ?? tagDescriptions[tagId];
+    if (!description?.trim()) return;
+
+    setOptimizingTagId(tagId);
+    try {
+      const response = await fetch(`${API_BASE}/api/metadata/tags/${tagId}/optimize-description`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description,
+          tag_name: tagName,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Update only the current locale's translation
+        setTagTranslations((prev) => ({
+          ...prev,
+          [tagId]: {
+            ...prev[tagId],
+            [currentLocale]: data.optimized,
+          },
+        }));
+        // Track that this language now has a translation
+        setTagTranslatedLangs((prev) => {
+          const existing = prev[tagId] || [];
+          if (!existing.includes(currentLocale)) {
+            return { ...prev, [tagId]: [...existing, currentLocale] };
+          }
+          return prev;
+        });
+        setTagDescriptionsHasChanges(true);
+      }
+    } catch (error) {
+      console.error("Failed to optimize description:", error);
+    } finally {
+      setOptimizingTagId(null);
+    }
+  };
+
+  // Translate a tag description from current locale to all other languages
+  const translateTagDescription = async (tagId: number) => {
+    // Get description for current locale, fall back to original
+    const description = tagTranslations[tagId]?.[currentLocale] ?? tagDescriptions[tagId];
+    if (!description?.trim()) return;
+
+    setTranslatingTagId(tagId);
+    try {
+      const response = await fetch(`${API_BASE}/api/metadata/tags/${tagId}/translate-description`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description,
+          source_lang: currentLocale, // Translate from current UI language
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Merge new translations with existing (keep current locale's version)
+        const newTranslations: Record<string, string> = {
+          ...tagTranslations[tagId],
+          [currentLocale]: description,
+        };
+        for (const t of data.translations) {
+          newTranslations[t.lang] = t.text;
+        }
+        setTagTranslations((prev) => ({
+          ...prev,
+          [tagId]: newTranslations,
+        }));
+        setTagTranslatedLangs((prev) => ({
+          ...prev,
+          [tagId]: Object.keys(newTranslations),
+        }));
+        setTagDescriptionsHasChanges(true);
+      }
+    } catch (error) {
+      console.error("Failed to translate description:", error);
+    } finally {
+      setTranslatingTagId(null);
+    }
+  };
+
+  // Fetch all document types from Paperless for AI selection
+  const fetchAiDocTypes = async () => {
+    setAiDocTypesLoading(true);
+    setAiDocTypesError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/settings/ai-document-types`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      setAllDocumentTypes(data.document_types || []);
+      setSelectedAiDocTypes(data.selected_type_ids || []);
+      setAiDocTypesHasChanges(false);
+    } catch (err) {
+      setAiDocTypesError(err instanceof Error ? err.message : "Failed to fetch document types");
+    } finally {
+      setAiDocTypesLoading(false);
+    }
+  };
+
+  // Toggle an AI document type selection
+  const toggleAiDocType = (typeId: number) => {
+    setSelectedAiDocTypes((prev) => {
+      if (prev.includes(typeId)) {
+        return prev.filter((id) => id !== typeId);
+      } else {
+        return [...prev, typeId];
+      }
+    });
+    setAiDocTypesHasChanges(true);
   };
 
   // Data type icons for custom fields
@@ -731,6 +997,10 @@ export default function SettingsPage() {
             <TabsTrigger value="ai-tags" className="gap-2">
               <Tag className="h-4 w-4" />
               {t("tabs.aiTags")}
+            </TabsTrigger>
+            <TabsTrigger value="ai-document-types" className="gap-2">
+              <FileText className="h-4 w-4" />
+              {t("tabs.aiDocumentTypes")}
             </TabsTrigger>
             <TabsTrigger value="workflow-tags" className="gap-2">
               <GitBranch className="h-4 w-4" />
@@ -897,6 +1167,21 @@ export default function SettingsPage() {
                           searchPlaceholder="Search models..."
                           emptyText="No model found."
                         />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>{t("ollama.translationModel")}</Label>
+                        <ModelCombobox
+                          models={ollamaModels}
+                          value={settings.ollama_model_translation}
+                          onValueChange={(v) => updateSetting("ollama_model_translation", v)}
+                          placeholder="Select translation model (optional)..."
+                          searchPlaceholder="Search models..."
+                          emptyText="No model found."
+                        />
+                        <p className="text-xs text-zinc-500">
+                          {t("ollama.translationModelDesc")}
+                        </p>
                       </div>
                     </>
                   )}
@@ -1283,42 +1568,20 @@ export default function SettingsPage() {
                       {t("customFields.description")}
                     </CardDescription>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={fetchCustomFields}
-                      disabled={customFieldsLoading}
-                    >
-                      <RefreshCw className={`h-4 w-4 mr-2 ${customFieldsLoading ? "animate-spin" : ""}`} />
-                      {tCommon("refresh")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={saveCustomFieldsSelection}
-                      disabled={customFieldsSaving || !customFieldsHasChanges}
-                      className="bg-emerald-600 hover:bg-emerald-700"
-                    >
-                      {customFieldsSaving ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Save className="h-4 w-4 mr-2" />
-                      )}
-                      {t("customFields.saveSelection")}
-                    </Button>
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchCustomFields}
+                    disabled={customFieldsLoading}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${customFieldsLoading ? "animate-spin" : ""}`} />
+                    {tCommon("refresh")}
+                  </Button>
                 </div>
               </CardHeader>
             </Card>
 
-            {/* Success/Error Messages */}
-            {customFieldsSuccess && (
-              <Alert className="border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <AlertTitle>{tCommon("success")}</AlertTitle>
-                <AlertDescription>{customFieldsSuccess}</AlertDescription>
-              </Alert>
-            )}
+            {/* Error Message */}
             {customFieldsError && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
@@ -1372,7 +1635,6 @@ export default function SettingsPage() {
                         onClick={() => {
                           setSelectedCustomFields(customFields.map((f) => f.id));
                           setCustomFieldsHasChanges(true);
-                          setCustomFieldsSuccess(null);
                         }}
                       >
                         {tCommon("selectAll")}
@@ -1383,7 +1645,6 @@ export default function SettingsPage() {
                         onClick={() => {
                           setSelectedCustomFields([]);
                           setCustomFieldsHasChanges(true);
-                          setCustomFieldsSuccess(null);
                         }}
                       >
                         {tCommon("clear")}
@@ -1459,42 +1720,20 @@ export default function SettingsPage() {
                       {t("aiTags.description")}
                     </CardDescription>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={fetchAiTags}
-                      disabled={aiTagsLoading}
-                    >
-                      <RefreshCw className={`h-4 w-4 mr-2 ${aiTagsLoading ? "animate-spin" : ""}`} />
-                      {tCommon("refresh")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={saveAiTagsSelection}
-                      disabled={aiTagsSaving || !aiTagsHasChanges}
-                      className="bg-emerald-600 hover:bg-emerald-700"
-                    >
-                      {aiTagsSaving ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Save className="h-4 w-4 mr-2" />
-                      )}
-                      {t("aiTags.saveSelection")}
-                    </Button>
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchAiTags}
+                    disabled={aiTagsLoading}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${aiTagsLoading ? "animate-spin" : ""}`} />
+                    {tCommon("refresh")}
+                  </Button>
                 </div>
               </CardHeader>
             </Card>
 
-            {/* Success/Error Messages */}
-            {aiTagsSuccess && (
-              <Alert className="border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <AlertTitle>{tCommon("success")}</AlertTitle>
-                <AlertDescription>{aiTagsSuccess}</AlertDescription>
-              </Alert>
-            )}
+            {/* Error Message */}
             {aiTagsError && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
@@ -1548,7 +1787,6 @@ export default function SettingsPage() {
                         onClick={() => {
                           setSelectedAiTags(allTags.map((tg) => tg.id));
                           setAiTagsHasChanges(true);
-                          setAiTagsSuccess(null);
                         }}
                       >
                         {tCommon("selectAll")}
@@ -1559,7 +1797,6 @@ export default function SettingsPage() {
                         onClick={() => {
                           setSelectedAiTags([]);
                           setAiTagsHasChanges(true);
-                          setAiTagsSuccess(null);
                         }}
                       >
                         {tCommon("clear")}
@@ -1570,48 +1807,304 @@ export default function SettingsPage() {
                 <CardContent>
                   <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
                     {allTags.map((tag) => (
+                      <div key={tag.id} className="py-3 first:pt-0 last:pb-0 -mx-4 px-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div
+                              className={`h-5 w-5 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${
+                                selectedAiTags.includes(tag.id)
+                                  ? "bg-emerald-600 border-emerald-600"
+                                  : "border-zinc-300 dark:border-zinc-600"
+                              }`}
+                              onClick={() => toggleAiTag(tag.id)}
+                            >
+                              {selectedAiTags.includes(tag.id) && (
+                                <Check className="h-3 w-3 text-white" />
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div
+                                className="h-8 w-8 rounded-full flex items-center justify-center"
+                                style={{
+                                  backgroundColor: tag.color ? `${tag.color}20` : undefined,
+                                }}
+                              >
+                                <Tag
+                                  className="h-4 w-4"
+                                  style={{ color: tag.color || undefined }}
+                                />
+                              </div>
+                              <div>
+                                <p className="font-medium">{tag.name}</p>
+                                <p className="text-sm text-zinc-500">
+                                  {t("aiTags.documentCount", { count: tag.document_count })}
+                                  {tagDescriptions[tag.id] && (
+                                    <span className="ml-2 text-emerald-600">
+                                      • {t("aiTags.hasDescription")}
+                                    </span>
+                                  )}
+                                  {tagTranslatedLangs[tag.id]?.length > 1 && (
+                                    <span className="ml-2 text-blue-600">
+                                      • {t("aiTags.isTranslated")}
+                                    </span>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              variant={selectedAiTags.includes(tag.id) ? "default" : "secondary"}
+                              className={selectedAiTags.includes(tag.id) ? "bg-emerald-600" : ""}
+                            >
+                              {selectedAiTags.includes(tag.id) ? t("aiTags.aiEnabled") : t("aiTags.aiDisabled")}
+                            </Badge>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setExpandedTagId(expandedTagId === tag.id ? null : tag.id)}
+                              className="h-8 w-8 p-0"
+                            >
+                              {expandedTagId === tag.id ? (
+                                <ChevronUp className="h-4 w-4" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                        {expandedTagId === tag.id && (() => {
+                          // Get current value: prefer translation for current locale, fall back to original
+                          const currentValue = tagTranslations[tag.id]?.[currentLocale]
+                            ?? tagDescriptions[tag.id]
+                            ?? "";
+                          const otherLangs = tagTranslatedLangs[tag.id]?.filter(l => l !== currentLocale) ?? [];
+
+                          return (
+                          <div className="mt-3 pl-9">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                                  {t("aiTags.descriptionLabel")}
+                                  <span className="ml-2 text-xs font-normal text-blue-600 dark:text-blue-400">
+                                    ({t("aiTags.editingIn", { lang: localeNames[currentLocale] })})
+                                  </span>
+                                </label>
+                                <p className="text-xs text-zinc-500">
+                                  {t("aiTags.descriptionHint")}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={!currentValue?.trim() || optimizingTagId === tag.id}
+                                  onClick={() => optimizeTagDescription(tag.id, tag.name)}
+                                  title={t("aiTags.optimizeDescription")}
+                                >
+                                  {optimizingTagId === tag.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Sparkles className="h-4 w-4" />
+                                  )}
+                                  <span className="ml-1">{t("aiTags.optimize")}</span>
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={!currentValue?.trim() || translatingTagId === tag.id}
+                                  onClick={() => translateTagDescription(tag.id)}
+                                  title={t("aiTags.translateDescription")}
+                                >
+                                  {translatingTagId === tag.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Languages className="h-4 w-4" />
+                                  )}
+                                  <span className="ml-1">{t("aiTags.translate")}</span>
+                                </Button>
+                              </div>
+                            </div>
+                            <textarea
+                              className="w-full p-2 text-sm border rounded-md bg-white dark:bg-zinc-900 border-zinc-300 dark:border-zinc-700 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                              rows={2}
+                              placeholder={t("aiTags.descriptionPlaceholder")}
+                              value={currentValue}
+                              onChange={(e) => {
+                                // Update translation for current locale
+                                setTagTranslations((prev) => ({
+                                  ...prev,
+                                  [tag.id]: {
+                                    ...prev[tag.id],
+                                    [currentLocale]: e.target.value,
+                                  },
+                                }));
+                                // Track that this language now has a translation
+                                setTagTranslatedLangs((prev) => {
+                                  const existing = prev[tag.id] || [];
+                                  if (!existing.includes(currentLocale)) {
+                                    return { ...prev, [tag.id]: [...existing, currentLocale] };
+                                  }
+                                  return prev;
+                                });
+                                setTagDescriptionsHasChanges(true);
+                              }}
+                            />
+                            {/* Show other available translations */}
+                            {otherLangs.length > 0 && (
+                              <p className="mt-2 text-xs text-zinc-500">
+                                {t("aiTags.alsoAvailableIn", { langs: otherLangs.map(l => localeNames[l as Locale] || l).join(", ") })}
+                              </p>
+                            )}
+                          </div>
+                          );
+                        })()}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* ============================================================= */}
+          {/* AI DOCUMENT TYPES TAB */}
+          {/* ============================================================= */}
+          <TabsContent value="ai-document-types" className="space-y-6">
+            {/* Header Card */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <FileText className="h-5 w-5" />
+                      {t("aiDocumentTypes.title")}
+                    </CardTitle>
+                    <CardDescription className="mt-1">
+                      {t("aiDocumentTypes.description")}
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchAiDocTypes}
+                    disabled={aiDocTypesLoading}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${aiDocTypesLoading ? "animate-spin" : ""}`} />
+                    {tCommon("refresh")}
+                  </Button>
+                </div>
+              </CardHeader>
+            </Card>
+
+            {/* Error Message */}
+            {aiDocTypesError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>{tCommon("error")}</AlertTitle>
+                <AlertDescription>{aiDocTypesError}</AlertDescription>
+              </Alert>
+            )}
+
+            {/* Loading State */}
+            {aiDocTypesLoading && allDocumentTypes.length === 0 && (
+              <Card>
+                <CardContent className="py-12">
+                  <div className="flex flex-col items-center justify-center gap-3">
+                    <Loader2 className="h-8 w-8 animate-spin text-zinc-400" />
+                    <p className="text-sm text-zinc-500">{t("aiDocumentTypes.loadingDocTypes")}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* No Document Types */}
+            {!aiDocTypesLoading && allDocumentTypes.length === 0 && (
+              <Card>
+                <CardContent className="py-12">
+                  <div className="flex flex-col items-center justify-center gap-3 text-zinc-500">
+                    <FileText className="h-12 w-12 text-zinc-300" />
+                    <p className="text-lg font-medium">{t("aiDocumentTypes.noTypesFound")}</p>
+                    <p className="text-sm">
+                      {t("aiDocumentTypes.noTypesDesc")}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Document Types List */}
+            {allDocumentTypes.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>{t("aiDocumentTypes.availableTypes")}</CardTitle>
+                      <CardDescription>
+                        {t("aiDocumentTypes.typesEnabled", { selected: selectedAiDocTypes.length, total: allDocumentTypes.length })}
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedAiDocTypes(allDocumentTypes.map((dt) => dt.id));
+                          setAiDocTypesHasChanges(true);
+                        }}
+                      >
+                        {tCommon("selectAll")}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedAiDocTypes([]);
+                          setAiDocTypesHasChanges(true);
+                        }}
+                      >
+                        {tCommon("clear")}
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                    {allDocumentTypes.map((docType) => (
                       <div
-                        key={tag.id}
+                        key={docType.id}
                         className="flex items-center justify-between py-3 first:pt-0 last:pb-0 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50 -mx-4 px-4"
-                        onClick={() => toggleAiTag(tag.id)}
+                        onClick={() => toggleAiDocType(docType.id)}
                       >
                         <div className="flex items-center gap-4">
                           <div
                             className={`h-5 w-5 rounded border-2 flex items-center justify-center transition-colors ${
-                              selectedAiTags.includes(tag.id)
+                              selectedAiDocTypes.includes(docType.id)
                                 ? "bg-emerald-600 border-emerald-600"
                                 : "border-zinc-300 dark:border-zinc-600"
                             }`}
                           >
-                            {selectedAiTags.includes(tag.id) && (
+                            {selectedAiDocTypes.includes(docType.id) && (
                               <Check className="h-3 w-3 text-white" />
                             )}
                           </div>
                           <div className="flex items-center gap-3">
-                            <div
-                              className="h-8 w-8 rounded-full flex items-center justify-center"
-                              style={{
-                                backgroundColor: tag.color ? `${tag.color}20` : undefined,
-                              }}
-                            >
-                              <Tag
-                                className="h-4 w-4"
-                                style={{ color: tag.color || undefined }}
-                              />
+                            <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                              <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                             </div>
                             <div>
-                              <p className="font-medium">{tag.name}</p>
+                              <p className="font-medium">{docType.name}</p>
                               <p className="text-sm text-zinc-500">
-                                {t("aiTags.documentCount", { count: tag.document_count })}
+                                {t("aiDocumentTypes.documentCount", { count: docType.document_count })}
                               </p>
                             </div>
                           </div>
                         </div>
                         <Badge
-                          variant={selectedAiTags.includes(tag.id) ? "default" : "secondary"}
-                          className={selectedAiTags.includes(tag.id) ? "bg-emerald-600" : ""}
+                          variant={selectedAiDocTypes.includes(docType.id) ? "default" : "secondary"}
+                          className={selectedAiDocTypes.includes(docType.id) ? "bg-emerald-600" : ""}
                         >
-                          {selectedAiTags.includes(tag.id) ? t("aiTags.aiEnabled") : t("aiTags.aiDisabled")}
+                          {selectedAiDocTypes.includes(docType.id) ? t("aiDocumentTypes.aiEnabled") : t("aiDocumentTypes.aiDisabled")}
                         </Badge>
                       </div>
                     ))}
@@ -1932,6 +2425,120 @@ export default function SettingsPage() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Prompt Translation */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Globe className="h-5 w-5" />
+                  {t("language.translatePrompts")}
+                </CardTitle>
+                <CardDescription>
+                  {t("language.translatePromptsDesc")}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>{t("language.sourceLanguage")}</Label>
+                    <Select
+                      value={translationSourceLang}
+                      onValueChange={setTranslationSourceLang}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableLanguages
+                          .filter((l) => l.prompt_count > 0)
+                          .map((lang) => (
+                            <SelectItem key={lang.code} value={lang.code}>
+                              {lang.name} ({lang.prompt_count} {tCommon("prompts", { count: lang.prompt_count }).split(" ")[0]})
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>{t("language.targetLanguage")}</Label>
+                    <Select
+                      value={translationTargetLang}
+                      onValueChange={setTranslationTargetLang}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t("language.selectTarget")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[
+                          { code: "en", name: "English" },
+                          { code: "de", name: "German" },
+                          { code: "fr", name: "French" },
+                          { code: "es", name: "Spanish" },
+                          { code: "it", name: "Italian" },
+                          { code: "pt", name: "Portuguese" },
+                          { code: "nl", name: "Dutch" },
+                          { code: "pl", name: "Polish" },
+                        ]
+                          .filter((l) => l.code !== translationSourceLang)
+                          .map((lang) => (
+                            <SelectItem key={lang.code} value={lang.code}>
+                              {lang.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-end">
+                    <Button
+                      onClick={translatePrompts}
+                      disabled={translating || !translationTargetLang || translationSourceLang === translationTargetLang}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700"
+                    >
+                      {translating ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Globe className="mr-2 h-4 w-4" />
+                      )}
+                      {t("language.translateAll")}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Translation Result */}
+                {translationResult && (
+                  <div className="mt-4">
+                    {translationResult.success ? (
+                      <Alert className="border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        <AlertTitle>{tCommon("success")}</AlertTitle>
+                        <AlertDescription>
+                          {t("language.translationSuccess", {
+                            successful: translationResult.successful,
+                            total: translationResult.total,
+                          })}
+                        </AlertDescription>
+                      </Alert>
+                    ) : (
+                      <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertTitle>{tCommon("error")}</AlertTitle>
+                        <AlertDescription>
+                          {t("language.translationFailed", {
+                            failed: translationResult.failed,
+                          })}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </div>
+                )}
+
+                <p className="text-xs text-zinc-500">
+                  {t("language.translateNote")}
+                </p>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* ============================================================= */}

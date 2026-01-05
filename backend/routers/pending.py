@@ -1,0 +1,211 @@
+"""Pending Reviews API endpoints."""
+
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
+from config import Settings, get_settings
+from services.paperless import PaperlessClient
+from services.pending_reviews import (
+    PendingReviewItem,
+    PendingReviewsService,
+    get_pending_reviews_service,
+)
+
+router = APIRouter()
+
+
+class PendingCounts(BaseModel):
+    """Counts of pending items by type."""
+
+    correspondent: int
+    document_type: int
+    tag: int
+    total: int
+
+
+class ApproveRequest(BaseModel):
+    """Request to approve a pending item."""
+
+    create_entity: bool = True  # Whether to create the new entity in Paperless
+
+
+class UpdateSuggestionRequest(BaseModel):
+    """Request to update the selected suggestion."""
+
+    new_suggestion: str
+
+
+def get_paperless_client(settings: Settings = Depends(get_settings)) -> PaperlessClient:
+    """Get Paperless client dependency."""
+    return PaperlessClient(settings.paperless_url, settings.paperless_token)
+
+
+@router.get("", response_model=list[PendingReviewItem])
+async def get_pending_items(
+    type: Literal["correspondent", "document_type", "tag"] | None = None,
+    service: PendingReviewsService = Depends(get_pending_reviews_service),
+):
+    """Get all pending review items, optionally filtered by type."""
+    return service.get_all(item_type=type)
+
+
+@router.get("/counts", response_model=PendingCounts)
+async def get_pending_counts(
+    service: PendingReviewsService = Depends(get_pending_reviews_service),
+):
+    """Get counts of pending items by type."""
+    counts = service.get_counts()
+    return PendingCounts(**counts)
+
+
+@router.get("/{item_id}", response_model=PendingReviewItem)
+async def get_pending_item(
+    item_id: str,
+    service: PendingReviewsService = Depends(get_pending_reviews_service),
+):
+    """Get a specific pending item."""
+    item = service.get_by_id(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Pending item not found")
+    return item
+
+
+@router.put("/{item_id}/suggestion", response_model=PendingReviewItem)
+async def update_pending_suggestion(
+    item_id: str,
+    request: UpdateSuggestionRequest,
+    service: PendingReviewsService = Depends(get_pending_reviews_service),
+):
+    """Update the selected suggestion for a pending item."""
+    item = service.update_suggestion(item_id, request.new_suggestion)
+    if not item:
+        raise HTTPException(status_code=404, detail="Pending item not found")
+    return item
+
+
+@router.post("/{item_id}/approve")
+async def approve_pending_item(
+    item_id: str,
+    request: ApproveRequest = ApproveRequest(),
+    service: PendingReviewsService = Depends(get_pending_reviews_service),
+    client: PaperlessClient = Depends(get_paperless_client),
+    settings: Settings = Depends(get_settings),
+):
+    """Approve a pending item and apply it.
+
+    This will:
+    1. Create the new entity in Paperless (if create_entity=True)
+    2. Assign it to the document
+    3. Remove from pending queue
+    4. Continue the processing pipeline
+    """
+    item = service.get_by_id(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Pending item not found")
+
+    result = {"id": item_id, "type": item.type, "applied": False}
+
+    try:
+        if item.type == "correspondent":
+            if request.create_entity:
+                # Create and assign correspondent
+                correspondent_id = await client.get_or_create_correspondent(item.suggestion)
+                await client.update_document(item.doc_id, correspondent=correspondent_id)
+                result["correspondent_id"] = correspondent_id
+                result["applied"] = True
+
+            # Update pipeline tag to continue processing
+            await client.remove_tag_from_document(item.doc_id, settings.tag_ocr_done)
+            await client.add_tag_to_document(item.doc_id, settings.tag_correspondent_done)
+
+        elif item.type == "document_type":
+            if request.create_entity:
+                # Create and assign document type
+                doc_type_id = await client.get_or_create_document_type(item.suggestion)
+                await client.update_document(item.doc_id, document_type=doc_type_id)
+                result["document_type_id"] = doc_type_id
+                result["applied"] = True
+
+            # Update pipeline tag
+            await client.remove_tag_from_document(item.doc_id, settings.tag_correspondent_done)
+            await client.add_tag_to_document(item.doc_id, settings.tag_document_type_done)
+
+        elif item.type == "tag":
+            if request.create_entity:
+                # Create and assign tag
+                tag_id = await client.get_or_create_tag(item.suggestion)
+                doc = await client.get_document(item.doc_id)
+                current_tags = doc.get("tags", []) if doc else []
+                if tag_id not in current_tags:
+                    current_tags.append(tag_id)
+                    await client.update_document(item.doc_id, tags=current_tags)
+                result["tag_id"] = tag_id
+                result["applied"] = True
+
+        # Remove from pending queue
+        service.remove(item_id)
+        result["removed"] = True
+
+        # Check if there are more pending items for this document
+        remaining = service.get_by_doc(item.doc_id)
+        result["remaining_items"] = len(remaining)
+
+        return result
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to apply: {str(e)}")
+
+
+@router.post("/{item_id}/reject")
+async def reject_pending_item(
+    item_id: str,
+    service: PendingReviewsService = Depends(get_pending_reviews_service),
+    client: PaperlessClient = Depends(get_paperless_client),
+    settings: Settings = Depends(get_settings),
+):
+    """Reject a pending item without applying it.
+
+    The document will still progress through the pipeline,
+    just without this entity being created/assigned.
+    """
+    item = service.get_by_id(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Pending item not found")
+
+    # Update pipeline tag to continue processing (skip this step)
+    if item.type == "correspondent":
+        await client.remove_tag_from_document(item.doc_id, settings.tag_ocr_done)
+        await client.add_tag_to_document(item.doc_id, settings.tag_correspondent_done)
+    elif item.type == "document_type":
+        await client.remove_tag_from_document(item.doc_id, settings.tag_correspondent_done)
+        await client.add_tag_to_document(item.doc_id, settings.tag_document_type_done)
+    # Tags don't block the pipeline, so no tag update needed
+
+    # Remove from pending queue
+    service.remove(item_id)
+
+    return {"id": item_id, "rejected": True, "type": item.type}
+
+
+@router.delete("/{item_id}")
+async def delete_pending_item(
+    item_id: str,
+    service: PendingReviewsService = Depends(get_pending_reviews_service),
+):
+    """Delete a pending item without any action."""
+    if not service.remove(item_id):
+        raise HTTPException(status_code=404, detail="Pending item not found")
+    return {"id": item_id, "deleted": True}
+
+
+@router.delete("/document/{doc_id}")
+async def delete_pending_for_document(
+    doc_id: int,
+    type: Literal["correspondent", "document_type", "tag"] | None = None,
+    service: PendingReviewsService = Depends(get_pending_reviews_service),
+):
+    """Delete all pending items for a document."""
+    removed = service.remove_by_doc(doc_id, item_type=type)
+    return {"doc_id": doc_id, "removed": removed}

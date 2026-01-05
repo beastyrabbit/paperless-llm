@@ -24,11 +24,15 @@ class TitleAgent:
             self.settings.paperless_url,
             self.settings.paperless_token,
         )
-        self.qdrant = QdrantService(
-            qdrant_url=self.settings.qdrant_url,
-            collection_name=self.settings.qdrant_collection,
-            ollama_url=self.settings.ollama_url,
-        )
+        # Qdrant is optional - only used for similar document context
+        self.qdrant: QdrantService | None = None
+        if self.settings.vector_search_enabled:
+            self.qdrant = QdrantService(
+                qdrant_url=self.settings.qdrant_url,
+                collection_name=self.settings.qdrant_collection,
+                ollama_url=self.settings.ollama_url,
+                embedding_model=self.settings.ollama_embedding_model,
+            )
 
     async def process(
         self,
@@ -52,9 +56,15 @@ class TitleAgent:
 
     async def _process_sync(self, doc_id: int, content: str) -> dict[str, Any]:
         """Non-streaming title processing."""
-        # Get similar documents for context
-        await self.qdrant.initialize()
-        similar_docs = await self.qdrant.search_similar(content[:2000], k=5)
+        # Get similar documents for context (optional)
+        similar_docs: list[dict] = []
+        if self.qdrant:
+            try:
+                await self.qdrant.initialize()
+                similar_docs = await self.qdrant.search_similar(content[:2000], k=5)
+            except Exception:
+                # Continue without similar docs - not critical
+                pass
 
         # Run analysis with confirmation loop
         max_retries = self.settings.confirmation_max_retries
@@ -97,9 +107,15 @@ class TitleAgent:
         content: str,
     ) -> AsyncGenerator[dict, None]:
         """Streaming title processing."""
-        # Get similar documents
-        await self.qdrant.initialize()
-        similar_docs = await self.qdrant.search_similar(content[:2000], k=5)
+        # Get similar documents (optional)
+        similar_docs: list[dict] = []
+        if self.qdrant:
+            try:
+                await self.qdrant.initialize()
+                similar_docs = await self.qdrant.search_similar(content[:2000], k=5)
+            except Exception:
+                # Continue without similar docs - not critical
+                pass
 
         yield {"type": "similar_docs", "count": len(similar_docs)}
 

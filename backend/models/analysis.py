@@ -58,10 +58,21 @@ class TagSuggestion(BaseModel):
     relevance: str = Field(description="Why this tag is relevant")
 
 
+class TagRemoval(BaseModel):
+    """A tag to remove from the document."""
+
+    tag_name: str = Field(description="Name of the tag to remove")
+    reason: str = Field(description="Strong justification for removing this tag")
+
+
 class TagsAnalysis(BaseModel):
     """Result of tags analysis."""
 
     suggested_tags: list[TagSuggestion] = Field(description="List of suggested tags")
+    tags_to_remove: list[TagRemoval] = Field(
+        default_factory=list,
+        description="Tags to remove from the document (requires strong justification)",
+    )
     reasoning: str = Field(description="Overall reasoning for tag selection")
     confidence: float = Field(ge=0, le=1, description="Confidence score (0-1)")
 

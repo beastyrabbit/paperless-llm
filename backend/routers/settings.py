@@ -28,6 +28,7 @@ class SettingsResponse(BaseModel):
     ollama_url: str
     ollama_model_large: str
     ollama_model_small: str
+    ollama_model_translation: str
     ollama_embedding_model: str
     ollama_thinking_enabled: bool
     ollama_thinking_level: str
@@ -78,6 +79,7 @@ class SettingsUpdate(BaseModel):
     ollama_url: str | None = None
     ollama_model_large: str | None = None
     ollama_model_small: str | None = None
+    ollama_model_translation: str | None = None
     ollama_embedding_model: str | None = None
     ollama_thinking_enabled: bool | None = None
     ollama_thinking_level: Literal["low", "medium", "high"] | None = None
@@ -164,6 +166,7 @@ async def get_current_settings(settings: Settings = Depends(get_settings)):
         ollama_url=_get_setting("ollama_url", settings),
         ollama_model_large=_get_setting("ollama_model_large", settings),
         ollama_model_small=_get_setting("ollama_model_small", settings),
+        ollama_model_translation=_get_setting("ollama_model_translation", settings),
         ollama_embedding_model=_get_setting("ollama_embedding_model", settings),
         ollama_thinking_enabled=_get_setting("ollama_thinking_enabled", settings),
         ollama_thinking_level=_get_setting("ollama_thinking_level", settings),
@@ -224,6 +227,10 @@ async def update_settings(update: SettingsUpdate):
         config_path = save_settings_to_yaml(updated)
         # Clear the settings cache so next load gets fresh values
         clear_settings_cache()
+        # Clear the pipeline cache so it picks up new settings (lazy import to avoid circular dependency)
+        from routers.processing import clear_pipeline_cache
+
+        clear_pipeline_cache()
         return {
             "status": "updated",
             "updated_fields": list(updated.keys()),
@@ -231,6 +238,10 @@ async def update_settings(update: SettingsUpdate):
         }
     except Exception as e:
         # Still return success for runtime update even if file save fails
+        # Still clear caches for runtime changes
+        from routers.processing import clear_pipeline_cache
+
+        clear_pipeline_cache()
         return {
             "status": "updated",
             "updated_fields": list(updated.keys()),
@@ -590,8 +601,14 @@ async def get_custom_fields(settings: Settings = Depends(get_settings)):
             for f in fields
         ]
 
-        # Get selected fields from runtime settings or config
-        selected = _runtime_settings.get("custom_fields_enabled", [])
+        # Get selected fields from runtime settings first, then config
+        selected = _runtime_settings.get("custom_fields_enabled")
+        if selected is None:
+            # Try from config
+            selected = getattr(settings, "custom_fields_enabled", [])
+            if not selected:
+                # Default: all fields enabled if nothing configured
+                selected = [f.id for f in field_defs]
 
         return CustomFieldsResponse(fields=field_defs, selected_fields=selected)
     except Exception:
@@ -608,7 +625,26 @@ class UpdateCustomFieldsRequest(BaseModel):
 async def update_custom_fields_selection(request: UpdateCustomFieldsRequest):
     """Update which custom fields are enabled for LLM processing."""
     _runtime_settings["custom_fields_enabled"] = request.selected_field_ids
-    return {"status": "updated", "selected_fields": request.selected_field_ids}
+
+    # Persist to config.yaml
+    try:
+        config_path = save_settings_to_yaml({"custom_fields_enabled": request.selected_field_ids})
+        clear_settings_cache()
+        # Clear pipeline cache so it picks up changes
+        from routers.processing import clear_pipeline_cache
+
+        clear_pipeline_cache()
+        return {
+            "status": "updated",
+            "selected_fields": request.selected_field_ids,
+            "config_file": str(config_path) if config_path else None,
+        }
+    except Exception as e:
+        return {
+            "status": "updated",
+            "selected_fields": request.selected_field_ids,
+            "warning": f"Runtime updated but failed to save to config.yaml: {str(e)}",
+        }
 
 
 # =============================================================================
@@ -666,12 +702,14 @@ async def get_ai_tags(settings: Settings = Depends(get_settings)):
         # Sort tags by name for consistent display
         tag_infos.sort(key=lambda x: x.name.lower())
 
-        # Get selected tags from runtime settings or config
-        # If not set, default to all tags being enabled
+        # Get selected tags from runtime settings first, then config
         selected = _runtime_settings.get("ai_tags_enabled")
         if selected is None:
-            # Default: all tags are enabled for AI
-            selected = [t.id for t in tag_infos]
+            # Try from config
+            selected = getattr(settings, "ai_tags_enabled", [])
+            if not selected:
+                # Default: all tags are enabled for AI
+                selected = [t.id for t in tag_infos]
 
         return AiTagsResponse(tags=tag_infos, selected_tag_ids=selected)
     except Exception:
@@ -696,5 +734,94 @@ async def update_ai_tags_selection(request: UpdateAiTagsRequest):
         return {
             "status": "updated",
             "selected_tag_ids": request.selected_tag_ids,
+            "warning": f"Runtime updated but failed to save to config.yaml: {str(e)}",
+        }
+
+
+# =============================================================================
+# AI Document Types Endpoints - Document types available for AI suggestions
+# =============================================================================
+
+
+class DocumentTypeInfo(BaseModel):
+    """Document type information from Paperless."""
+
+    id: int
+    name: str
+    document_count: int
+
+
+class AiDocumentTypesResponse(BaseModel):
+    """Response for AI document types endpoint."""
+
+    document_types: list[DocumentTypeInfo]
+    selected_type_ids: list[int]  # IDs of document types the AI can suggest
+
+
+class UpdateAiDocumentTypesRequest(BaseModel):
+    """Request to update AI-enabled document types."""
+
+    selected_type_ids: list[int]
+
+
+@router.get("/ai-document-types", response_model=AiDocumentTypesResponse)
+async def get_ai_document_types(settings: Settings = Depends(get_settings)):
+    """Get all document types from Paperless and which ones are enabled for AI suggestions."""
+    url = _get_setting("paperless_url", settings)
+    token = _get_setting("paperless_token", settings)
+
+    if not url or not token:
+        return AiDocumentTypesResponse(document_types=[], selected_type_ids=[])
+
+    try:
+        client = PaperlessClient(url, token)
+        doc_types = await client.get_document_types()
+
+        type_infos = [
+            DocumentTypeInfo(
+                id=dt["id"],
+                name=dt["name"],
+                document_count=dt.get("document_count", 0),
+            )
+            for dt in doc_types
+        ]
+
+        # Sort by name for consistent display
+        type_infos.sort(key=lambda x: x.name.lower())
+
+        # Get selected types from runtime settings first, then config
+        selected = _runtime_settings.get("ai_document_types_enabled")
+        if selected is None:
+            # Try from config
+            selected = getattr(settings, "ai_document_types_enabled", [])
+            if not selected:
+                # Default: all document types are enabled for AI
+                selected = [dt.id for dt in type_infos]
+
+        return AiDocumentTypesResponse(document_types=type_infos, selected_type_ids=selected)
+    except Exception:
+        return AiDocumentTypesResponse(document_types=[], selected_type_ids=[])
+
+
+@router.patch("/ai-document-types")
+async def update_ai_document_types_selection(request: UpdateAiDocumentTypesRequest):
+    """Update which document types the AI can suggest when processing documents."""
+    _runtime_settings["ai_document_types_enabled"] = request.selected_type_ids
+
+    # Persist to config.yaml
+    try:
+        config_path = save_settings_to_yaml(
+            {"ai_document_types_enabled": request.selected_type_ids}
+        )
+        clear_settings_cache()
+        return {
+            "status": "updated",
+            "selected_type_ids": request.selected_type_ids,
+            "config_file": str(config_path) if config_path else None,
+        }
+    except Exception as e:
+        return {
+            "status": "updated",
+            "selected_type_ids": request.selected_type_ids,
             "warning": f"Runtime updated but failed to save to config.yaml: {str(e)}",
         }

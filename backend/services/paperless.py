@@ -297,7 +297,7 @@ class PaperlessClient:
         result = await self.create_document_type(name)
         return result["id"]
 
-    async def _get_document_type_name(self, doc_type_id: int | None) -> str | None:
+    async def get_document_type_name(self, doc_type_id: int | None) -> str | None:
         """Get document type name by ID."""
         if doc_type_id is None:
             return None

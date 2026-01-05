@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     ollama_url: str = Field(default="")
     ollama_model_large: str = Field(default="gpt-oss:120b")
     ollama_model_small: str = Field(default="gpt-oss:20b")
+    ollama_model_translation: str = Field(default="")  # Empty = use large model
     ollama_embedding_model: str = Field(default="nomic-embed-text")
 
     # Ollama Thinking Mode
@@ -84,6 +85,7 @@ class Settings(BaseSettings):
     tag_document_type_done: str = Field(default="llm-document-type-done")
     tag_title_done: str = Field(default="llm-title-done")
     tag_tags_done: str = Field(default="llm-tags-done")
+    tag_custom_fields_done: str = Field(default="llm-custom-fields-done")
     tag_processed: str = Field(default="llm-processed")
 
     # =========================================================================
@@ -96,6 +98,15 @@ class Settings(BaseSettings):
     pipeline_title: bool = Field(default=True)
     pipeline_tags: bool = Field(default=True)
     pipeline_custom_fields: bool = Field(default=True)
+
+    # Custom fields enabled for AI processing (list of Paperless custom field IDs)
+    custom_fields_enabled: list[int] = Field(default_factory=list)
+
+    # AI-enabled tags (list of Paperless tag IDs)
+    ai_tags_enabled: list[int] = Field(default_factory=list)
+
+    # AI-enabled document types (list of Paperless document type IDs)
+    ai_document_types_enabled: list[int] = Field(default_factory=list)
 
     # =========================================================================
     # Vector Search Settings
@@ -155,6 +166,7 @@ def _flatten_yaml_config(yaml_config: dict[str, Any]) -> dict[str, Any]:
         flat["ollama_url"] = ollama.get("url")
         flat["ollama_model_large"] = ollama.get("model_large")
         flat["ollama_model_small"] = ollama.get("model_small")
+        flat["ollama_model_translation"] = ollama.get("model_translation")
         flat["ollama_embedding_model"] = ollama.get("embedding_model")
         if "thinking" in ollama:
             flat["ollama_thinking_enabled"] = ollama["thinking"].get("enabled")
@@ -209,6 +221,14 @@ def _flatten_yaml_config(yaml_config: dict[str, Any]) -> dict[str, Any]:
     if "language" in yaml_config:
         flat["prompt_language"] = yaml_config["language"].get("prompt")
 
+    # AI selection lists (direct top-level keys)
+    if "custom_fields_enabled" in yaml_config:
+        flat["custom_fields_enabled"] = yaml_config["custom_fields_enabled"]
+    if "ai_tags_enabled" in yaml_config:
+        flat["ai_tags_enabled"] = yaml_config["ai_tags_enabled"]
+    if "ai_document_types_enabled" in yaml_config:
+        flat["ai_document_types_enabled"] = yaml_config["ai_document_types_enabled"]
+
     return flat
 
 
@@ -252,6 +272,8 @@ def _unflatten_to_yaml(flat_settings: dict[str, Any]) -> dict[str, Any]:
             yaml_config["ollama"]["model_large"] = flat_settings["ollama_model_large"]
         if "ollama_model_small" in flat_settings:
             yaml_config["ollama"]["model_small"] = flat_settings["ollama_model_small"]
+        if "ollama_model_translation" in flat_settings:
+            yaml_config["ollama"]["model_translation"] = flat_settings["ollama_model_translation"]
         if "ollama_embedding_model" in flat_settings:
             yaml_config["ollama"]["embedding_model"] = flat_settings["ollama_embedding_model"]
         if any(k.startswith("ollama_thinking") for k in flat_settings):
@@ -338,6 +360,14 @@ def _unflatten_to_yaml(flat_settings: dict[str, Any]) -> dict[str, Any]:
     # Language
     if "prompt_language" in flat_settings:
         yaml_config["language"] = {"prompt": flat_settings["prompt_language"]}
+
+    # AI selection lists (direct top-level keys)
+    if "custom_fields_enabled" in flat_settings:
+        yaml_config["custom_fields_enabled"] = flat_settings["custom_fields_enabled"]
+    if "ai_tags_enabled" in flat_settings:
+        yaml_config["ai_tags_enabled"] = flat_settings["ai_tags_enabled"]
+    if "ai_document_types_enabled" in flat_settings:
+        yaml_config["ai_document_types_enabled"] = flat_settings["ai_document_types_enabled"]
 
     return yaml_config
 

@@ -46,6 +46,14 @@ export const settingsApi = {
     fetchApi<ConnectionTest>(`/api/settings/test-connection/${service}`, {
       method: "POST",
     }),
+  // AI Document Types
+  getAiDocumentTypes: () =>
+    fetchApi<AiDocumentTypesResponse>("/api/settings/ai-document-types"),
+  updateAiDocumentTypes: (selectedTypeIds: number[]) =>
+    fetchApi("/api/settings/ai-document-types", {
+      method: "PATCH",
+      body: JSON.stringify({ selected_type_ids: selectedTypeIds }),
+    }),
 };
 
 // Documents API
@@ -61,6 +69,7 @@ export const documentsApi = {
   get: (id: number) => fetchApi<DocumentDetail>(`/api/documents/${id}`),
   getContent: (id: number) =>
     fetchApi<{ id: number; content: string }>(`/api/documents/${id}/content`),
+  getPdfUrl: (id: number) => `${API_BASE}/api/documents/${id}/pdf`,
 };
 
 // Processing API
@@ -100,6 +109,88 @@ export const promptsApi = {
   getLanguages: () => fetchApi<AvailableLanguagesResponse>("/api/prompts/languages"),
 };
 
+// Pending Reviews API
+export const pendingApi = {
+  list: (type?: PendingItemType) =>
+    fetchApi<PendingItem[]>(`/api/pending${type ? `?type=${type}` : ""}`),
+  getCounts: () => fetchApi<PendingCounts>("/api/pending/counts"),
+  approve: (itemId: string, selectedValue?: string) =>
+    fetchApi<PendingApproveResponse>(`/api/pending/${itemId}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ selected_value: selectedValue }),
+    }),
+  reject: (itemId: string) =>
+    fetchApi<{ success: boolean }>(`/api/pending/${itemId}/reject`, {
+      method: "POST",
+    }),
+};
+
+// Metadata API
+export const metadataApi = {
+  // Tags
+  listTags: () => fetchApi<TagMetadata[]>("/api/metadata/tags"),
+  getTag: (tagId: number) => fetchApi<TagMetadata>(`/api/metadata/tags/${tagId}`),
+  updateTag: (tagId: number, data: TagMetadataUpdate) =>
+    fetchApi<TagMetadata>(`/api/metadata/tags/${tagId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteTag: (tagId: number) =>
+    fetchApi<{ deleted: boolean }>(`/api/metadata/tags/${tagId}`, {
+      method: "DELETE",
+    }),
+  bulkUpdateTags: (items: TagMetadataBulk[]) =>
+    fetchApi<TagMetadata[]>("/api/metadata/tags/bulk", {
+      method: "POST",
+      body: JSON.stringify(items),
+    }),
+
+  // Custom Fields
+  listCustomFields: () =>
+    fetchApi<CustomFieldMetadata[]>("/api/metadata/custom-fields"),
+  getCustomField: (fieldId: number) =>
+    fetchApi<CustomFieldMetadata>(`/api/metadata/custom-fields/${fieldId}`),
+  updateCustomField: (fieldId: number, data: CustomFieldMetadataUpdate) =>
+    fetchApi<CustomFieldMetadata>(`/api/metadata/custom-fields/${fieldId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteCustomField: (fieldId: number) =>
+    fetchApi<{ deleted: boolean }>(`/api/metadata/custom-fields/${fieldId}`, {
+      method: "DELETE",
+    }),
+  bulkUpdateCustomFields: (items: CustomFieldMetadataBulk[]) =>
+    fetchApi<CustomFieldMetadata[]>("/api/metadata/custom-fields/bulk", {
+      method: "POST",
+      body: JSON.stringify(items),
+    }),
+};
+
+// Translation API
+export const translationApi = {
+  translate: (data: TranslateRequest) =>
+    fetchApi<TranslateResponse>("/api/translation/translate", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  translatePrompts: (sourceLang: string, targetLang: string) =>
+    fetchApi<TranslatePromptsResponse>("/api/translation/translate/prompts", {
+      method: "POST",
+      body: JSON.stringify({ source_lang: sourceLang, target_lang: targetLang }),
+    }),
+  getTranslations: (targetLang: string, contentType?: string) =>
+    fetchApi<{ translations: TranslationEntry[] }>(
+      `/api/translation/translations/${targetLang}${contentType ? `?content_type=${contentType}` : ""}`
+    ),
+  clearCache: (targetLang?: string, contentType?: string) =>
+    fetchApi<{ success: boolean }>("/api/translation/cache/clear", {
+      method: "POST",
+      body: JSON.stringify({ target_lang: targetLang, content_type: contentType }),
+    }),
+  getLanguages: () =>
+    fetchApi<{ languages: { code: string; name: string }[] }>("/api/translation/languages"),
+};
+
 // Types
 export interface Settings {
   paperless_url: string;
@@ -107,11 +198,13 @@ export interface Settings {
   ollama_url: string;
   ollama_model_large: string;
   ollama_model_small: string;
+  ollama_model_translation: string;
   qdrant_url: string;
   qdrant_collection: string;
   auto_processing_enabled: boolean;
   auto_processing_interval_minutes: number;
   prompt_language: string;
+  pipeline_custom_fields: boolean;
   tags: {
     pending: string;
     ocr_done: string;
@@ -119,6 +212,7 @@ export interface Settings {
     document_type_done: string;
     title_done: string;
     tags_done: string;
+    custom_fields_done: string;
     processed: string;
   };
 }
@@ -209,4 +303,132 @@ export interface AvailableLanguagesResponse {
   languages: LanguageInfo[];
   default: string;
   current: string;
+}
+
+// Pending Reviews Types
+export type PendingItemType = "correspondent" | "document_type" | "tag";
+
+export interface PendingItem {
+  id: string;
+  doc_id: number;
+  doc_title: string;
+  type: PendingItemType;
+  suggestion: string;
+  reasoning: string;
+  alternatives: string[];
+  attempts: number;
+  last_feedback: string | null;
+  created_at: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface PendingCounts {
+  correspondent: number;
+  document_type: number;
+  tag: number;
+  total: number;
+}
+
+export interface PendingApproveResponse {
+  success: boolean;
+  created_entity?: string;
+  entity_id?: number;
+}
+
+// Metadata Types
+export interface TagMetadata {
+  id: number | null;
+  paperless_tag_id: number;
+  tag_name: string;
+  description: string | null;
+  category: string | null;
+  exclude_from_ai: boolean;
+}
+
+export interface TagMetadataUpdate {
+  tag_name: string;
+  description?: string | null;
+  category?: string | null;
+  exclude_from_ai?: boolean;
+}
+
+export interface TagMetadataBulk extends TagMetadataUpdate {
+  paperless_tag_id: number;
+}
+
+export interface CustomFieldMetadata {
+  id: number | null;
+  paperless_field_id: number;
+  field_name: string;
+  description: string | null;
+  extraction_hints: string | null;
+  value_format: string | null;
+  example_values: string[];
+}
+
+export interface CustomFieldMetadataUpdate {
+  field_name: string;
+  description?: string | null;
+  extraction_hints?: string | null;
+  value_format?: string | null;
+  example_values?: string[] | null;
+}
+
+export interface CustomFieldMetadataBulk extends CustomFieldMetadataUpdate {
+  paperless_field_id: number;
+}
+
+// Document Types Types
+export interface DocumentTypeInfo {
+  id: number;
+  name: string;
+  document_count: number;
+}
+
+export interface AiDocumentTypesResponse {
+  document_types: DocumentTypeInfo[];
+  selected_type_ids: number[];
+}
+
+// Translation Types
+export interface TranslateRequest {
+  text: string;
+  source_lang: string;
+  target_lang: string;
+  content_type?: string;
+  content_key?: string;
+  use_cache?: boolean;
+}
+
+export interface TranslateResponse {
+  translated_text: string;
+  cached: boolean;
+  model: string | null;
+}
+
+export interface TranslatePromptsResponse {
+  success: boolean;
+  total: number;
+  successful: number;
+  failed: number;
+  results: Array<{
+    success: boolean;
+    prompt_name?: string;
+    source_lang?: string;
+    target_lang?: string;
+    cached?: boolean;
+    model?: string;
+    error?: string;
+  }>;
+}
+
+export interface TranslationEntry {
+  source_lang: string;
+  target_lang: string;
+  content_type: string;
+  content_key: string;
+  source_text: string;
+  translated_text: string;
+  model_used: string | null;
+  created_at: string;
 }

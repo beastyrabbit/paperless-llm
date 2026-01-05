@@ -1,6 +1,7 @@
 """Documents API endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from config import Settings, get_settings
@@ -146,6 +147,23 @@ async def get_document_content(
         return {"id": doc_id, "content": doc.get("content", "")}
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{doc_id}/pdf")
+async def get_document_pdf(
+    doc_id: int,
+    client: PaperlessClient = Depends(get_paperless_client),
+):
+    """Proxy PDF from Paperless for frontend embedding."""
+    try:
+        pdf_bytes = await client.download_pdf(doc_id)
+        return StreamingResponse(
+            iter([pdf_bytes]),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"inline; filename=document_{doc_id}.pdf"},
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

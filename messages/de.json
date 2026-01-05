@@ -119,7 +119,9 @@
     "attempt": "Versuch {count}",
     "feedback": "Feedback",
     "more": "mehr...",
-    "less": "weniger"
+    "less": "weniger",
+    "loading": "Lade ausstehende Elemente...",
+    "refresh": "Aktualisieren"
   },
   "prompts": {
     "title": "Prompts",
@@ -174,6 +176,7 @@
       "pipeline": "Pipeline",
       "customFields": "Benutzerdefinierte Felder",
       "aiTags": "Tags",
+      "aiDocumentTypes": "Dokumenttypen",
       "workflowTags": "Workflow-Tags",
       "language": "Sprache",
       "advanced": "Erweitert"
@@ -192,6 +195,8 @@
       "largeModel": "Großes Modell (Analyse)",
       "smallModel": "Kleines Modell (Bestätigung)",
       "embeddingModel": "Embedding-Modell (Vektorsuche)",
+      "translationModel": "Übersetzungsmodell (Optional)",
+      "translationModelDesc": "Modell für Prompt-Übersetzungen. Falls nicht gesetzt, wird das große Modell verwendet.",
       "thinkingMode": "Denk-Modus",
       "thinkingModeDesc": "Erweitertes Reasoning für komplexe Analysen aktivieren",
       "thinkingLevel": "Denk-Stufe",
@@ -277,6 +282,31 @@
       "savedSuccess": "{count} Tag(s) für KI-Vorschläge gespeichert",
       "aiEnabled": "KI aktiviert",
       "aiDisabled": "KI deaktiviert",
+      "documentCount": "{count} Dokument(e)",
+      "hasDescription": "Hat Beschreibung",
+      "isTranslated": "Übersetzt",
+      "descriptionLabel": "Beschreibung",
+      "descriptionHint": "Erklären Sie, was dieser Tag bedeutet, damit die KI versteht, wann er verwendet werden soll.",
+      "descriptionPlaceholder": "z.B. 'LBS191 ist die Straßenadresse Lichtenberger Straße 191' oder 'Für Dokumente mit Steuerinformationen verwenden'",
+      "optimize": "Optimieren",
+      "translate": "Übersetzen",
+      "optimizeDescription": "KI zur Optimierung der Beschreibung verwenden",
+      "translateDescription": "In alle UI- und Prompt-Sprachen übersetzen",
+      "editingIn": "Bearbeiten in {lang}",
+      "alsoAvailableIn": "Auch verfügbar in: {langs}"
+    },
+    "aiDocumentTypes": {
+      "title": "KI-Dokumenttypen-Auswahl",
+      "description": "Wählen Sie aus, welche Dokumenttypen die KI bei der Verarbeitung zuweisen kann. Nicht ausgewählte Typen werden nie von der KI zugewiesen.",
+      "loadingDocTypes": "Dokumenttypen werden aus Paperless geladen...",
+      "noTypesFound": "Keine Dokumenttypen gefunden",
+      "noTypesDesc": "Dokumenttypen müssen zuerst in Paperless-ngx erstellt werden.",
+      "availableTypes": "Verfügbare Dokumenttypen",
+      "typesEnabled": "{selected} von {total} Typen für KI aktiviert",
+      "saveSelection": "Auswahl speichern",
+      "savedSuccess": "{count} Dokumenttyp(en) für KI-Vorschläge gespeichert",
+      "aiEnabled": "KI aktiviert",
+      "aiDisabled": "KI deaktiviert",
       "documentCount": "{count} Dokument(e)"
     },
     "workflowTags": {
@@ -303,7 +333,16 @@
       "availableLanguages": "Verfügbare Sprachen",
       "uiLanguage": "Benutzeroberflächen-Sprache",
       "uiLanguageDesc": "Wählen Sie die Sprache für die Benutzeroberfläche",
-      "controlsUiLanguage": "Ändert die Sprache für Menüs, Beschriftungen und andere Oberflächenelemente. Die Seite wird neu geladen, um die Änderung anzuwenden."
+      "controlsUiLanguage": "Ändert die Sprache für Menüs, Beschriftungen und andere Oberflächenelemente. Die Seite wird neu geladen, um die Änderung anzuwenden.",
+      "translatePrompts": "Prompts übersetzen",
+      "translatePromptsDesc": "KI verwenden, um alle Prompts von einer Sprache in eine andere zu übersetzen",
+      "sourceLanguage": "Quellsprache",
+      "targetLanguage": "Zielsprache",
+      "selectTarget": "Ziel auswählen...",
+      "translateAll": "Alle übersetzen",
+      "translationSuccess": "{successful} von {total} Prompts erfolgreich übersetzt",
+      "translationFailed": "Übersetzung für {failed} Prompt(s) fehlgeschlagen",
+      "translateNote": "Übersetzungen werden mit dem konfigurierten Übersetzungsmodell erstellt. Ergebnisse werden zwischengespeichert und als neue Prompt-Dateien gespeichert."
     },
     "debug": {
       "title": "Debug-Einstellungen",

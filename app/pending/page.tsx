@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import {
   CheckCircle2,
@@ -9,67 +9,15 @@ import {
   FileText,
   Check,
   X,
+  Loader2,
+  RefreshCw,
+  AlertCircle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-
-interface PendingItem {
-  id: number;
-  docId: number;
-  docTitle: string;
-  type: "correspondent" | "document_type" | "tag";
-  suggestion: string;
-  reasoning: string;
-  alternatives: string[];
-  attempts: number;
-  lastFeedback?: string;
-  createdAt: string;
-}
-
-const mockPendingItems: PendingItem[] = [
-  {
-    id: 1,
-    docId: 5,
-    docTitle: "Scan vom 15. Januar 2024",
-    type: "correspondent",
-    suggestion: "Stadtwerke München",
-    reasoning:
-      "The document header shows 'Stadtwerke München GmbH' letterhead with their official logo. The document is an electricity bill addressed to the user.",
-    alternatives: ["SWM - Stadtwerke München", "Stadtwerke"],
-    attempts: 2,
-    lastFeedback:
-      "The correspondent name should match exactly what's in the letterhead to avoid duplicates.",
-    createdAt: "2024-01-15T10:30:00Z",
-  },
-  {
-    id: 2,
-    docId: 7,
-    docTitle: "Amazon Order Confirmation",
-    type: "document_type",
-    suggestion: "Invoice",
-    reasoning:
-      "The document contains itemized purchases with prices and a total amount. It has order numbers and billing information typical of invoices.",
-    alternatives: ["Receipt", "Order Confirmation"],
-    attempts: 1,
-    createdAt: "2024-01-15T11:45:00Z",
-  },
-  {
-    id: 3,
-    docId: 12,
-    docTitle: "Mietvertrag Wohnung",
-    type: "document_type",
-    suggestion: "Contract",
-    reasoning:
-      "This is a rental agreement document with terms, conditions, and signatures from both parties. It establishes a legal relationship between landlord and tenant.",
-    alternatives: ["Agreement", "Rental Agreement", "Legal Document"],
-    attempts: 1,
-    lastFeedback:
-      "Consider using a more specific document type for rental contracts.",
-    createdAt: "2024-01-14T16:20:00Z",
-  },
-];
+import { pendingApi, PendingItem, PendingCounts } from "@/lib/api";
 
 const sections = [
   { key: "correspondent", labelKey: "correspondents", icon: User },
@@ -81,42 +29,118 @@ type SectionKey = (typeof sections)[number]["key"];
 
 export default function PendingPage() {
   const t = useTranslations("pending");
-  const [items, setItems] = useState<PendingItem[]>(mockPendingItems);
+  const [items, setItems] = useState<PendingItem[]>([]);
+  const [counts, setCounts] = useState<PendingCounts>({
+    correspondent: 0,
+    document_type: 0,
+    tag: 0,
+    total: 0,
+  });
   const [activeSection, setActiveSection] = useState<SectionKey>("correspondent");
-  const [expandedReasoning, setExpandedReasoning] = useState<Set<number>>(
+  const [expandedReasoning, setExpandedReasoning] = useState<Set<string>>(
     new Set()
   );
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [selectedValues, setSelectedValues] = useState<Record<string, string>>({});
 
-  const getCount = (type: SectionKey) =>
-    items.filter((item) => item.type === type).length;
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [countsResponse, itemsResponse] = await Promise.all([
+        pendingApi.getCounts(),
+        pendingApi.list(),
+      ]);
 
-  const totalCount = items.length;
+      if (countsResponse.error) {
+        setError(countsResponse.error);
+        return;
+      }
+      if (itemsResponse.error) {
+        setError(itemsResponse.error);
+        return;
+      }
+
+      setCounts(countsResponse.data!);
+      setItems(itemsResponse.data!);
+
+      // Initialize selected values to the suggestion for each item
+      const initial: Record<string, string> = {};
+      for (const item of itemsResponse.data!) {
+        initial[item.id] = item.suggestion;
+      }
+      setSelectedValues(initial);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const getCount = (type: SectionKey) => counts[type];
+
+  const totalCount = counts.total;
 
   const filteredItems = items.filter((item) => item.type === activeSection);
 
-  const handleSelectOption = (id: number, option: string) => {
-    setItems((prev) =>
-      prev.map((item) => {
-        if (item.id !== id) return item;
-        // Swap: move current suggestion to alternatives, remove new selection from alternatives
-        const newAlternatives = [
-          item.suggestion,
-          ...item.alternatives.filter((alt) => alt !== option),
-        ];
-        return { ...item, suggestion: option, alternatives: newAlternatives };
-      })
-    );
+  const handleSelectOption = (id: string, option: string) => {
+    setSelectedValues((prev) => ({ ...prev, [id]: option }));
   };
 
-  const handleApprove = (id: number) => {
-    setItems((prev) => prev.filter((item) => item.id !== id));
+  const handleApprove = async (id: string) => {
+    setActionLoading(id);
+    try {
+      const selectedValue = selectedValues[id];
+      const response = await pendingApi.approve(id, selectedValue);
+      if (response.error) {
+        setError(response.error);
+      } else {
+        // Remove item from local state and update counts
+        setItems((prev) => prev.filter((item) => item.id !== id));
+        const item = items.find((i) => i.id === id);
+        if (item) {
+          setCounts((prev) => ({
+            ...prev,
+            [item.type]: prev[item.type] - 1,
+            total: prev.total - 1,
+          }));
+        }
+      }
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  const handleReject = (id: number) => {
-    setItems((prev) => prev.filter((item) => item.id !== id));
+  const handleReject = async (id: string) => {
+    setActionLoading(id);
+    try {
+      const response = await pendingApi.reject(id);
+      if (response.error) {
+        setError(response.error);
+      } else {
+        // Remove item from local state and update counts
+        setItems((prev) => prev.filter((item) => item.id !== id));
+        const item = items.find((i) => i.id === id);
+        if (item) {
+          setCounts((prev) => ({
+            ...prev,
+            [item.type]: prev[item.type] - 1,
+            total: prev.total - 1,
+          }));
+        }
+      }
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  const toggleReasoning = (id: number) => {
+  const toggleReasoning = (id: string) => {
     setExpandedReasoning((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -134,12 +158,25 @@ export default function PendingPage() {
   };
 
   // Auto-switch to first non-empty section if current is empty
-  const currentCount = getCount(activeSection);
-  if (currentCount === 0 && totalCount > 0) {
-    const firstNonEmpty = sections.find((s) => getCount(s.key) > 0);
-    if (firstNonEmpty && firstNonEmpty.key !== activeSection) {
-      setActiveSection(firstNonEmpty.key);
+  useEffect(() => {
+    const currentCount = counts[activeSection];
+    if (currentCount === 0 && totalCount > 0) {
+      const firstNonEmpty = sections.find((s) => counts[s.key] > 0);
+      if (firstNonEmpty && firstNonEmpty.key !== activeSection) {
+        setActiveSection(firstNonEmpty.key);
+      }
     }
+  }, [counts, activeSection, totalCount]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-white to-emerald-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-emerald-950/20 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+          <p className="text-zinc-500">{t("loading")}</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -153,10 +190,35 @@ export default function PendingPage() {
               {t("subtitle", { count: totalCount })}
             </p>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadData}
+            disabled={loading}
+          >
+            <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
+            {t("refresh")}
+          </Button>
         </div>
       </header>
 
       <div className="p-8">
+        {/* Error Alert */}
+        {error && (
+          <div className="mb-6 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-400">
+            <AlertCircle className="h-5 w-5" />
+            <span>{error}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto"
+              onClick={() => setError(null)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
         {/* Section Tabs */}
         <div className="flex gap-2 mb-6">
           {sections.map((section) => {
@@ -205,9 +267,11 @@ export default function PendingPage() {
           <div className="space-y-3">
             {filteredItems.map((item) => {
               const allOptions = [item.suggestion, ...item.alternatives];
+              const selectedValue = selectedValues[item.id] || item.suggestion;
               const firstSentence = getFirstSentence(item.reasoning);
               const hasMore = item.reasoning.length > firstSentence.length;
               const isExpanded = expandedReasoning.has(item.id);
+              const isLoading = actionLoading === item.id;
 
               return (
                 <Card key={item.id} className="overflow-hidden">
@@ -215,7 +279,7 @@ export default function PendingPage() {
                     {/* Top row: Document title + attempt badge */}
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                        {item.docTitle}
+                        {item.doc_title}
                       </span>
                       <Badge variant="outline" className="text-xs">
                         {t("attempt", { count: item.attempts })}
@@ -225,12 +289,13 @@ export default function PendingPage() {
                     {/* Options row */}
                     <div className="flex flex-wrap gap-2 mb-3">
                       {allOptions.map((option) => {
-                        const isSelected = option === item.suggestion;
+                        const isSelected = option === selectedValue;
                         return (
                           <Button
                             key={option}
                             variant="outline"
                             size="sm"
+                            disabled={isLoading}
                             className={cn(
                               "transition-all",
                               isSelected &&
@@ -268,9 +333,9 @@ export default function PendingPage() {
                           </button>
                         )}
                       </p>
-                      {item.lastFeedback && (
+                      {item.last_feedback && (
                         <p className="text-xs text-zinc-400 dark:text-zinc-500 italic mt-1">
-                          {t("feedback")}: {item.lastFeedback}
+                          {t("feedback")}: {item.last_feedback}
                         </p>
                       )}
                     </div>
@@ -282,16 +347,26 @@ export default function PendingPage() {
                         variant="ghost"
                         className="text-zinc-500 hover:text-red-600"
                         onClick={() => handleReject(item.id)}
+                        disabled={isLoading}
                       >
-                        <X className="h-4 w-4 mr-1" />
+                        {isLoading ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <X className="h-4 w-4 mr-1" />
+                        )}
                         {t("reject")}
                       </Button>
                       <Button
                         size="sm"
                         className="bg-emerald-600 hover:bg-emerald-700"
                         onClick={() => handleApprove(item.id)}
+                        disabled={isLoading}
                       >
-                        <Check className="h-4 w-4 mr-1" />
+                        {isLoading ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Check className="h-4 w-4 mr-1" />
+                        )}
                         {t("approve")}
                       </Button>
                     </div>

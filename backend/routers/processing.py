@@ -26,6 +26,12 @@ def get_pipeline() -> ProcessingPipeline:
     return _pipeline
 
 
+def clear_pipeline_cache():
+    """Clear the pipeline singleton to force recreation with fresh settings."""
+    global _pipeline
+    _pipeline = None
+
+
 class ProcessRequest(BaseModel):
     """Request to process a document."""
 
@@ -128,7 +134,8 @@ async def stream_processing(
             pipeline = get_pipeline()
 
             # Use the streaming pipeline
-            async for event in await pipeline.process_document(doc_id, stream=True):
+            stream_gen = await pipeline.process_document(doc_id, stream=True)
+            async for event in stream_gen:
                 yield _sse_event(event.get("type", "event"), event)
 
         except Exception as e:
