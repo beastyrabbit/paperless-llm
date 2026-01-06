@@ -15,7 +15,7 @@ KI-gestütztes Dokumentenanalyse-System für Paperless-ngx mit Mistral OCR und l
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Next.js        │────▶│  FastAPI        │────▶│  Paperless-ngx  │
+│  Vite + React   │────▶│  FastAPI        │────▶│  Paperless-ngx  │
 │  Frontend       │     │  Backend        │     │                 │
 └─────────────────┘     └────────┬────────┘     └─────────────────┘
                                  │
@@ -46,11 +46,11 @@ KI-gestütztes Dokumentenanalyse-System für Paperless-ngx mit Mistral OCR und l
 git clone https://github.com/beastyrabbit/paperless-llm.git
 cd paperless-llm
 
-# Frontend Dependencies
+# Alle Dependencies installieren (TurboRepo)
 bun install
 
 # Backend Dependencies
-cd backend
+cd apps/api/backend
 uv sync
 ```
 
@@ -84,14 +84,22 @@ qdrant:
 
 ### Entwicklung
 
-**Terminal 1 - Backend:**
+**Option 1 - TurboRepo (alle Apps):**
 ```bash
-cd backend
+bun dev  # Startet Frontend und Backend parallel
+```
+
+**Option 2 - Einzeln:**
+
+*Backend:*
+```bash
+cd apps/api/backend
 uv run uvicorn main:app --reload --port 8000
 ```
 
-**Terminal 2 - Frontend:**
+*Frontend:*
 ```bash
+cd apps/web
 bun dev
 ```
 
@@ -150,27 +158,32 @@ Der Verarbeitungs-Workflow wird über Tags gesteuert:
 
 ```
 paperless_local_llm/
-├── app/                      # Next.js Frontend
-│   ├── page.tsx              # Dashboard
-│   ├── settings/             # Einstellungen
-│   ├── documents/            # Dokument-Übersicht
-│   ├── pending/              # Wartende Bestätigungen
-│   └── prompts/              # Prompt-Übersicht
-├── components/               # React Komponenten
-│   ├── ui/                   # shadcn/ui Komponenten
-│   └── sidebar.tsx           # Navigation
-├── lib/                      # Utilities
-│   ├── utils.ts              # Tailwind Utilities
-│   └── api.ts                # API Client
-├── backend/                  # Python FastAPI
-│   ├── main.py               # FastAPI App
-│   ├── config.py             # Konfiguration (liest config.yaml)
-│   ├── routers/              # API Routes
-│   ├── services/             # Paperless, Qdrant Clients
-│   ├── agents/               # LangGraph Agents
-│   ├── models/               # Pydantic Models
-│   ├── prompts/              # Prompt Templates
-│   └── worker.py             # Background Worker
+├── apps/
+│   ├── web/                  # Vite + React Frontend
+│   │   ├── src/
+│   │   │   ├── routes/       # Seiten (Dashboard, Documents, etc.)
+│   │   │   ├── components/   # App-spezifische Komponenten
+│   │   │   ├── lib/          # API Client, i18n, Utilities
+│   │   │   └── locales/      # Übersetzungen (en.json, de.json)
+│   │   └── public/           # Statische Dateien
+│   │
+│   └── api/                  # Python FastAPI Backend
+│       └── backend/
+│           ├── main.py       # FastAPI App
+│           ├── config.py     # Konfiguration (liest config.yaml)
+│           ├── routers/      # API Routes
+│           ├── services/     # Paperless, Qdrant Clients
+│           ├── agents/       # LangGraph Agents
+│           ├── models/       # Pydantic Models
+│           ├── prompts/      # Prompt Templates
+│           └── worker.py     # Background Worker
+│
+├── packages/
+│   └── ui/                   # Shared shadcn/ui Komponenten
+│       ├── src/              # Button, Dialog, Card, etc.
+│       └── lib/utils.ts      # cn() Helper
+│
+├── turbo.json                # TurboRepo Konfiguration
 ├── config.example.yaml       # Beispiel-Konfiguration
 ├── docker-compose.yml        # Docker Setup
 └── README.md
@@ -179,16 +192,22 @@ paperless_local_llm/
 ## Tech Stack
 
 **Frontend:**
-- Next.js 16
+- Vite 7
 - React 19
+- React Router
 - TailwindCSS 4
-- shadcn/ui
+- shadcn/ui + Hugeicons
+- react-i18next
 
 **Backend:**
 - Python 3.12
 - FastAPI
 - LangGraph + LangChain
 - Pydantic
+
+**Build System:**
+- TurboRepo (Monorepo)
+- Bun (Package Manager)
 
 **External:**
 - Paperless-ngx

@@ -1,0 +1,722 @@
+[
+  {
+    "id": "bd32a54ef2aa",
+    "doc_id": 623,
+    "doc_title": "TARGOBANK Kontoauszug Tobias Heer 01.04.–30.06.2025",
+    "type": "tag",
+    "suggestion": "kontoauszug",
+    "reasoning": "Der konkrete Dokumenttyp ist ein Kontoauszug; ein eigener Tag erleichtert das gezielte Auffinden aller Bank‑Kontoauszüge.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T04:07:25.373379",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "f33f111ec7fa",
+    "doc_id": 623,
+    "doc_title": "Kontoauszug TARGOBANK – Tobias Johann Heer – 01.04.–30.06.2025",
+    "type": "tag",
+    "suggestion": "Finanzen",
+    "reasoning": "Das Dokument ist ein Kontoauszug einer Bank und enthält finanzielle Transaktionen – ein klassisches Finanz‑Dokument.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T08:48:36.201739",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "7800efc07b79",
+    "doc_id": 623,
+    "doc_title": "TARGOBANK Kontoauszug Tobias Heer 01.04.–30.06.2025",
+    "type": "tag",
+    "suggestion": "archiv",
+    "reasoning": "Nach Erhalt wird das Dokument typischerweise archiviert. Der Status‑Tag „archiv“ signalisiert, dass das Dokument bereits abgelegt und nicht mehr aktiv zu bearbeiten ist.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T04:07:25.383446",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "e9633139ba6d",
+    "doc_id": 623,
+    "doc_title": "Kontoauszug TARGOBANK – Tobias Johann Heer – 01.04.–30.06.2025",
+    "type": "tag",
+    "suggestion": "Bank",
+    "reasoning": "Der Auszug stammt von der TARGOBANK AG; ein übergeordneter Tag für alle bankbezogenen Unterlagen erleichtert das Auffinden.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T08:48:36.202068",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "4cf852494466",
+    "doc_id": 623,
+    "doc_title": "Kontoauszug TARGOBANK – Tobias Johann Heer – 01.04.–30.06.2025",
+    "type": "tag",
+    "suggestion": "Girokonto",
+    "reasoning": "Der Auszug bezieht sich explizit auf ein Girokonto (BEST‑KONTO). Der Tag differenziert Giro‑ von anderen Kontotypen (z. B. Depot).",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T08:48:36.212160",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "9870a4fc0ffa",
+    "doc_id": 131,
+    "doc_title": "Einladung zur virtuellen Hauptversammlung Merck KGaA – TARGOBANK 30.03.2021",
+    "type": "tag",
+    "suggestion": "Finanzen",
+    "reasoning": "Das Dokument betrifft eine Aktiengesellschaft und eine virtuelle Hauptversammlung – beides eindeutig dem Finanz‑Bereich zuzuordnen.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:33:38.757259",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "0092f617aef1",
+    "doc_id": 131,
+    "doc_title": "Einladung zur virtuellen Hauptversammlung Merck KGaA – TARGOBANK 30.03.2021",
+    "type": "tag",
+    "suggestion": "Aktien",
+    "reasoning": "Es geht um Inhaber‑Aktien der Merck KGaA (WKN 659990, ISIN DE0006599905).",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:33:38.757528",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "dc749ab2ee53",
+    "doc_id": 131,
+    "doc_title": "Einladung zur virtuellen Hauptversammlung Merck KGaA – TARGOBANK 30.03.2021",
+    "type": "tag",
+    "suggestion": "Hauptversammlung",
+    "reasoning": "Einladung zur ordentlichen Hauptversammlung der Merck KGaA.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:33:38.767597",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "c7f2c768212c",
+    "doc_id": 131,
+    "doc_title": "Einladung zur virtuellen Hauptversammlung Merck KGaA – TARGOBANK 30.03.2021",
+    "type": "tag",
+    "suggestion": "Virtuell",
+    "reasoning": "Die Versammlung wird als virtuelle Hauptversammlung ohne physische Präsenz durchgeführt.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:33:38.767787",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "4313be5fd16f",
+    "doc_id": 131,
+    "doc_title": "Einladung zur virtuellen Hauptversammlung Merck KGaA – TARGOBANK 30.03.2021",
+    "type": "tag",
+    "suggestion": "Merck",
+    "reasoning": "Das Unternehmen, dessen Hauptversammlung eingeladen wird, ist Merck KGaA.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:33:38.767964",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "8bdf7c09b4c3",
+    "doc_id": 84,
+    "doc_title": "Jahresdepotauszug 2022 – TARGOBANK AG – Tobias Johann Heer",
+    "type": "tag",
+    "suggestion": "finanzen",
+    "reasoning": "Das Dokument enthält ein Jahres‑Depot‑Statement mit Angaben zu Aktien, Fonds und Gesamtwert – eindeutig ein Finanz‑Dokument.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:38:31.925322",
+    "metadata": {
+      "confidence": 0.94
+    }
+  },
+  {
+    "id": "21ed25ec6995",
+    "doc_id": 84,
+    "doc_title": "Jahresdepotauszug 2022 – TARGOBANK AG – Tobias Johann Heer",
+    "type": "tag",
+    "suggestion": "depot",
+    "reasoning": "Der Kern des Dokuments ist der Jahresdepotauszug; ein Tag „depot“ fasst diese Thematik präzise zusammen.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:38:31.925589",
+    "metadata": {
+      "confidence": 0.94
+    }
+  },
+  {
+    "id": "4f9c5261ff25",
+    "doc_id": 84,
+    "doc_title": "Jahresdepotauszug 2022 – TARGOBANK AG – Tobias Johann Heer",
+    "type": "tag",
+    "suggestion": "wertpapiere",
+    "reasoning": "Im Text werden einzelne Wertpapiere (Aktien, Fonds) mit Stück‑ und Kurswerten aufgelistet.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:38:31.935610",
+    "metadata": {
+      "confidence": 0.94
+    }
+  },
+  {
+    "id": "2afd187142fa",
+    "doc_id": 147,
+    "doc_title": "Ertragsgutschrift TARGOBANK – Tobias Heer – 20.06.2022",
+    "type": "tag",
+    "suggestion": "Finanzen",
+    "reasoning": "Das Dokument enthält Informationen zu einer Ertragsgutschrift (Dividende) und zu steuerlichen Abzügen – eindeutig ein Finanz‑Thema.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:42:00.494802",
+    "metadata": {
+      "confidence": 0.93
+    }
+  },
+  {
+    "id": "d0232d1b6a11",
+    "doc_id": 147,
+    "doc_title": "Ertragsgutschrift TARGOBANK – Tobias Heer – 20.06.2022",
+    "type": "tag",
+    "suggestion": "Dividende",
+    "reasoning": "Die Ertragsgutschrift bezieht sich auf die Ausschüttung von Wertpapieren (Dividende).",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:42:00.495126",
+    "metadata": {
+      "confidence": 0.93
+    }
+  },
+  {
+    "id": "b9d4300f717a",
+    "doc_id": 147,
+    "doc_title": "Ertragsgutschrift TARGOBANK – Tobias Heer – 20.06.2022",
+    "type": "tag",
+    "suggestion": "Kapitalertrag",
+    "reasoning": "Im Text werden Bruttoertrag, Kapitalertragsteuer und weitere steuerliche Details genannt.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:42:00.505003",
+    "metadata": {
+      "confidence": 0.93
+    }
+  },
+  {
+    "id": "dbc447e55f83",
+    "doc_id": 147,
+    "doc_title": "Ertragsgutschrift TARGOBANK – Tobias Heer – 20.06.2022",
+    "type": "tag",
+    "suggestion": "TARGOBANK",
+    "reasoning": "Der Aussteller des Dokuments ist die TARGOBANK AG – ein wichtiger Organisations‑Tag für spätere Suchen.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:42:00.505250",
+    "metadata": {
+      "confidence": 0.93
+    }
+  },
+  {
+    "id": "da8a4841fb56",
+    "doc_id": 147,
+    "doc_title": "Ertragsgutschrift TARGOBANK – Tobias Heer – 20.06.2022",
+    "type": "tag",
+    "suggestion": "wichtig",
+    "reasoning": "Ertragsgutschriften sind für die Finanzbuchhaltung relevant und sollten hervorgehoben werden.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:42:00.505496",
+    "metadata": {
+      "confidence": 0.93
+    }
+  },
+  {
+    "id": "ce13cf966dfc",
+    "doc_id": 370,
+    "doc_title": "Thesaurierungsbeleg TARGOBANK – Tobias Heer – 26.01.2018",
+    "type": "tag",
+    "suggestion": "Finanzen",
+    "reasoning": "Das Dokument ist eine Ertragsgutschrift/Thesaurierung aus einem Wertpapierdepot – eindeutig ein Finanz‑Thema.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:45:41.173454",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "8c8f6a2e993c",
+    "doc_id": 370,
+    "doc_title": "Thesaurierungsbeleg TARGOBANK – Tobias Heer – 26.01.2018",
+    "type": "tag",
+    "suggestion": "Ertragsthesaurierung",
+    "reasoning": "Der zentrale Vorgang des Dokuments ist die Thesaurierung von Erträgen (Wertpapier LBBW Balance CR40).",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:45:41.173750",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "31c10519d01b",
+    "doc_id": 370,
+    "doc_title": "Thesaurierungsbeleg TARGOBANK – Tobias Heer – 26.01.2018",
+    "type": "tag",
+    "suggestion": "Kapitalertragsteuer",
+    "reasoning": "Im Dokument werden Kapitalertragsteuer und Solidaritätszuschlag ausgewiesen.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:45:41.183800",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "ec6c705fa09a",
+    "doc_id": 471,
+    "doc_title": "Rechnung UPS Deutschland 02.08.2024 Nr. 513594398",
+    "type": "tag",
+    "suggestion": "Versand",
+    "reasoning": "Die Rechnung bezieht sich auf eine UPS‑Versandleistung (Paket, Export/Import, Fracht). Ein Versand‑Tag erleichtert das Auffinden aller Versand‑ bzw. Logistik‑Rechnungen.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:48:25.417322",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "699bc3ba0e2b",
+    "doc_id": 471,
+    "doc_title": "Rechnung UPS Deutschland 02.08.2024 Nr. 513594398",
+    "type": "tag",
+    "suggestion": "UPS",
+    "reasoning": "Der Rechnungsaussteller ist United Parcel Service (UPS). Ein spezifischer UPS‑Tag ermöglicht das schnelle Filtern von Dokumenten dieses Dienstleisters.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:48:25.417705",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "5a6ff3ef5b28",
+    "doc_id": 471,
+    "doc_title": "Rechnung UPS Deutschland 02.08.2024 Nr. 513594398",
+    "type": "tag",
+    "suggestion": "Importzoll",
+    "reasoning": "Im Dokument werden Einfuhrumsatzsteuer, Zollnummer und Import‑Tarife ausgewiesen. Ein Import‑/Zoll‑Tag ist sinnvoll, um alle zoll‑relevanten Rechnungen zu gruppieren.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:48:25.427623",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "1056dce77290",
+    "doc_id": 478,
+    "doc_title": "Rechnung Wasserbettbedarf.de – Tobias Heer 01.10.2024",
+    "type": "tag",
+    "suggestion": "Einkauf",
+    "reasoning": "Das Dokument ist eine Rechnung für einen Warenkauf (Travelpillow) – ein allgemeiner Tag für Einkaufs‑/Bestell‑Dokumente ist sinnvoll.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:51:31.213420",
+    "metadata": {
+      "confidence": 0.92
+    }
+  },
+  {
+    "id": "61f4249a99ea",
+    "doc_id": 478,
+    "doc_title": "Rechnung Wasserbettbedarf.de – Tobias Heer 01.10.2024",
+    "type": "tag",
+    "suggestion": "Versand_DHL",
+    "reasoning": "Die Lieferung erfolgte über DHL (Versand Deutsche Post durch DHL). Ein Tag für den Versanddienstleister erleichtert das Auffinden von Dokumenten nach Logistikpartner.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:51:31.213814",
+    "metadata": {
+      "confidence": 0.92
+    }
+  },
+  {
+    "id": "642408e6c0c0",
+    "doc_id": 262,
+    "doc_title": "Rechnung Zahnarztpraxis Elif & Michael Schwaebe – Tobias Heer, 11.05.2022",
+    "type": "tag",
+    "suggestion": "Medizin",
+    "reasoning": "Das Dokument ist eine Zahnarztrechnung – damit gehört es in die übergeordnete Kategorie Medizin. Ein generischer Medizin‑Tag ergänzt den bereits vorhandenen spezifischen Zahnarzt‑Tag und erleichtert das Auffinden aller medizinischen Unterlagen.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:54:24.026445",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "518ee74bf6be",
+    "doc_id": 104,
+    "doc_title": "Informationsschreiben Techniker Krankenkasse – Digitale Services 6. Oktober 2020",
+    "type": "tag",
+    "suggestion": "Gesundheit",
+    "reasoning": "Der Inhalt bezieht sich auf Gesundheitsleistungen, Online‑Sprechstunden und Präventionsangebote.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:57:33.155900",
+    "metadata": {
+      "confidence": 0.94
+    }
+  },
+  {
+    "id": "8a82af15d8fd",
+    "doc_id": 104,
+    "doc_title": "Informationsschreiben Techniker Krankenkasse – Digitale Services 6. Oktober 2020",
+    "type": "tag",
+    "suggestion": "Online-Service",
+    "reasoning": "Mehrere Passagen beschreiben digitale Services (TK‑App, Online‑Sprechstunde, digitales Postfach).",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:57:33.156334",
+    "metadata": {
+      "confidence": 0.94
+    }
+  },
+  {
+    "id": "9338be322109",
+    "doc_id": 104,
+    "doc_title": "Informationsschreiben Techniker Krankenkasse – Digitale Services 6. Oktober 2020",
+    "type": "tag",
+    "suggestion": "Bonusprogramm",
+    "reasoning": "Das Schreiben erwähnt das TK‑Bonusprogramm, das digital genutzt werden kann.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:57:33.166269",
+    "metadata": {
+      "confidence": 0.94
+    }
+  },
+  {
+    "id": "506e68cd58a0",
+    "doc_id": 104,
+    "doc_title": "Informationsschreiben Techniker Krankenkasse – Digitale Services 6. Oktober 2020",
+    "type": "tag",
+    "suggestion": "Gewinnspiel",
+    "reasoning": "Es wird ein Gewinnspiel für GPS‑Fitness‑Smartwatches beworben.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T09:57:33.166605",
+    "metadata": {
+      "confidence": 0.94
+    }
+  },
+  {
+    "id": "ee0c8eb2ea88",
+    "doc_id": 29,
+    "doc_title": "Einkommensteuerbescheid 2016 – Finanzamt Ludwigsburg (10.04.2024)",
+    "type": "tag",
+    "suggestion": "Einkommensteuer",
+    "reasoning": "Das Dokument ist ein Einkommensteuer‑Bescheid für das Jahr 2016.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:00:56.274760",
+    "metadata": {
+      "confidence": 0.93
+    }
+  },
+  {
+    "id": "946f9f7eb03a",
+    "doc_id": 29,
+    "doc_title": "Einkommensteuerbescheid 2016 – Finanzamt Ludwigsburg (10.04.2024)",
+    "type": "tag",
+    "suggestion": "Solidaritätszuschlag",
+    "reasoning": "Der Bescheid enthält die Berechnung des Solidaritätszuschlags.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:00:56.275230",
+    "metadata": {
+      "confidence": 0.93
+    }
+  },
+  {
+    "id": "de4fdc24dcdd",
+    "doc_id": 29,
+    "doc_title": "Einkommensteuerbescheid 2016 – Finanzamt Ludwigsburg (10.04.2024)",
+    "type": "tag",
+    "suggestion": "Kirchensteuer",
+    "reasoning": "Der Bescheid enthält die Berechnung der Kirchensteuer.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:00:56.285245",
+    "metadata": {
+      "confidence": 0.93
+    }
+  },
+  {
+    "id": "13e085822c66",
+    "doc_id": 505,
+    "doc_title": "PayPal‑Zahlungsbestätigung – Rechnung 0006 an Jodi Parsons (28.12.2024)",
+    "type": "tag",
+    "suggestion": "Rechnung",
+    "reasoning": "Das Dokument enthält eine Rechnung (Rechnungsnummer 0006) und dient als Zahlungsbestätigung.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:05:10.248679",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "02e591ce5aa0",
+    "doc_id": 505,
+    "doc_title": "PayPal‑Zahlungsbestätigung – Rechnung 0006 an Jodi Parsons (28.12.2024)",
+    "type": "tag",
+    "suggestion": "Finanzen",
+    "reasoning": "Die E‑Mail behandelt eine finanzielle Transaktion (Kauf, Währungsumrechnung, Zahlungsquelle).",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:05:10.249754",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "aa351d57d882",
+    "doc_id": 251,
+    "doc_title": "Kostenvoranschlag Zahnarztpraxis Schwaebe – Tobias Heer",
+    "type": "tag",
+    "suggestion": "Medizin",
+    "reasoning": "Das Dokument stammt von einer Zahnarztpraxis und enthält medizinische Behandlungsinformationen (Keramikkrone, Keramikinlays). Der Tag ordnet das Dokument der Kategorie Medizin zu.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:07:17.947530",
+    "metadata": {
+      "confidence": 0.93
+    }
+  },
+  {
+    "id": "18740beb4f13",
+    "doc_id": 251,
+    "doc_title": "Kostenvoranschlag Zahnarztpraxis Schwaebe – Tobias Heer",
+    "type": "tag",
+    "suggestion": "Finanzen",
+    "reasoning": "Es handelt sich um einen Kostenvoranschlag mit konkreten Geldbeträgen. Der Tag hilft, alle finanziellen Dokumente (Rechnungen, Kostenvoranschläge, Zahlungsaufforderungen) zu bündeln.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:07:17.948090",
+    "metadata": {
+      "confidence": 0.93
+    }
+  },
+  {
+    "id": "636a9a8d0aee",
+    "doc_id": 251,
+    "doc_title": "Kostenvoranschlag Zahnarztpraxis Schwaebe – Tobias Heer",
+    "type": "tag",
+    "suggestion": "wichtig",
+    "reasoning": "Kostenvoranschläge sind für den Empfänger entscheidend, da sie die Grundlage für die weitere Behandlung und Kostenübernahme bilden. Der Tag signalisiert hohe Priorität.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:07:17.958023",
+    "metadata": {
+      "confidence": 0.93
+    }
+  },
+  {
+    "id": "008be768b2d4",
+    "doc_id": 24,
+    "doc_title": "Rechnung Brillen‑fink GmbH – Brillen 21.06.2024",
+    "type": "tag",
+    "suggestion": "Finanzen",
+    "reasoning": "Der Beleg dokumentiert einen finanziellen Vorgang (Kauf von Brillen). Ein Finanz‑Tag erleichtert das Auffinden aller Ausgaben‑Dokumente.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:09:39.165457",
+    "metadata": {
+      "confidence": 0.94
+    }
+  },
+  {
+    "id": "06f0328a0686",
+    "doc_id": 24,
+    "doc_title": "Rechnung Brillen‑fink GmbH – Brillen 21.06.2024",
+    "type": "tag",
+    "suggestion": "Persönlich",
+    "reasoning": "Der Kauf betrifft eine private Anschaffung (Brille) und ist nicht geschäftlich. Der persönliche Tag hilft, private von geschäftlichen Dokumenten zu trennen.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:09:39.165891",
+    "metadata": {
+      "confidence": 0.94
+    }
+  },
+  {
+    "id": "592b9e791dbe",
+    "doc_id": 75,
+    "doc_title": "Rechnung Zahnarztpraxis Elif & Michael Schwaebe – Tobias Heer 23.08.2022",
+    "type": "tag",
+    "suggestion": "Medizin",
+    "reasoning": "Das Dokument ist eine Rechnung einer Zahnarztpraxis – das fällt in die übergeordnete Kategorie Medizin.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:14:00.591309",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "cee7fd7c1d24",
+    "doc_id": 75,
+    "doc_title": "Rechnung Zahnarztpraxis Elif & Michael Schwaebe – Tobias Heer 23.08.2022",
+    "type": "tag",
+    "suggestion": "archiv",
+    "reasoning": "Die Rechnung ist bereits als „bezahlt“ markiert, sodass sie in der Regel archiviert wird.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:14:00.591881",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "5115775b728b",
+    "doc_id": 75,
+    "doc_title": "Rechnung Zahnarztpraxis Elif & Michael Schwaebe – Tobias Heer 23.08.2022",
+    "type": "tag",
+    "suggestion": "Zahnbehandlung",
+    "reasoning": "Der Inhalt bezieht sich konkret auf zahnärztliche Leistungen (Füllungen, Laborarbeiten etc.).",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:14:00.601938",
+    "metadata": {
+      "confidence": 0.96
+    }
+  },
+  {
+    "id": "a60ab0be3523",
+    "doc_id": 162,
+    "doc_title": "Dividendengutschrift TARGOBANK – Tobias Heer – 30.06.2022",
+    "type": "tag",
+    "suggestion": "finanzen",
+    "reasoning": "Das Dokument betrifft eine Dividendengutschrift und damit eine Geldbewegung im Wertpapierdepot – eindeutig ein Finanz‑Thema.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:16:38.278722",
+    "metadata": {
+      "confidence": 0.94
+    }
+  },
+  {
+    "id": "e66043bdcba8",
+    "doc_id": 162,
+    "doc_title": "Dividendengutschrift TARGOBANK – Tobias Heer – 30.06.2022",
+    "type": "tag",
+    "suggestion": "dividende",
+    "reasoning": "Kerninhalt des Dokuments ist die Auszahlung einer Dividende für die Aktie von Takeda Pharmaceutical.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:16:38.279346",
+    "metadata": {
+      "confidence": 0.94
+    }
+  },
+  {
+    "id": "a050c06b0c02",
+    "doc_id": 162,
+    "doc_title": "Dividendengutschrift TARGOBANK – Tobias Heer – 30.06.2022",
+    "type": "tag",
+    "suggestion": "ausland",
+    "reasoning": "Die Dividende stammt aus Japan (Ursprungsland Japan) und beinhaltet ausländische Quellensteuer.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:16:38.289322",
+    "metadata": {
+      "confidence": 0.94
+    }
+  },
+  {
+    "id": "15e49061007a",
+    "doc_id": 162,
+    "doc_title": "Dividendengutschrift TARGOBANK – Tobias Heer – 30.06.2022",
+    "type": "tag",
+    "suggestion": "targobank",
+    "reasoning": "Der Aussteller ist TARGOBANK AG; ein Tag für die Bank erleichtert das Auffinden aller zu dieser Bank gehörenden Unterlagen.",
+    "alternatives": [],
+    "attempts": 1,
+    "last_feedback": null,
+    "created_at": "2026-01-05T10:16:38.289846",
+    "metadata": {
+      "confidence": 0.94
+    }
+  }
+]

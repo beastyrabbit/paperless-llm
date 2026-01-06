@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "../../apps/web/src/index.css",
+    "baseColor": "zinc",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "iconLibrary": "hugeicons",
+  "aliases": {
+    "components": "@paperless-llm/ui/src",
+    "utils": "@paperless-llm/ui/lib/utils",
+    "ui": "@paperless-llm/ui/src",
+    "lib": "@paperless-llm/ui/lib",
+    "hooks": "@paperless-llm/ui/hooks"
+  }
+}

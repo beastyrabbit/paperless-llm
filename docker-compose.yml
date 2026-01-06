@@ -1,8 +1,8 @@
 services:
-  # Python Backend
+  # Python Backend (FastAPI)
   backend:
     build:
-      context: ./backend
+      context: ./apps/api/backend
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
@@ -20,25 +20,22 @@ services:
       - AUTO_PROCESSING_ENABLED=${AUTO_PROCESSING_ENABLED:-false}
       - AUTO_PROCESSING_INTERVAL_MINUTES=${AUTO_PROCESSING_INTERVAL_MINUTES:-10}
     volumes:
-      - ./backend:/app
+      - ./apps/api/backend:/app
       - langgraph-data:/app/data
     depends_on:
       - qdrant
     networks:
       - paperless-llm
 
-  # Next.js Frontend
+  # Vite Frontend (React)
   frontend:
     build:
       context: .
-      dockerfile: Dockerfile.frontend
+      dockerfile: apps/web/Dockerfile
     ports:
-      - "3000:3000"
+      - "3000:80"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-    volumes:
-      - ./app:/app/app
-      - ./public:/app/public
+      - VITE_API_URL=http://localhost:8000
     depends_on:
       - backend
     networks:

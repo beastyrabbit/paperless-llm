@@ -6,19 +6,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Paperless Local LLM is an AI-powered document analysis system for Paperless-ngx. It uses Mistral AI for OCR and local Ollama models for automatic metadata extraction (title, correspondent, tags).
 
+## TurboRepo Monorepo Structure
+
+```
+paperless_local_llm/
+├── apps/
+│   ├── web/          # Vite + React frontend
+│   └── api/          # Python FastAPI backend
+├── packages/
+│   └── ui/           # Shared shadcn/ui components
+├── turbo.json        # TurboRepo configuration
+└── package.json      # Root workspace configuration
+```
+
 ## Development Commands
 
-### Frontend (Next.js)
+### Root (TurboRepo)
 ```bash
-bun install          # Install dependencies
+bun install          # Install all workspace dependencies
+bun dev              # Start all apps in development mode
+bun build            # Build all apps
+bun lint             # Lint all apps
+bun typecheck        # Type check all apps
+```
+
+### Frontend (apps/web - Vite)
+```bash
+cd apps/web
 bun dev              # Development server (port 3000)
 bun build            # Production build
 bun lint             # ESLint
+bun typecheck        # TypeScript type checking
 ```
 
-### Backend (FastAPI/Python)
+### Backend (apps/api - FastAPI/Python)
 ```bash
-cd backend
+cd apps/api/backend
 uv sync              # Install dependencies
 uv run uvicorn main:app --reload --port 8000  # Development server
 
@@ -40,31 +63,29 @@ docker compose down            # Stop services
 
 ### Pre-Commit Hooks
 ```bash
-# Install hooks (einmalig)
-cd backend && uv sync --all-extras  # Installiert pre-commit
-uv run pre-commit install           # Aktiviert die Hooks
+# Install hooks
+cd apps/api/backend && uv sync --all-extras
+uv run pre-commit install
 
-# Manuell ausführen
+# Run manually
 uv run pre-commit run --all-files
-
-# Oder via bun
-bun run precommit
 ```
 
-**Aktive Checks:**
-- **gitleaks**: Erkennt versehentlich committete Secrets/API-Keys
+**Active Checks:**
+- **gitleaks**: Detects accidentally committed secrets/API keys
 - **ruff**: Python Linting & Formatting
 - **mypy**: Python Type Checking
-- **TypeScript**: `tsc --noEmit` Type Checking
+- **TypeScript**: Type checking
 - **ESLint**: JavaScript/TypeScript Linting
-
-Bei Fehlern wird der Commit abgebrochen.
 
 ## Architecture
 
-**Two-service architecture:**
-- **Frontend**: Next.js 16 + React 19 + TailwindCSS 4 + shadcn/ui
-- **Backend**: FastAPI + LangGraph + LangChain
+**TurboRepo monorepo with two apps:**
+- **apps/web**: Vite + React 19 + TailwindCSS 4 + React Router
+- **apps/api**: FastAPI + LangGraph + LangChain
+
+**Shared packages:**
+- **packages/ui**: shadcn/ui components with Hugeicons
 
 **External dependencies:**
 - Paperless-ngx (document management)
@@ -72,7 +93,7 @@ Bei Fehlern wird der Commit abgebrochen.
 - Mistral AI (OCR)
 - Qdrant (vector similarity search for context)
 
-### Backend Structure (`backend/`)
+### Backend Structure (`apps/api/backend/`)
 - `main.py` - FastAPI app with CORS and router setup
 - `config.py` - Pydantic Settings loading from `config.yaml` + env vars
 - `routers/` - API endpoints (settings, documents, processing, prompts)
@@ -80,15 +101,18 @@ Bei Fehlern wird der Commit abgebrochen.
 - `agents/` - LangGraph agents for each processing step (ocr, title, correspondent, tags)
 - `prompts/` - Markdown prompt templates with variable placeholders
 
-### Frontend Structure (`app/`)
-- `page.tsx` - Dashboard
-- `settings/` - Configuration UI
-- `documents/` - Document browser
-- `pending/` - Manual review queue
-- `prompts/` - Prompt template viewer
+### Frontend Structure (`apps/web/src/`)
+- `main.tsx` - App entry point
+- `App.tsx` - React Router setup
+- `routes/` - Page components (dashboard, documents, settings, etc.)
+- `components/` - App-specific components (sidebar, layout)
+- `lib/` - API client, i18n configuration, utilities
+- `locales/` - Translation files (en.json, de.json)
 
-### API Client (`lib/api.ts`)
-Typed API client with functions for settings, documents, processing, and prompts.
+### Shared UI (`packages/ui/`)
+- `src/` - All shadcn/ui components with Hugeicons
+- `lib/utils.ts` - cn() helper function
+- `components.json` - shadcn/ui configuration (radix-mira style)
 
 ## Processing Pipeline
 
