@@ -32,7 +32,7 @@ langgraph.db
 backend/data/
 
 # dependencies
-/node_modules
+node_modules
 backend/.venv
 /.pnp
 .pnp.*
@@ -72,3 +72,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Turbo
+.turbo
+
+# Next.js
+.next

@@ -6,19 +6,48 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Paperless Local LLM is an AI-powered document analysis system for Paperless-ngx. It uses Mistral AI for OCR and local Ollama models for automatic metadata extraction (title, correspondent, tags).
 
-## Development Commands
+## Monorepo Structure
 
-### Frontend (Next.js)
-```bash
-bun install          # Install dependencies
-bun dev              # Development server (port 3000)
-bun build            # Production build
-bun lint             # ESLint
+This project uses Turborepo with Bun as the package manager.
+
+```
+paperless_local_llm/
+├── apps/
+│   ├── web/                    # Next.js frontend
+│   └── backend/                # FastAPI Python backend
+├── packages/
+│   ├── ui/                     # @repo/ui - Shared UI components
+│   ├── typescript-config/      # @repo/typescript-config
+│   └── eslint-config/          # @repo/eslint-config
+├── turbo.json
+├── package.json                # Root workspace config
+└── docker-compose.yml
 ```
 
-### Backend (FastAPI/Python)
+## Development Commands
+
+### Root (Turborepo)
 ```bash
-cd backend
+bun install          # Install all dependencies
+bun run build        # Build all packages and apps
+bun run dev          # Start all dev servers
+bun run lint         # Lint all packages
+bun run typecheck    # TypeScript check all packages
+bun run dev:web      # Start frontend only
+bun run dev:backend  # Start backend only
+```
+
+### Frontend (apps/web)
+```bash
+cd apps/web
+bun run dev          # Development server (port 3000)
+bun run build        # Production build
+bun run lint         # ESLint
+```
+
+### Backend (apps/backend)
+```bash
+cd apps/backend
 uv sync              # Install dependencies
 uv run uvicorn main:app --reload --port 8000  # Development server
 
@@ -40,25 +69,23 @@ docker compose down            # Stop services
 
 ### Pre-Commit Hooks
 ```bash
-# Install hooks (einmalig)
-cd backend && uv sync --all-extras  # Installiert pre-commit
-uv run pre-commit install           # Aktiviert die Hooks
+# Install hooks
+cd apps/backend && uv sync --all-extras
+uv run pre-commit install
 
-# Manuell ausführen
+# Run manually
 uv run pre-commit run --all-files
 
-# Oder via bun
+# Or via bun
 bun run precommit
 ```
 
-**Aktive Checks:**
-- **gitleaks**: Erkennt versehentlich committete Secrets/API-Keys
+**Active Checks:**
+- **gitleaks**: Detects accidentally committed secrets/API keys
 - **ruff**: Python Linting & Formatting
 - **mypy**: Python Type Checking
 - **TypeScript**: `tsc --noEmit` Type Checking
 - **ESLint**: JavaScript/TypeScript Linting
-
-Bei Fehlern wird der Commit abgebrochen.
 
 ## Architecture
 
@@ -72,7 +99,7 @@ Bei Fehlern wird der Commit abgebrochen.
 - Mistral AI (OCR)
 - Qdrant (vector similarity search for context)
 
-### Backend Structure (`backend/`)
+### Backend Structure (`apps/backend/`)
 - `main.py` - FastAPI app with CORS and router setup
 - `config.py` - Pydantic Settings loading from `config.yaml` + env vars
 - `routers/` - API endpoints (settings, documents, processing, prompts)
@@ -80,15 +107,19 @@ Bei Fehlern wird der Commit abgebrochen.
 - `agents/` - LangGraph agents for each processing step (ocr, title, correspondent, tags)
 - `prompts/` - Markdown prompt templates with variable placeholders
 
-### Frontend Structure (`app/`)
-- `page.tsx` - Dashboard
-- `settings/` - Configuration UI
-- `documents/` - Document browser
-- `pending/` - Manual review queue
-- `prompts/` - Prompt template viewer
+### Frontend Structure (`apps/web/`)
+- `app/` - Next.js app router pages
+  - `page.tsx` - Dashboard
+  - `settings/` - Configuration UI
+  - `documents/` - Document browser
+  - `pending/` - Manual review queue
+  - `prompts/` - Prompt template viewer
+- `components/` - App-specific components (sidebar, model-combobox)
+- `lib/api.ts` - Typed API client
 
-### API Client (`lib/api.ts`)
-Typed API client with functions for settings, documents, processing, and prompts.
+### UI Package (`packages/ui/`)
+- Shared shadcn/ui components used by apps/web
+- Import with: `import { Button, Card, ... } from "@repo/ui"`
 
 ## Processing Pipeline
 
