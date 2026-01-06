@@ -123,6 +123,14 @@ class Settings(BaseSettings):
     prompt_language: str = Field(default="en")
 
     # =========================================================================
+    # Server Settings
+    # =========================================================================
+
+    cors_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"]
+    )
+
+    # =========================================================================
     # Debug Settings
     # =========================================================================
 
@@ -220,6 +228,10 @@ def _flatten_yaml_config(yaml_config: dict[str, Any]) -> dict[str, Any]:
     # Language
     if "language" in yaml_config:
         flat["prompt_language"] = yaml_config["language"].get("prompt")
+
+    # Server settings
+    if "server" in yaml_config:
+        flat["cors_origins"] = yaml_config["server"].get("cors_origins")
 
     # AI selection lists (direct top-level keys)
     if "custom_fields_enabled" in yaml_config:
@@ -360,6 +372,10 @@ def _unflatten_to_yaml(flat_settings: dict[str, Any]) -> dict[str, Any]:
     # Language
     if "prompt_language" in flat_settings:
         yaml_config["language"] = {"prompt": flat_settings["prompt_language"]}
+
+    # Server settings
+    if "cors_origins" in flat_settings:
+        yaml_config["server"] = {"cors_origins": flat_settings["cors_origins"]}
 
     # AI selection lists (direct top-level keys)
     if "custom_fields_enabled" in flat_settings:

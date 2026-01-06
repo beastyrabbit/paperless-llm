@@ -6,6 +6,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Required for Linux to access host services
     environment:
       - PAPERLESS_URL=${PAPERLESS_URL:-http://localhost:8080}
       - PAPERLESS_TOKEN=${PAPERLESS_TOKEN:-}

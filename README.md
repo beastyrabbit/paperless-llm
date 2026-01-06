@@ -43,8 +43,8 @@ KI-gestütztes Dokumentenanalyse-System für Paperless-ngx mit Mistral OCR und l
 
 ```bash
 # Repository klonen
-git clone https://github.com/your-username/paperless_local_llm.git
-cd paperless_local_llm
+git clone https://github.com/beastyrabbit/paperless-local-llm.git
+cd paperless-local-llm
 
 # Frontend Dependencies
 bun install
@@ -102,7 +102,7 @@ bun dev
 export PAPERLESS_URL=http://your-paperless:8000
 export PAPERLESS_TOKEN=your-token
 export MISTRAL_API_KEY=your-key
-export OLLAMA_URL=http://your-ollama:11434
+export OLLAMA_URL=http://host.docker.internal:11434
 
 # Alle Services starten
 docker compose up -d
@@ -110,6 +110,8 @@ docker compose up -d
 # Logs anzeigen
 docker compose logs -f
 ```
+
+> 💡 **Hinweis**: Für den Zugriff auf Ollama auf dem Host-System verwende `host.docker.internal`. Dies funktioniert auf allen Plattformen (Linux, macOS, Windows) dank der `extra_hosts` Konfiguration in docker-compose.yml.
 
 ## Workflow
 
@@ -196,4 +198,4 @@ paperless_local_llm/
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
