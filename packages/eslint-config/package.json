@@ -8,6 +8,9 @@
     "./base": "./base.mjs",
     "./nextjs": "./nextjs.mjs"
   },
+  "dependencies": {
+    "@eslint/eslintrc": "^3"
+  },
   "devDependencies": {
     "eslint": "^9",
     "eslint-config-next": "16.1.1",

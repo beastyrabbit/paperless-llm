@@ -10,10 +10,11 @@ Paperless Local LLM is an AI-powered document analysis system for Paperless-ngx.
 
 ### Frontend (Next.js)
 ```bash
-bun install          # Install dependencies
-bun dev              # Development server (port 3000)
-bun build            # Production build
-bun lint             # ESLint
+bun install          # Install dependencies (from root)
+bun run dev:web      # Development server (port 3000)
+bun run build        # Production build
+bun run lint         # ESLint
+bun run typecheck    # TypeScript check
 ```
 
 ### Backend (FastAPI/Python)
@@ -80,15 +81,18 @@ Bei Fehlern wird der Commit abgebrochen.
 - `agents/` - LangGraph agents for each processing step (ocr, title, correspondent, tags)
 - `prompts/` - Markdown prompt templates with variable placeholders
 
-### Frontend Structure (`app/`)
-- `page.tsx` - Dashboard
-- `settings/` - Configuration UI
-- `documents/` - Document browser
-- `pending/` - Manual review queue
-- `prompts/` - Prompt template viewer
+### Frontend Structure (`apps/web/`)
+- `app/page.tsx` - Dashboard
+- `app/settings/` - Configuration UI
+- `app/documents/` - Document browser
+- `app/pending/` - Manual review queue
+- `app/prompts/` - Prompt template viewer
+- `components/` - App-specific components (sidebar, model-combobox)
+- `lib/api.ts` - Typed API client
 
-### API Client (`lib/api.ts`)
-Typed API client with functions for settings, documents, processing, and prompts.
+### Shared UI Package (`packages/ui/`)
+- Shared shadcn/ui components used across the frontend
+- Import from `@repo/ui` in frontend code
 
 ## Processing Pipeline
 

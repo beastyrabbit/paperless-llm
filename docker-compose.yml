@@ -37,8 +37,9 @@ services:
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     volumes:
-      - ./app:/app/app
-      - ./public:/app/public
+      - ./apps/web/app:/app/apps/web/app
+      - ./apps/web/public:/app/apps/web/public
+      - ./packages/ui/src:/app/packages/ui/src
     depends_on:
       - backend
     networks:
