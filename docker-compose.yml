@@ -2,7 +2,7 @@ services:
   # Python Backend
   backend:
     build:
-      context: ./backend
+      context: ./apps/backend
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
@@ -20,7 +20,7 @@ services:
       - AUTO_PROCESSING_ENABLED=${AUTO_PROCESSING_ENABLED:-false}
       - AUTO_PROCESSING_INTERVAL_MINUTES=${AUTO_PROCESSING_INTERVAL_MINUTES:-10}
     volumes:
-      - ./backend:/app
+      - ./apps/backend:/app
       - langgraph-data:/app/data
     depends_on:
       - qdrant

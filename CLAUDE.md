@@ -18,7 +18,7 @@ bun lint             # ESLint
 
 ### Backend (FastAPI/Python)
 ```bash
-cd backend
+cd apps/backend
 uv sync              # Install dependencies
 uv run uvicorn main:app --reload --port 8000  # Development server
 
@@ -41,7 +41,7 @@ docker compose down            # Stop services
 ### Pre-Commit Hooks
 ```bash
 # Install hooks (einmalig)
-cd backend && uv sync --all-extras  # Installiert pre-commit
+cd apps/backend && uv sync --all-extras  # Installiert pre-commit
 uv run pre-commit install           # Aktiviert die Hooks
 
 # Manuell ausführen
@@ -72,7 +72,7 @@ Bei Fehlern wird der Commit abgebrochen.
 - Mistral AI (OCR)
 - Qdrant (vector similarity search for context)
 
-### Backend Structure (`backend/`)
+### Backend Structure (`apps/backend/`)
 - `main.py` - FastAPI app with CORS and router setup
 - `config.py` - Pydantic Settings loading from `config.yaml` + env vars
 - `routers/` - API endpoints (settings, documents, processing, prompts)
