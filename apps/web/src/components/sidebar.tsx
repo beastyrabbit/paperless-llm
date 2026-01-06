@@ -6,7 +6,7 @@ import {
   Settings01Icon,
   Clock01Icon,
   SourceCodeIcon,
-  Zap01Icon,
+  FlashIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { cn } from "@paperless-llm/ui/lib/utils";
@@ -28,7 +28,7 @@ export function Sidebar() {
       {/* Logo */}
       <div className="flex h-16 items-center gap-3 border-b border-zinc-200 px-6 dark:border-zinc-800">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/20">
-          <HugeiconsIcon icon={Zap01Icon} className="h-5 w-5 text-white" />
+          <HugeiconsIcon icon={FlashIcon} className="h-5 w-5 text-white" />
         </div>
         <div>
           <h1 className="text-sm font-bold tracking-tight">{t("navigation.appName")}</h1>

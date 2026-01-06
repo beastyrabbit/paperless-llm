@@ -1,8 +1,4 @@
-import { useTranslation } from "react-i18next";
-
 export default function SettingsBlocked() {
-  const { t } = useTranslation();
-
   return (
     <div className="p-8">
       <div className="mb-8">

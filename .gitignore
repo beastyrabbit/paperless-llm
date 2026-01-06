@@ -32,7 +32,8 @@ langgraph.db
 backend/data/
 
 # dependencies
-/node_modules
+node_modules
+**/node_modules
 backend/.venv
 /.pnp
 .pnp.*
@@ -51,6 +52,11 @@ backend/.venv
 
 # production
 /build
+**/dist
+
+# TurboRepo
+.turbo
+**/.turbo
 
 # misc
 .DS_Store
