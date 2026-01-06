@@ -81,6 +81,7 @@ class Settings(BaseSettings):
 
     tag_pending: str = Field(default="llm-pending")
     tag_ocr_done: str = Field(default="llm-ocr-done")
+    tag_schema_analysis_done: str = Field(default="llm-schema-analysis-done")
     tag_correspondent_done: str = Field(default="llm-correspondent-done")
     tag_document_type_done: str = Field(default="llm-document-type-done")
     tag_title_done: str = Field(default="llm-title-done")
@@ -98,6 +99,20 @@ class Settings(BaseSettings):
     pipeline_title: bool = Field(default=True)
     pipeline_tags: bool = Field(default=True)
     pipeline_custom_fields: bool = Field(default=True)
+
+    # =========================================================================
+    # Schema Analysis Settings
+    # =========================================================================
+
+    schema_analysis_enabled: bool = Field(
+        default=True, description="Enable schema analysis step in pipeline"
+    )
+    schema_analysis_pause_for_review: bool = Field(
+        default=True, description="Pause pipeline when schema suggestions are found"
+    )
+    schema_analysis_min_confidence: float = Field(
+        default=0.7, description="Minimum confidence for schema suggestions"
+    )
 
     # Custom fields enabled for AI processing (list of Paperless custom field IDs)
     custom_fields_enabled: list[int] = Field(default_factory=list)
@@ -224,6 +239,13 @@ def _flatten_yaml_config(yaml_config: dict[str, Any]) -> dict[str, Any]:
         flat["debug_log_prompts"] = debug.get("log_prompts")
         flat["debug_log_responses"] = debug.get("log_responses")
         flat["debug_save_processing_history"] = debug.get("save_processing_history")
+
+    # Schema Analysis
+    if "schema_analysis" in yaml_config:
+        sa = yaml_config["schema_analysis"]
+        flat["schema_analysis_enabled"] = sa.get("enabled")
+        flat["schema_analysis_pause_for_review"] = sa.get("pause_for_review")
+        flat["schema_analysis_min_confidence"] = sa.get("min_confidence")
 
     # Language
     if "language" in yaml_config:
@@ -367,6 +389,20 @@ def _unflatten_to_yaml(flat_settings: dict[str, Any]) -> dict[str, Any]:
         if "debug_save_processing_history" in flat_settings:
             yaml_config["debug"]["save_processing_history"] = flat_settings[
                 "debug_save_processing_history"
+            ]
+
+    # Schema Analysis
+    if any(k.startswith("schema_analysis_") for k in flat_settings):
+        yaml_config["schema_analysis"] = {}
+        if "schema_analysis_enabled" in flat_settings:
+            yaml_config["schema_analysis"]["enabled"] = flat_settings["schema_analysis_enabled"]
+        if "schema_analysis_pause_for_review" in flat_settings:
+            yaml_config["schema_analysis"]["pause_for_review"] = flat_settings[
+                "schema_analysis_pause_for_review"
+            ]
+        if "schema_analysis_min_confidence" in flat_settings:
+            yaml_config["schema_analysis"]["min_confidence"] = flat_settings[
+                "schema_analysis_min_confidence"
             ]
 
     # Language

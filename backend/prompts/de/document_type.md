@@ -25,11 +25,14 @@ Ein Dokumenttyp kategorisiert, um welche Art von Dokument es sich handelt. Er be
 
 ## Richtlinien
 
-1. **Zuerst vorhandene Typen abgleichen** - Prüfe ob ein bestehender Dokumenttyp passt bevor du einen neuen vorschlägst
-2. **Angemessen spezifisch sein** - Nicht zu breit ("Dokument") aber nicht zu granular ("Amazon Rechnung für Elektronik")
-3. **Deutsch oder Englisch konsistent verwenden** - Der bestehenden Namenskonvention im System folgen
-4. **Den Hauptzweck des Dokuments bedenken** - Wofür soll dieses Dokument verwendet werden?
-5. **Auf Struktur und Format achten** - Rechnungen haben Positionen, Briefe haben Anreden usw.
+1. **EXAKTE Namen verwenden** - Wenn du einen bestehenden Dokumenttyp verwendest, gib den EXAKTEN Namen aus der Liste unten zurück (z.B. "Rechnungen" nicht "Rechnung", "Kontoauszug" nicht "Kontoauszüge")
+2. **Zuerst vorhandene Typen abgleichen** - Prüfe ob ein bestehender Dokumenttyp passt bevor du einen neuen vorschlägst
+3. **Angemessen spezifisch sein** - Nicht zu breit ("Dokument") aber nicht zu granular ("Amazon Rechnung für Elektronik")
+4. **Deutsch oder Englisch konsistent verwenden** - Der bestehenden Namenskonvention im System folgen
+5. **Den Hauptzweck des Dokuments bedenken** - Wofür soll dieses Dokument verwendet werden?
+6. **Auf Struktur und Format achten** - Rechnungen haben Positionen, Briefe haben Anreden usw.
+
+**WICHTIG**: Der `suggested_document_type` muss EXAKT einem Namen aus "Existierende Dokumenttypen" entsprechen (Groß-/Kleinschreibung beachten!). Setze `is_new` nur auf true wenn wirklich KEIN passender Typ existiert.
 
 ## Worauf achten
 

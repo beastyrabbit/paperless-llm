@@ -14,6 +14,13 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from models.blocked import (
+    BlockedSuggestion,
+    BlockSuggestionRequest,
+    BlockType,
+    RejectionCategory,
+)
+
 
 class TagMetadata(BaseModel):
     """Tag metadata for AI context."""
@@ -60,7 +67,7 @@ class Translation(BaseModel):
 class DatabaseService:
     """SQLite database service for metadata storage."""
 
-    CURRENT_VERSION = 1
+    CURRENT_VERSION = 2
 
     def __init__(self, db_path: str | Path | None = None):
         if db_path is None:
@@ -108,11 +115,19 @@ class DatabaseService:
     def _run_migration(self, conn: sqlite3.Connection, version: int):
         """Run a specific migration."""
         migrations_dir = Path(__file__).parent.parent / "data" / "migrations"
-        migration_file = migrations_dir / f"{version:03d}_initial_schema.sql"
 
-        if migration_file.exists():
-            sql = migration_file.read_text()
-            conn.executescript(sql)
+        # Map version numbers to migration file names
+        migration_files = {
+            1: "001_initial_schema.sql",
+            2: "002_blocked_suggestions.sql",
+        }
+
+        migration_filename = migration_files.get(version)
+        if migration_filename:
+            migration_file = migrations_dir / migration_filename
+            if migration_file.exists():
+                sql = migration_file.read_text()
+                conn.executescript(sql)
 
     # =========================================================================
     # Tag Metadata Methods
@@ -441,6 +456,104 @@ class DatabaseService:
                 (content_type, content_key),
             )
             return cursor.rowcount
+
+    # =========================================================================
+    # Blocked Suggestions Methods
+    # =========================================================================
+
+    def _normalize_name(self, name: str) -> str:
+        """Normalize a suggestion name for case-insensitive matching."""
+        return name.strip().lower()
+
+    def get_blocked_suggestions(self, block_type: str | None = None) -> list[BlockedSuggestion]:
+        """Get all blocked suggestions, optionally filtered by type."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            if block_type:
+                cursor.execute(
+                    "SELECT * FROM blocked_suggestions WHERE block_type = ? ORDER BY suggestion_name",
+                    (block_type,),
+                )
+            else:
+                cursor.execute(
+                    "SELECT * FROM blocked_suggestions ORDER BY block_type, suggestion_name"
+                )
+            results = []
+            for row in cursor.fetchall():
+                data = dict(row)
+                # Convert string values to enums
+                data["block_type"] = BlockType(data["block_type"])
+                if data.get("rejection_category"):
+                    data["rejection_category"] = RejectionCategory(data["rejection_category"])
+                results.append(BlockedSuggestion(**data))
+            return results
+
+    def add_blocked_suggestion(self, suggestion: BlockSuggestionRequest) -> BlockedSuggestion:
+        """Add a blocked suggestion to the database."""
+        normalized_name = self._normalize_name(suggestion.suggestion_name)
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO blocked_suggestions (
+                    suggestion_name, normalized_name, block_type,
+                    rejection_reason, rejection_category, doc_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(normalized_name, block_type) DO UPDATE SET
+                    suggestion_name = excluded.suggestion_name,
+                    rejection_reason = excluded.rejection_reason,
+                    rejection_category = excluded.rejection_category,
+                    doc_id = excluded.doc_id
+                """,
+                (
+                    suggestion.suggestion_name,
+                    normalized_name,
+                    suggestion.block_type.value,
+                    suggestion.rejection_reason,
+                    suggestion.rejection_category.value if suggestion.rejection_category else None,
+                    suggestion.doc_id,
+                ),
+            )
+            # Fetch the result in the same connection
+            cursor.execute(
+                "SELECT * FROM blocked_suggestions WHERE normalized_name = ? AND block_type = ?",
+                (normalized_name, suggestion.block_type.value),
+            )
+            row = cursor.fetchone()
+            if row:
+                data = dict(row)
+                data["block_type"] = BlockType(data["block_type"])
+                if data.get("rejection_category"):
+                    data["rejection_category"] = RejectionCategory(data["rejection_category"])
+                return BlockedSuggestion(**data)
+            return None  # type: ignore
+
+    def remove_blocked_suggestion(self, id: int) -> bool:
+        """Remove a blocked suggestion by ID."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM blocked_suggestions WHERE id = ?",
+                (id,),
+            )
+            return cursor.rowcount > 0
+
+    def is_suggestion_blocked(self, name: str, block_type: str) -> bool:
+        """Check if a suggestion is blocked (case-insensitive)."""
+        normalized_name = self._normalize_name(name)
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            # Check for exact match on block_type OR global block
+            cursor.execute(
+                """
+                SELECT 1 FROM blocked_suggestions
+                WHERE normalized_name = ? AND (block_type = ? OR block_type = 'global')
+                LIMIT 1
+                """,
+                (normalized_name, block_type),
+            )
+            return cursor.fetchone() is not None
 
 
 # Singleton instance
