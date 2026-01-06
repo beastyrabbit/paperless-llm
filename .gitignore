@@ -2,7 +2,7 @@
 
 # Configuration (contains secrets)
 config.yaml
-backend/.env
+apps/backend/.env
 
 # IDE
 .cursor/
@@ -28,12 +28,13 @@ venv/
 *.db
 langgraph.db
 
-# Runtime data
-backend/data/
+# Runtime data (but keep migrations)
+apps/backend/data/*
+!apps/backend/data/migrations/
 
 # dependencies
-/node_modules
-backend/.venv
+node_modules
+apps/backend/.venv
 /.pnp
 .pnp.*
 .yarn/*
@@ -45,8 +46,11 @@ backend/.venv
 # testing
 /coverage
 
+# turbo
+.turbo
+
 # next.js
-/.next/
+.next
 /out/
 
 # production

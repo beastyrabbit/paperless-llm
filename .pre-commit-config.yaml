@@ -35,9 +35,9 @@ repos:
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
-        files: ^backend/
+        files: ^apps/backend/
       - id: ruff-format
-        files: ^backend/
+        files: ^apps/backend/
 
   # =============================================================================
   # Python: Type checking with mypy (optional - disabled by default due to
@@ -50,7 +50,7 @@ repos:
   #       entry: bash -c 'cd backend && uv run mypy . --ignore-missing-imports --no-error-summary'
   #       language: system
   #       types: [python]
-  #       files: ^backend/
+  #       files: ^apps/backend/
   #       pass_filenames: false
 
   # =============================================================================
