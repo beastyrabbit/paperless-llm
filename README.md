@@ -43,8 +43,8 @@ KI-gestütztes Dokumentenanalyse-System für Paperless-ngx mit Mistral OCR und l
 
 ```bash
 # Repository klonen
-git clone https://github.com/beastyrabbit/paperless-local-llm.git
-cd paperless-local-llm
+git clone https://github.com/beastyrabbit/paperless-llm.git
+cd paperless-llm
 
 # Frontend Dependencies
 bun install
