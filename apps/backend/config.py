@@ -15,7 +15,9 @@ def load_yaml_config() -> dict[str, Any]:
     config_paths = [
         Path("config.yaml"),
         Path("../config.yaml"),
+        Path("../../config.yaml"),  # For monorepo: apps/backend -> root
         Path(__file__).parent.parent / "config.yaml",
+        Path(__file__).parent.parent.parent / "config.yaml",  # For monorepo structure
     ]
 
     for config_path in config_paths:
