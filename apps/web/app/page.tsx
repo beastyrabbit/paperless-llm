@@ -12,6 +12,10 @@ import {
   TrendingUp,
   RefreshCw,
   Database,
+  Users,
+  FolderOpen,
+  Tags,
+  Sparkles,
 } from "lucide-react";
 import {
   Card,
@@ -22,6 +26,7 @@ import {
   Badge,
 } from "@repo/ui";
 import Link from "next/link";
+import { pendingApi, PendingCounts } from "@/lib/api";
 
 interface QueueStats {
   pending: number;
@@ -53,6 +58,7 @@ export default function Dashboard() {
   const tCommon = useTranslations("common");
   const tServices = useTranslations("services");
   const [stats, setStats] = useState<QueueStats | null>(null);
+  const [pendingCounts, setPendingCounts] = useState<PendingCounts | null>(null);
   const [connections, setConnections] = useState<ConnectionStatus>({
     paperless: "checking",
     ollama: "checking",
@@ -96,6 +102,13 @@ export default function Dashboard() {
     }
   }, [t]);
 
+  const fetchPendingCounts = useCallback(async () => {
+    const result = await pendingApi.getCounts();
+    if (result.data) {
+      setPendingCounts(result.data);
+    }
+  }, []);
+
   const testConnections = useCallback(async () => {
     const serviceKeys: (keyof ConnectionStatus)[] = ["paperless", "ollama", "qdrant", "mistral"];
 
@@ -127,9 +140,9 @@ export default function Dashboard() {
       qdrant: "checking",
       mistral: "checking",
     });
-    await Promise.all([fetchSettings(), fetchQueueStats(), testConnections()]);
+    await Promise.all([fetchSettings(), fetchQueueStats(), fetchPendingCounts(), testConnections()]);
     setLoading(false);
-  }, [fetchSettings, fetchQueueStats, testConnections]);
+  }, [fetchSettings, fetchQueueStats, fetchPendingCounts, testConnections]);
 
   useEffect(() => {
     // Initial load - intentionally calling refresh on mount
@@ -316,8 +329,84 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Connections & Actions */}
+        {/* Pending Reviews & Service Status */}
         <div className="grid gap-6 lg:grid-cols-2">
+          {/* Pending Reviews */}
+          <Link href="/pending">
+            <Card className="cursor-pointer hover:border-emerald-500/50 transition-colors">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-amber-500" />
+                    {t("pendingReviews")}
+                  </span>
+                  {pendingCounts && (pendingCounts.correspondent + pendingCounts.document_type + pendingCounts.tag +
+                    pendingCounts.schema_correspondent + pendingCounts.schema_document_type + pendingCounts.schema_tag) > 0 && (
+                    <Badge variant="warning">
+                      {pendingCounts.correspondent + pendingCounts.document_type + pendingCounts.tag +
+                        pendingCounts.schema_correspondent + pendingCounts.schema_document_type + pendingCounts.schema_tag}
+                    </Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Pipeline Reviews */}
+                  <div className="space-y-3">
+                    <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{t("pipelineReviews")}</p>
+                    <div className="flex items-center justify-between rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-pink-500" />
+                        <span className="text-sm">{t("correspondents")}</span>
+                      </div>
+                      <Badge variant="secondary">{loading ? "—" : pendingCounts?.correspondent ?? 0}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+                      <div className="flex items-center gap-2">
+                        <FolderOpen className="h-4 w-4 text-indigo-500" />
+                        <span className="text-sm">{t("documentTypes")}</span>
+                      </div>
+                      <Badge variant="secondary">{loading ? "—" : pendingCounts?.document_type ?? 0}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+                      <div className="flex items-center gap-2">
+                        <Tags className="h-4 w-4 text-orange-500" />
+                        <span className="text-sm">{t("tags")}</span>
+                      </div>
+                      <Badge variant="secondary">{loading ? "—" : pendingCounts?.tag ?? 0}</Badge>
+                    </div>
+                  </div>
+
+                  {/* Schema Suggestions */}
+                  <div className="space-y-3">
+                    <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{t("schemaSuggestions")}</p>
+                    <div className="flex items-center justify-between rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-pink-500" />
+                        <span className="text-sm">{t("correspondents")}</span>
+                      </div>
+                      <Badge variant="secondary">{loading ? "—" : pendingCounts?.schema_correspondent ?? 0}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-indigo-500" />
+                        <span className="text-sm">{t("documentTypes")}</span>
+                      </div>
+                      <Badge variant="secondary">{loading ? "—" : pendingCounts?.schema_document_type ?? 0}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-orange-500" />
+                        <span className="text-sm">{t("tags")}</span>
+                      </div>
+                      <Badge variant="secondary">{loading ? "—" : pendingCounts?.schema_tag ?? 0}</Badge>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
           {/* Service Status */}
           <Card>
             <CardHeader>
@@ -361,51 +450,6 @@ export default function Dashboard() {
                   </Badge>
                 </div>
               ))}
-            </CardContent>
-          </Card>
-
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("quickActions")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Link href="/documents">
-                <Button className="w-full justify-between" variant="outline">
-                  <span className="flex items-center gap-2">
-                    <FileText className="h-4 w-4" />
-                    {t("viewDocumentQueue")}
-                  </span>
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-              <Link href="/pending">
-                <Button className="w-full justify-between" variant="outline">
-                  <span className="flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4" />
-                    {t("reviewPendingItems")}
-                  </span>
-                  <Badge variant="warning" className="ml-2">{stats?.pending ?? 0}</Badge>
-                </Button>
-              </Link>
-              <Link href="/settings">
-                <Button className="w-full justify-between" variant="outline">
-                  <span className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4" />
-                    {t("manageWorkflowTags")}
-                  </span>
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-              <Link href="/settings">
-                <Button className="w-full justify-between" variant="outline">
-                  <span className="flex items-center gap-2">
-                    <Zap className="h-4 w-4" />
-                    {t("configureSettings")}
-                  </span>
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
             </CardContent>
           </Card>
         </div>

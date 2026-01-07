@@ -76,6 +76,38 @@ class PaperlessClient:
 
         return docs
 
+    async def get_documents_by_tags(
+        self,
+        tag_names: list[str],
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Get documents that have any of the specified tags."""
+        # Get all tag IDs
+        tag_ids = []
+        for tag_name in tag_names:
+            tag_id = await self._get_tag_id(tag_name)
+            if tag_id is not None:
+                tag_ids.append(tag_id)
+
+        if not tag_ids:
+            return []
+
+        # Paperless API supports tags__id__in for OR query
+        result = await self._request(
+            "GET",
+            "/documents/",
+            params={"tags__id__in": ",".join(map(str, tag_ids)), "page_size": limit},
+        )
+
+        docs = result.get("results", []) if result else []
+
+        # Enrich with tag and correspondent data
+        for doc in docs:
+            doc["tags_data"] = await self._get_tags_data(doc.get("tags", []))
+            doc["correspondent_name"] = await self._get_correspondent_name(doc.get("correspondent"))
+
+        return docs
+
     async def get_queue_stats(
         self,
         tag_pending: str,

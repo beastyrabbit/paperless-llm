@@ -80,15 +80,30 @@ async def get_queue_stats(
 
 @router.get("/pending", response_model=list[DocumentSummary])
 async def get_pending_documents(
-    tag: str = Query(default=None, description="Filter by specific tag"),
+    tag: str = Query(
+        default=None, description="Filter by specific tag, or 'all' for all pipeline docs"
+    ),
     limit: int = Query(default=50, le=100),
     client: PaperlessClient = Depends(get_paperless_client),
     settings: Settings = Depends(get_settings),
 ):
     """Get documents pending processing."""
     try:
-        filter_tag = tag or settings.tag_pending
-        docs = await client.get_documents_by_tag(filter_tag, limit=limit)
+        # If no tag or "all", fetch documents with any pipeline tag
+        if not tag or tag == "all":
+            pipeline_tags = [
+                settings.tag_pending,
+                settings.tag_ocr_done,
+                settings.tag_correspondent_done,
+                settings.tag_document_type_done,
+                settings.tag_title_done,
+                settings.tag_tags_done,
+                settings.tag_processed,
+            ]
+            docs = await client.get_documents_by_tags(pipeline_tags, limit=limit)
+        else:
+            docs = await client.get_documents_by_tag(tag, limit=limit)
+
         return [
             DocumentSummary(
                 id=doc["id"],

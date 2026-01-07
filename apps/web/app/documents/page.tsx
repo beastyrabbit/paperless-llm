@@ -43,8 +43,9 @@ interface Document {
 const statusConfig: Record<string, { labelKey: string; color: string; variant: "warning" | "info" | "secondary" | "success" | "destructive" }> = {
   pending: { labelKey: "statusPending", color: "bg-amber-500", variant: "warning" },
   ocr_done: { labelKey: "statusOcrDone", color: "bg-blue-500", variant: "info" },
-  title_done: { labelKey: "statusTitleDone", color: "bg-purple-500", variant: "secondary" },
   correspondent_done: { labelKey: "statusCorrDone", color: "bg-pink-500", variant: "secondary" },
+  document_type_done: { labelKey: "statusDocTypeDone", color: "bg-indigo-500", variant: "secondary" },
+  title_done: { labelKey: "statusTitleDone", color: "bg-purple-500", variant: "secondary" },
   tags_done: { labelKey: "statusTagsDone", color: "bg-orange-500", variant: "secondary" },
   processed: { labelKey: "statusProcessed", color: "bg-emerald-500", variant: "success" },
 };
@@ -71,8 +72,9 @@ export default function DocumentsPage() {
           const tagMap: Record<string, string> = {
             pending: settings.tags.pending,
             ocr_done: settings.tags.ocr_done,
-            title_done: settings.tags.title_done,
             correspondent_done: settings.tags.correspondent_done,
+            document_type_done: settings.tags.document_type_done,
+            title_done: settings.tags.title_done,
             tags_done: settings.tags.tags_done,
             processed: settings.tags.processed,
           };
@@ -164,8 +166,9 @@ export default function DocumentsPage() {
               <SelectItem value="all">{t("allStatus")}</SelectItem>
               <SelectItem value="pending">{t("statusPending")}</SelectItem>
               <SelectItem value="ocr_done">{t("statusOcrDone")}</SelectItem>
-              <SelectItem value="title_done">{t("statusTitleDone")}</SelectItem>
               <SelectItem value="correspondent_done">{t("statusCorrDone")}</SelectItem>
+              <SelectItem value="document_type_done">{t("statusDocTypeDone")}</SelectItem>
+              <SelectItem value="title_done">{t("statusTitleDone")}</SelectItem>
               <SelectItem value="tags_done">{t("statusTagsDone")}</SelectItem>
               <SelectItem value="processed">{t("statusProcessed")}</SelectItem>
             </SelectContent>

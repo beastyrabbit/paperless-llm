@@ -69,6 +69,12 @@ export default function PendingPage() {
     document_type: 0,
     tag: 0,
     total: 0,
+    schema_correspondent: 0,
+    schema_document_type: 0,
+    schema_tag: 0,
+    schema_custom_field: 0,
+    schema_cleanup: 0,
+    metadata_description: 0,
   });
   const [activeSection, setActiveSection] = useState<SectionKey>("correspondent");
   const [expandedReasoning, setExpandedReasoning] = useState<Set<string>>(

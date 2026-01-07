@@ -132,6 +132,10 @@ async def _check_and_advance_schema_review(
     if not item.type.startswith("schema_"):
         return result
 
+    # Skip if no valid document ID (e.g., schema suggestions not tied to a document)
+    if not doc_id or doc_id <= 0:
+        return result
+
     # Check if there are remaining schema-type pending reviews for this document
     remaining = service.get_by_doc(doc_id)
     remaining_schema = [r for r in remaining if r.type.startswith("schema_")]
@@ -297,29 +301,37 @@ async def approve_pending_item(
                 result["applied"] = True
 
         # Handle schema-type items (from schema analysis)
+        # Note: doc_id may be 0 for suggestions to create new entities without
+        # applying them to a specific document
         elif item.type == "schema_correspondent":
             if request.create_entity:
                 correspondent_id = await client.get_or_create_correspondent(item.suggestion)
-                await client.update_document(item.doc_id, correspondent=correspondent_id)
                 result["correspondent_id"] = correspondent_id
+                # Only apply to document if we have a valid doc_id
+                if item.doc_id and item.doc_id > 0:
+                    await client.update_document(item.doc_id, correspondent=correspondent_id)
                 result["applied"] = True
 
         elif item.type == "schema_document_type":
             if request.create_entity:
                 doc_type_id = await client.get_or_create_document_type(item.suggestion)
-                await client.update_document(item.doc_id, document_type=doc_type_id)
                 result["document_type_id"] = doc_type_id
+                # Only apply to document if we have a valid doc_id
+                if item.doc_id and item.doc_id > 0:
+                    await client.update_document(item.doc_id, document_type=doc_type_id)
                 result["applied"] = True
 
         elif item.type == "schema_tag":
             if request.create_entity:
                 tag_id = await client.get_or_create_tag(item.suggestion)
-                doc = await client.get_document(item.doc_id)
-                current_tags = doc.get("tags", []) if doc else []
-                if tag_id not in current_tags:
-                    current_tags.append(tag_id)
-                    await client.update_document(item.doc_id, tags=current_tags)
                 result["tag_id"] = tag_id
+                # Only apply to document if we have a valid doc_id
+                if item.doc_id and item.doc_id > 0:
+                    doc = await client.get_document(item.doc_id)
+                    current_tags = doc.get("tags", []) if doc else []
+                    if tag_id not in current_tags:
+                        current_tags.append(tag_id)
+                        await client.update_document(item.doc_id, tags=current_tags)
                 result["applied"] = True
 
         elif item.type == "schema_custom_field":

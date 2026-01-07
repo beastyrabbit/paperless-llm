@@ -407,9 +407,12 @@ export interface PendingCounts {
   tag: number;
   total: number;
   // Schema suggestion counts (from bootstrap analysis)
-  schema_correspondent?: number;
-  schema_document_type?: number;
-  schema_tag?: number;
+  schema_correspondent: number;
+  schema_document_type: number;
+  schema_tag: number;
+  schema_custom_field: number;
+  schema_cleanup: number;
+  metadata_description: number;
 }
 
 export interface SearchableEntities {
