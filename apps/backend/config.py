@@ -122,6 +122,22 @@ class Settings(BaseSettings):
     ai_document_types_enabled: list[int] = Field(default_factory=list)
 
     # =========================================================================
+    # Scheduled Jobs Settings
+    # =========================================================================
+
+    # Schema Cleanup Job
+    schema_cleanup_enabled: bool = Field(default=False)
+    schema_cleanup_schedule: Literal["daily", "weekly", "monthly", "cron"] = Field(default="daily")
+    schema_cleanup_cron: str = Field(default="0 3 * * *")  # 3 AM daily
+
+    # Metadata Enhancement Job
+    metadata_enhancement_enabled: bool = Field(default=False)
+    metadata_enhancement_schedule: Literal["daily", "weekly", "monthly", "cron"] = Field(
+        default="weekly"
+    )
+    metadata_enhancement_cron: str = Field(default="0 4 * * 0")  # 4 AM on Sundays
+
+    # =========================================================================
     # Vector Search Settings
     # =========================================================================
 
@@ -243,6 +259,20 @@ def _flatten_yaml_config(yaml_config: dict[str, Any]) -> dict[str, Any]:
         sa = yaml_config["schema_analysis"]
         flat["schema_analysis_enabled"] = sa.get("enabled")
         flat["schema_analysis_min_confidence"] = sa.get("min_confidence")
+
+    # Scheduled Jobs
+    if "jobs" in yaml_config:
+        jobs = yaml_config["jobs"]
+        if "schema_cleanup" in jobs:
+            sc = jobs["schema_cleanup"]
+            flat["schema_cleanup_enabled"] = sc.get("enabled")
+            flat["schema_cleanup_schedule"] = sc.get("schedule")
+            flat["schema_cleanup_cron"] = sc.get("cron")
+        if "metadata_enhancement" in jobs:
+            me = jobs["metadata_enhancement"]
+            flat["metadata_enhancement_enabled"] = me.get("enabled")
+            flat["metadata_enhancement_schedule"] = me.get("schedule")
+            flat["metadata_enhancement_cron"] = me.get("cron")
 
     # Language
     if "language" in yaml_config:
@@ -397,6 +427,38 @@ def _unflatten_to_yaml(flat_settings: dict[str, Any]) -> dict[str, Any]:
             yaml_config["schema_analysis"]["min_confidence"] = flat_settings[
                 "schema_analysis_min_confidence"
             ]
+
+    # Scheduled Jobs
+    has_schema_cleanup = any(k.startswith("schema_cleanup_") for k in flat_settings)
+    has_metadata_enhancement = any(k.startswith("metadata_enhancement_") for k in flat_settings)
+    if has_schema_cleanup or has_metadata_enhancement:
+        yaml_config["jobs"] = {}
+        if has_schema_cleanup:
+            yaml_config["jobs"]["schema_cleanup"] = {}
+            if "schema_cleanup_enabled" in flat_settings:
+                yaml_config["jobs"]["schema_cleanup"]["enabled"] = flat_settings[
+                    "schema_cleanup_enabled"
+                ]
+            if "schema_cleanup_schedule" in flat_settings:
+                yaml_config["jobs"]["schema_cleanup"]["schedule"] = flat_settings[
+                    "schema_cleanup_schedule"
+                ]
+            if "schema_cleanup_cron" in flat_settings:
+                yaml_config["jobs"]["schema_cleanup"]["cron"] = flat_settings["schema_cleanup_cron"]
+        if has_metadata_enhancement:
+            yaml_config["jobs"]["metadata_enhancement"] = {}
+            if "metadata_enhancement_enabled" in flat_settings:
+                yaml_config["jobs"]["metadata_enhancement"]["enabled"] = flat_settings[
+                    "metadata_enhancement_enabled"
+                ]
+            if "metadata_enhancement_schedule" in flat_settings:
+                yaml_config["jobs"]["metadata_enhancement"]["schedule"] = flat_settings[
+                    "metadata_enhancement_schedule"
+                ]
+            if "metadata_enhancement_cron" in flat_settings:
+                yaml_config["jobs"]["metadata_enhancement"]["cron"] = flat_settings[
+                    "metadata_enhancement_cron"
+                ]
 
     # Language
     if "prompt_language" in flat_settings:

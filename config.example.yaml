@@ -112,3 +112,19 @@ debug:
   log_prompts: false               # Log full prompts sent to LLM
   log_responses: false             # Log full LLM responses
   save_processing_history: true    # Save processing history for each document
+
+# =============================================================================
+# Scheduled Jobs
+# =============================================================================
+
+# Background jobs that run on a schedule
+jobs:
+  schema_cleanup:
+    enabled: false                 # Enable scheduled schema cleanup
+    schedule: "daily"              # daily, weekly, monthly, or cron
+    cron: "0 3 * * *"             # Cron expression (only used if schedule is "cron")
+
+  metadata_enhancement:
+    enabled: false                 # Enable scheduled metadata enhancement
+    schedule: "weekly"             # daily, weekly, monthly, or cron
+    cron: "0 4 * * 0"             # Cron expression (Sundays at 4 AM)

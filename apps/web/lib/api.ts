@@ -128,6 +128,7 @@ export const pendingApi = {
       method: "POST",
       body: JSON.stringify(request),
     }),
+  searchEntities: () => fetchApi<SearchableEntities>("/api/pending/search-entities"),
 };
 
 // Metadata API
@@ -203,6 +204,38 @@ export const jobsApi = {
     }),
   triggerSchemaCleanup: () =>
     fetchApi<{ message: string; status: string }>("/api/jobs/schema-cleanup/run", {
+      method: "POST",
+    }),
+  // Bootstrap Analysis
+  startBootstrap: (analysisType: BootstrapAnalysisType) =>
+    fetchApi<BootstrapStartResponse>("/api/jobs/bootstrap/start", {
+      method: "POST",
+      body: JSON.stringify({ analysis_type: analysisType }),
+    }),
+  getBootstrapStatus: () =>
+    fetchApi<BootstrapProgress>("/api/jobs/bootstrap/status"),
+  cancelBootstrap: () =>
+    fetchApi<{ message: string; status: string }>("/api/jobs/bootstrap/cancel", {
+      method: "POST",
+    }),
+  // Job Schedules
+  getSchedules: () =>
+    fetchApi<JobScheduleStatus>("/api/jobs/schedule"),
+  updateSchedule: (request: ScheduleUpdateRequest) =>
+    fetchApi<ScheduleUpdateResponse>("/api/jobs/schedule", {
+      method: "PATCH",
+      body: JSON.stringify(request),
+    }),
+  // Bulk OCR
+  startBulkOCR: (docsPerSecond: number, skipExisting: boolean) =>
+    fetchApi<BulkOCRStartResponse>("/api/jobs/bulk-ocr/start", {
+      method: "POST",
+      body: JSON.stringify({ docs_per_second: docsPerSecond, skip_existing: skipExisting }),
+    }),
+  getBulkOCRStatus: () =>
+    fetchApi<BulkOCRProgress>("/api/jobs/bulk-ocr/status"),
+  cancelBulkOCR: () =>
+    fetchApi<{ message: string; status: string }>("/api/jobs/bulk-ocr/cancel", {
       method: "POST",
     }),
 };
@@ -368,6 +401,16 @@ export interface PendingCounts {
   document_type: number;
   tag: number;
   total: number;
+  // Schema suggestion counts (from bootstrap analysis)
+  schema_correspondent?: number;
+  schema_document_type?: number;
+  schema_tag?: number;
+}
+
+export interface SearchableEntities {
+  correspondents: string[];
+  document_types: string[];
+  tags: string[];
 }
 
 export interface PendingApproveResponse {
@@ -525,4 +568,96 @@ export interface RejectWithFeedbackResponse {
   success: boolean;
   blocked: boolean;
   block_type: string | null;
+}
+
+// Bootstrap Analysis Types
+export type BootstrapAnalysisType = "all" | "correspondents" | "document_types" | "tags";
+export type BootstrapStatusType = "idle" | "running" | "completed" | "cancelled" | "failed";
+
+export interface SuggestionsByType {
+  correspondents: number;
+  document_types: number;
+  tags: number;
+}
+
+export interface BootstrapProgress {
+  status: BootstrapStatusType;
+  total: number;
+  processed: number;
+  current_doc_id: number | null;
+  current_doc_title: string | null;
+  suggestions_found: number;
+  suggestions_by_type: SuggestionsByType;
+  errors: number;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+  avg_seconds_per_doc: number | null;
+  estimated_remaining_seconds: number | null;
+}
+
+export interface BootstrapStartResponse {
+  message: string;
+  analysis_type: BootstrapAnalysisType;
+  status: string;
+}
+
+// Job Schedule Types
+export type ScheduleType = "daily" | "weekly" | "monthly" | "cron";
+
+export interface JobScheduleInfo {
+  enabled: boolean;
+  schedule: ScheduleType;
+  cron: string;
+  next_run: string | null;
+  last_run: string | null;
+  last_result: Record<string, unknown> | null;
+}
+
+export interface JobScheduleStatus {
+  running: boolean;
+  jobs: {
+    schema_cleanup: JobScheduleInfo;
+    metadata_enhancement: JobScheduleInfo;
+  };
+}
+
+export interface ScheduleUpdateRequest {
+  job_name: "schema_cleanup" | "metadata_enhancement";
+  enabled: boolean;
+  schedule: ScheduleType;
+  cron?: string | null;
+}
+
+export interface ScheduleUpdateResponse {
+  message: string;
+  job_name: string;
+  enabled: boolean;
+  schedule: string;
+  cron: string;
+  next_run: string | null;
+}
+
+// Bulk OCR Types
+export type BulkOCRStatusType = "idle" | "running" | "completed" | "cancelled" | "failed";
+
+export interface BulkOCRProgress {
+  status: BulkOCRStatusType;
+  total: number;
+  processed: number;
+  skipped: number;
+  errors: number;
+  current_doc_id: number | null;
+  current_doc_title: string | null;
+  docs_per_second: number;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+}
+
+export interface BulkOCRStartResponse {
+  message: string;
+  docs_per_second: number;
+  skip_existing: boolean;
+  status: string;
 }

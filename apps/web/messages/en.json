@@ -122,6 +122,13 @@
     "less": "less",
     "loading": "Loading pending items...",
     "refresh": "Refresh",
+    "selectAll": "Select All",
+    "deselectAll": "Deselect All",
+    "selected": "{count} selected",
+    "approveSelected": "Approve Selected",
+    "rejectSelected": "Reject Selected",
+    "searchExisting": "Search existing {type}...",
+    "noResults": "No results found",
     "rejectModal": {
       "title": "Reject Suggestion",
       "description": "Rejecting \"{suggestion}\" as {type}",
@@ -195,7 +202,8 @@
       "aiDocumentTypes": "Document Types",
       "workflowTags": "Workflow Tags",
       "language": "Language",
-      "advanced": "Advanced"
+      "advanced": "Advanced",
+      "maintenance": "Maintenance"
     },
     "paperless": {
       "title": "Paperless-ngx",
@@ -381,5 +389,67 @@
     "ollama": "Ollama LLM",
     "qdrant": "Qdrant Vector DB",
     "mistral": "Mistral OCR"
+  },
+  "maintenance": {
+    "title": "Maintenance",
+    "subtitle": "System-wide jobs and document analysis",
+    "bootstrap": {
+      "title": "Bootstrap Analysis",
+      "description": "Analyze all existing documents to suggest schema improvements. Results are queued for review.",
+      "analyzeCorrespondents": "Correspondents",
+      "analyzeTypes": "Document Types",
+      "analyzeTags": "Tags",
+      "fullAnalysis": "Full Analysis",
+      "progress": "Progress",
+      "currentDoc": "Current",
+      "suggestionsFound": "Suggestions found",
+      "errors": "Errors",
+      "cancel": "Cancel",
+      "running": "Running",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "failed": "Failed",
+      "details": "Details",
+      "byType": "Breakdown by Type",
+      "correspondentsCount": "Correspondents",
+      "typesCount": "Types",
+      "tagsCount": "Tags",
+      "eta": "ETA"
+    },
+    "bulkOCR": {
+      "title": "Bulk OCR",
+      "description": "Run OCR on all documents using Mistral AI. Configure the processing rate to avoid overloading the system.",
+      "docsPerSecond": "Docs/second",
+      "skipExisting": "Skip documents with existing OCR",
+      "start": "Start OCR",
+      "progress": "Progress",
+      "currentDoc": "Current",
+      "processed": "Processed",
+      "skipped": "Skipped",
+      "errors": "Errors",
+      "cancel": "Cancel",
+      "running": "Running",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "failed": "Failed"
+    },
+    "scheduled": {
+      "title": "Scheduled Jobs",
+      "description": "Configure automatic maintenance jobs that run on a schedule.",
+      "schemaCleanup": "Schema Cleanup",
+      "schemaCleanupDesc": "Find duplicate and similar entities to merge",
+      "metadataEnhancement": "Metadata Enhancement",
+      "metadataEnhancementDesc": "Generate descriptions for entities without them",
+      "schedule": "Schedule",
+      "nextRun": "Next run",
+      "lastRun": "Last run",
+      "runNow": "Run Now",
+      "never": "Never",
+      "disabled": "Disabled",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "customCron": "Custom"
+    }
   }
 }

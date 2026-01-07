@@ -242,6 +242,10 @@ class PaperlessClient:
         result = await self.create_tag(tag_name)
         return result["id"]
 
+    async def get_or_create_tag(self, name: str) -> int:
+        """Get tag ID, creating if needed (public method)."""
+        return await self._get_or_create_tag(name)
+
     async def _get_tags_data(self, tag_ids: list[int]) -> list[dict[str, Any]]:
         """Get tag data for a list of tag IDs."""
         if not tag_ids:

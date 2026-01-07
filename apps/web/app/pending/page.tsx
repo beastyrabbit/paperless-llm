@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
 import {
   CheckCircle2,
@@ -12,6 +12,10 @@ import {
   Loader2,
   RefreshCw,
   AlertCircle,
+  Square,
+  CheckSquare,
+  Trash2,
+  Search,
 } from "lucide-react";
 import {
   Card,
@@ -33,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
   Input,
+  Checkbox,
   cn,
 } from "@repo/ui";
 import {
@@ -41,6 +46,7 @@ import {
   PendingCounts,
   RejectBlockType,
   RejectionCategory,
+  SearchableEntities,
 } from "@/lib/api";
 
 const sections = [
@@ -68,6 +74,13 @@ export default function PendingPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [selectedValues, setSelectedValues] = useState<Record<string, string>>({});
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const isInitialLoad = useRef(true);
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [existingEntities, setExistingEntities] = useState<SearchableEntities | null>(null);
 
   // Rejection modal state
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
@@ -76,8 +89,11 @@ export default function PendingPage() {
   const [rejectionCategory, setRejectionCategory] = useState<RejectionCategory | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (showLoading = false) => {
+    // Only show loading spinner on initial load or manual refresh
+    if (showLoading) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const [countsResponse, itemsResponse] = await Promise.all([
@@ -97,28 +113,94 @@ export default function PendingPage() {
       setCounts(countsResponse.data!);
       setItems(itemsResponse.data!);
 
-      // Initialize selected values to the suggestion for each item
-      const initial: Record<string, string> = {};
-      for (const item of itemsResponse.data!) {
-        initial[item.id] = item.suggestion;
-      }
-      setSelectedValues(initial);
+      // Initialize selected values for NEW items only (preserve user selections)
+      setSelectedValues((prev) => {
+        const updated = { ...prev };
+        for (const item of itemsResponse.data!) {
+          // Only set default if not already selected
+          if (!(item.id in updated)) {
+            updated[item.id] = item.suggestion;
+          }
+        }
+        return updated;
+      });
     } catch (err) {
       setError(String(err));
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
+      isInitialLoad.current = false;
+    }
+  }, []);
+
+  // Load existing entities for search
+  const loadEntities = useCallback(async () => {
+    try {
+      const response = await pendingApi.searchEntities();
+      if (!response.error && response.data) {
+        setExistingEntities(response.data);
+      }
+    } catch {
+      // Silently fail - search is optional
     }
   }, []);
 
   useEffect(() => {
-    loadData();
+    // Show loading only on initial load
+    loadData(true);
+    loadEntities();
+  }, [loadData, loadEntities]);
+
+  // Auto-refresh every 5 seconds to pick up new items from bootstrap analysis
+  // This is a silent refresh that doesn't reset scroll position
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadData(false); // Silent refresh - no loading spinner
+    }, 5000);
+    return () => clearInterval(interval);
   }, [loadData]);
 
-  const getCount = (type: SectionKey) => counts[type];
+  // Combine schema counts with regular counts for display
+  const getCount = (type: SectionKey) => {
+    const schemaKey = `schema_${type}` as keyof typeof counts;
+    const schemaCount = (counts[schemaKey] as number) || 0;
+    return counts[type] + schemaCount;
+  };
 
-  const totalCount = counts.total;
+  // Calculate total from all types (including schema_* types)
+  const totalCount = sections.reduce((sum, section) => sum + getCount(section.key), 0);
 
-  const filteredItems = items.filter((item) => item.type === activeSection);
+  // Get existing entities for current section, filtered by search query
+  const getFilteredExistingEntities = () => {
+    if (!existingEntities || !searchQuery.trim()) return [];
+
+    const query = searchQuery.toLowerCase().trim();
+    let entities: string[] = [];
+
+    switch (activeSection) {
+      case "correspondent":
+        entities = existingEntities.correspondents;
+        break;
+      case "document_type":
+        entities = existingEntities.document_types;
+        break;
+      case "tag":
+        entities = existingEntities.tags;
+        break;
+    }
+
+    return entities
+      .filter((name) => name.toLowerCase().includes(query))
+      .slice(0, 10); // Limit to 10 results
+  };
+
+  const searchResults = getFilteredExistingEntities();
+
+  // Filter items by section - include both regular types and schema_* types
+  const filteredItems = items.filter((item) =>
+    item.type === activeSection || item.type === `schema_${activeSection}`
+  );
 
   const handleSelectOption = (id: string, option: string) => {
     setSelectedValues((prev) => ({ ...prev, [id]: option }));
@@ -136,10 +218,11 @@ export default function PendingPage() {
         setItems((prev) => prev.filter((item) => item.id !== id));
         const item = items.find((i) => i.id === id);
         if (item) {
+          const countKey = item.type as keyof PendingCounts;
           setCounts((prev) => ({
             ...prev,
-            [item.type]: prev[item.type] - 1,
-            total: prev.total - 1,
+            [countKey]: Math.max(0, ((prev[countKey] as number) || 0) - 1),
+            total: Math.max(0, prev.total - 1),
           }));
         }
       }
@@ -181,10 +264,11 @@ export default function PendingPage() {
       } else {
         // Remove item from local state and update counts
         setItems((prev) => prev.filter((item) => item.id !== rejectingItem.id));
+        const countKey = rejectingItem.type as keyof PendingCounts;
         setCounts((prev) => ({
           ...prev,
-          [rejectingItem.type]: prev[rejectingItem.type] - 1,
-          total: prev.total - 1,
+          [countKey]: Math.max(0, ((prev[countKey] as number) || 0) - 1),
+          total: Math.max(0, prev.total - 1),
         }));
         setRejectModalOpen(false);
         resetRejectForm();
@@ -194,9 +278,107 @@ export default function PendingPage() {
     }
   };
 
-  // Get display name for item type
+  // Selection handlers
+  const toggleItemSelection = (id: string) => {
+    setSelectedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    const ids = filteredItems.map((item) => item.id);
+    setSelectedItems(new Set(ids));
+  };
+
+  const deselectAll = () => {
+    setSelectedItems(new Set());
+  };
+
+  // Bulk action handlers
+  const handleBulkApprove = async () => {
+    if (selectedItems.size === 0) return;
+    setBulkLoading(true);
+    setError(null);
+
+    const idsToProcess = Array.from(selectedItems);
+    const successIds: string[] = [];
+
+    for (const id of idsToProcess) {
+      try {
+        const selectedValue = selectedValues[id];
+        const response = await pendingApi.approve(id, selectedValue);
+        if (!response.error) {
+          successIds.push(id);
+        }
+      } catch {
+        // Continue with other items
+      }
+    }
+
+    // Remove successful items from state
+    if (successIds.length > 0) {
+      setItems((prev) => prev.filter((item) => !successIds.includes(item.id)));
+      setSelectedItems((prev) => {
+        const next = new Set(prev);
+        for (const id of successIds) {
+          next.delete(id);
+        }
+        return next;
+      });
+      // Reload counts
+      loadData(false);
+    }
+
+    setBulkLoading(false);
+  };
+
+  const handleBulkReject = async () => {
+    if (selectedItems.size === 0) return;
+    setBulkLoading(true);
+    setError(null);
+
+    const idsToProcess = Array.from(selectedItems);
+    const successIds: string[] = [];
+
+    for (const id of idsToProcess) {
+      try {
+        const response = await pendingApi.reject(id);
+        if (!response.error) {
+          successIds.push(id);
+        }
+      } catch {
+        // Continue with other items
+      }
+    }
+
+    // Remove successful items from state
+    if (successIds.length > 0) {
+      setItems((prev) => prev.filter((item) => !successIds.includes(item.id)));
+      setSelectedItems((prev) => {
+        const next = new Set(prev);
+        for (const id of successIds) {
+          next.delete(id);
+        }
+        return next;
+      });
+      // Reload counts
+      loadData(false);
+    }
+
+    setBulkLoading(false);
+  };
+
+  // Get display name for item type (handles both regular and schema_* types)
   const getTypeDisplayName = (type: string) => {
-    switch (type) {
+    // Strip schema_ prefix for display
+    const baseType = type.replace(/^schema_/, "");
+    switch (baseType) {
       case "correspondent":
         return t("correspondents").toLowerCase().replace(/s$/, "");
       case "document_type":
@@ -204,7 +386,7 @@ export default function PendingPage() {
       case "tag":
         return t("tags").toLowerCase().replace(/s$/, "");
       default:
-        return type;
+        return baseType;
     }
   };
 
@@ -227,9 +409,9 @@ export default function PendingPage() {
 
   // Auto-switch to first non-empty section if current is empty
   useEffect(() => {
-    const currentCount = counts[activeSection];
+    const currentCount = getCount(activeSection);
     if (currentCount === 0 && totalCount > 0) {
-      const firstNonEmpty = sections.find((s) => counts[s.key] > 0);
+      const firstNonEmpty = sections.find((s) => getCount(s.key) > 0);
       if (firstNonEmpty && firstNonEmpty.key !== activeSection) {
         setActiveSection(firstNonEmpty.key);
       }
@@ -261,7 +443,7 @@ export default function PendingPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={loadData}
+            onClick={() => loadData(true)}
             disabled={loading}
           >
             <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
@@ -300,7 +482,11 @@ export default function PendingPage() {
                 key={section.key}
                 variant={isActive ? "default" : "outline"}
                 disabled={isDisabled}
-                onClick={() => setActiveSection(section.key)}
+                onClick={() => {
+                  setActiveSection(section.key);
+                  setSelectedItems(new Set()); // Clear selection when switching tabs
+                  setSearchQuery(""); // Clear search when switching tabs
+                }}
                 className={cn(
                   "gap-2",
                   isDisabled && "opacity-50 cursor-not-allowed"
@@ -322,6 +508,98 @@ export default function PendingPage() {
           })}
         </div>
 
+        {/* Bulk Actions Toolbar */}
+        {filteredItems.length > 0 && (
+          <div className="flex flex-col gap-2 mb-4 p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={selectedItems.size === filteredItems.length ? deselectAll : selectAll}
+                className="gap-2"
+              >
+                {selectedItems.size === filteredItems.length ? (
+                  <>
+                    <Square className="h-4 w-4" />
+                    {t("deselectAll")}
+                  </>
+                ) : (
+                  <>
+                    <CheckSquare className="h-4 w-4" />
+                    {t("selectAll")}
+                  </>
+                )}
+              </Button>
+
+              {selectedItems.size > 0 && (
+                <>
+                  <span className="text-sm text-zinc-500 mx-2">
+                    {t("selected", { count: selectedItems.size })}
+                  </span>
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 gap-2"
+                    onClick={handleBulkApprove}
+                    disabled={bulkLoading}
+                  >
+                    {bulkLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="h-4 w-4" />
+                    )}
+                    {t("approveSelected")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="gap-2"
+                    onClick={handleBulkReject}
+                    disabled={bulkLoading}
+                  >
+                    {bulkLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                    {t("rejectSelected")}
+                  </Button>
+                </>
+              )}
+
+              {/* Search existing entities */}
+              <div className="relative ml-auto">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+                <Input
+                  placeholder={t("searchExisting", { type: t(sections.find(s => s.key === activeSection)?.labelKey || "").toLowerCase() })}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 w-64 h-8 text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Search results */}
+            {searchQuery && (
+              <div className="flex flex-wrap gap-1 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                {searchResults.length > 0 ? (
+                  searchResults.map((name) => (
+                    <Badge
+                      key={name}
+                      variant="secondary"
+                      className="text-xs cursor-default"
+                    >
+                      <Check className="h-3 w-3 mr-1 text-emerald-500" />
+                      {name}
+                    </Badge>
+                  ))
+                ) : (
+                  <span className="text-xs text-zinc-400">{t("noResults")}</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Content */}
         {totalCount === 0 ? (
           <Card className="py-12">
@@ -341,12 +619,27 @@ export default function PendingPage() {
               const isExpanded = expandedReasoning.has(item.id);
               const isLoading = actionLoading === item.id;
 
+              const isSelected = selectedItems.has(item.id);
+
               return (
-                <Card key={item.id} className="overflow-hidden">
+                <Card
+                  key={item.id}
+                  className={cn(
+                    "overflow-hidden transition-all cursor-pointer",
+                    isSelected && "ring-2 ring-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20"
+                  )}
+                  onClick={() => toggleItemSelection(item.id)}
+                >
                   <CardContent className="p-4">
-                    {/* Top row: Document title + attempt badge */}
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    {/* Top row: Checkbox + Document title + attempt badge */}
+                    <div className="flex items-center gap-3 mb-3">
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleItemSelection(item.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                      />
+                      <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300 flex-1">
                         {item.doc_title}
                       </span>
                       <Badge variant="outline" className="text-xs">
@@ -355,9 +648,9 @@ export default function PendingPage() {
                     </div>
 
                     {/* Options row */}
-                    <div className="flex flex-wrap gap-2 mb-3">
+                    <div className="flex flex-wrap gap-2 mb-3" onClick={(e) => e.stopPropagation()}>
                       {allOptions.map((option) => {
-                        const isSelected = option === selectedValue;
+                        const isOptionSelected = option === selectedValue;
                         return (
                           <Button
                             key={option}
@@ -366,12 +659,12 @@ export default function PendingPage() {
                             disabled={isLoading}
                             className={cn(
                               "transition-all",
-                              isSelected &&
+                              isOptionSelected &&
                                 "border-emerald-500 border-2 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-950/50"
                             )}
                             onClick={() => handleSelectOption(item.id, option)}
                           >
-                            {isSelected && (
+                            {isOptionSelected && (
                               <Check className="h-3 w-3 mr-1 text-emerald-600" />
                             )}
                             {option}
@@ -381,7 +674,7 @@ export default function PendingPage() {
                     </div>
 
                     {/* Reasoning */}
-                    <div className="mb-3">
+                    <div className="mb-3" onClick={(e) => e.stopPropagation()}>
                       <p className="text-sm text-zinc-500 dark:text-zinc-400">
                         {isExpanded ? item.reasoning : firstSentence}
                         {hasMore && !isExpanded && (
@@ -409,7 +702,7 @@ export default function PendingPage() {
                     </div>
 
                     {/* Action buttons */}
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                       <Button
                         size="sm"
                         variant="ghost"

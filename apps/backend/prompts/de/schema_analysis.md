@@ -57,14 +57,22 @@ Bevor du eine neue Entitaet vorschlaegst, pruefe ob sie einer bestehenden Entita
 
 ## Ausgabeformat
 
-Gib eine Liste von Vorschlaegen an, jeweils mit:
+### Neue Vorschlaege
+Gib eine Liste von NEUEN Entitaetsvorschlaegen an, jeweils mit:
 - **entity_type**: "correspondent" | "document_type" | "tag"
 - **suggested_name**: Der vorgeschlagene Entitaetsname (sauber, normalisiert)
 - **reasoning**: Warum diese Entitaet erstellt werden sollte
 - **confidence**: Konfidenzwert (0-1, nur vorschlagen wenn >= 0.7)
 - **similar_to_existing**: Liste bestehender Entitaetsnamen die aehnlich sind (zur Verifikation der Unterscheidbarkeit)
 
-Wenn keine neuen Entitaeten benoetigt werden, gib eine leere Liste mit Begruendung zurueck.
+### Uebereinstimmungen mit ausstehenden Eintraegen
+Wenn dieses Dokument mit Eintraegen aus dem Abschnitt "Bereits Vorgeschlagen" uebereinstimmt, melde diese in **matches_pending**:
+- **entity_type**: "correspondent" | "document_type" | "tag"
+- **matched_name**: Der exakte Name aus der ausstehenden Liste, mit dem dieses Dokument uebereinstimmt
+
+Das ist wichtig! Wenn "Amazon" aussteht und dieses Dokument von Amazon ist, schlage "Amazon" NICHT erneut vor, aber melde es in matches_pending, damit wir zaehlen koennen, wie viele Dokumente uebereinstimmen.
+
+Wenn keine neuen Entitaeten benoetigt werden, gib eine leere Vorschlagsliste mit Begruendung zurueck. Melde aber trotzdem alle matches_pending.
 
 ---
 
@@ -83,6 +91,26 @@ Wenn keine neuen Entitaeten benoetigt werden, gib eine leere Liste mit Begruendu
 ## Existierende Tags
 
 {existing_tags}
+
+## Bereits Vorgeschlagen (ausstehende Pruefung - NICHT duplizieren)
+
+Diese Eintraege wurden bereits waehrend dieser Analysesitzung vorgeschlagen und warten auf Benutzerpruefung.
+Schlage diese NICHT erneut vor, auch nicht mit leichten Variationen wie Pluralformen oder Firmensuffixen.
+
+### Ausstehende Korrespondenten
+{pending_correspondents}
+
+### Ausstehende Dokumenttypen
+{pending_document_types}
+
+### Ausstehende Tags
+{pending_tags}
+
+**Wichtige Deduplizierungsregeln:**
+- Wenn "Amazon" aussteht, schlage NICHT "Amazon.de", "Amazon EU" oder "Amazon Inc." vor
+- Wenn "Rechnung" aussteht, schlage NICHT "Rechnungen" (Pluralform) vor
+- Wenn "Invoice" aussteht, schlage NICHT "Bill" oder "Receipt" als Alternativen vor
+- Wenn ein aehnlicher Eintrag aussteht, gehe davon aus, dass dieser auch dieses Dokument abdeckt
 
 ## Gesperrte Vorschlaege (NIEMALS diese vorschlagen)
 

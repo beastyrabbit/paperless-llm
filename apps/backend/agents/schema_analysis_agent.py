@@ -38,12 +38,20 @@ class SchemaAnalysisAgent:
             )
         self.db = get_database_service()
 
-    async def process(self, doc_id: int, content: str) -> dict[str, Any]:
+    async def process(
+        self,
+        doc_id: int,
+        content: str,
+        pending_suggestions: dict[str, list[str]] | None = None,
+    ) -> dict[str, Any]:
         """Process document to analyze schema and suggest new entities.
 
         Args:
             doc_id: Document ID
             content: OCR content
+            pending_suggestions: Already suggested items during bootstrap, grouped by type:
+                {"correspondent": ["Amazon", ...], "document_type": [...], "tag": [...]}
+                The agent will avoid suggesting duplicates of these.
 
         Returns:
             Result dict with:
@@ -52,6 +60,8 @@ class SchemaAnalysisAgent:
                 - suggestions: List of SchemaSuggestion dicts
                 - reasoning: Overall reasoning for the analysis
         """
+        if pending_suggestions is None:
+            pending_suggestions = {"correspondent": [], "document_type": [], "tag": []}
         # Get existing entities from Paperless
         existing_correspondents = await self.paperless.get_correspondents()
         existing_doc_types = await self.paperless.get_document_types()
@@ -84,6 +94,11 @@ class SchemaAnalysisAgent:
             doc_type_names=doc_type_names,
             tag_names=tag_names,
             similar_docs=similar_docs,
+            blocked_correspondents=blocked_correspondents,
+            blocked_doc_types=blocked_doc_types,
+            blocked_tags=blocked_tags,
+            blocked_global=blocked_global,
+            pending_suggestions=pending_suggestions,
         )
 
         # Filter out blocked suggestions
@@ -99,6 +114,7 @@ class SchemaAnalysisAgent:
             "doc_id": doc_id,
             "has_suggestions": len(filtered_suggestions) > 0,
             "suggestions": [s.model_dump() for s in filtered_suggestions],
+            "matches_pending": [m.model_dump() for m in analysis.matches_pending],
             "reasoning": analysis.reasoning,
             "no_suggestions_reason": analysis.no_suggestions_reason,
         }
@@ -165,6 +181,11 @@ class SchemaAnalysisAgent:
         doc_type_names: list[str],
         tag_names: list[str],
         similar_docs: list[dict],
+        blocked_correspondents: set[str],
+        blocked_doc_types: set[str],
+        blocked_tags: set[str],
+        blocked_global: set[str],
+        pending_suggestions: dict[str, list[str]],
     ) -> SchemaAnalysisResult:
         """Analyze document to suggest new schema entities.
 
@@ -174,6 +195,11 @@ class SchemaAnalysisAgent:
             doc_type_names: List of existing document type names
             tag_names: List of existing tag names
             similar_docs: List of similar documents with metadata
+            blocked_correspondents: Set of blocked correspondent names
+            blocked_doc_types: Set of blocked document type names
+            blocked_tags: Set of blocked tag names
+            blocked_global: Set of globally blocked names
+            pending_suggestions: Already suggested items (to avoid duplicates)
 
         Returns:
             SchemaAnalysisResult with suggestions
@@ -198,6 +224,33 @@ class SchemaAnalysisAgent:
             else "No similar documents found."
         )
 
+        # Format blocked lists for prompt
+        blocked_correspondents_list = (
+            ", ".join(sorted(blocked_correspondents)) if blocked_correspondents else "None"
+        )
+        blocked_doc_types_list = (
+            ", ".join(sorted(blocked_doc_types)) if blocked_doc_types else "None"
+        )
+        blocked_tags_list = ", ".join(sorted(blocked_tags)) if blocked_tags else "None"
+        blocked_global_list = ", ".join(sorted(blocked_global)) if blocked_global else "None"
+
+        # Format pending suggestions (already suggested during bootstrap)
+        pending_correspondents_list = (
+            ", ".join(pending_suggestions.get("correspondent", []))
+            if pending_suggestions.get("correspondent")
+            else "None"
+        )
+        pending_doc_types_list = (
+            ", ".join(pending_suggestions.get("document_type", []))
+            if pending_suggestions.get("document_type")
+            else "None"
+        )
+        pending_tags_list = (
+            ", ".join(pending_suggestions.get("tag", []))
+            if pending_suggestions.get("tag")
+            else "None"
+        )
+
         # Format the prompt with variables
         formatted_prompt = prompt_template.format(
             document_content=content[:4000],
@@ -205,6 +258,13 @@ class SchemaAnalysisAgent:
             existing_document_types=doc_types_list,
             existing_tags=tags_list,
             similar_docs=similar_info,
+            blocked_correspondents=blocked_correspondents_list,
+            blocked_document_types=blocked_doc_types_list,
+            blocked_tags=blocked_tags_list,
+            blocked_global=blocked_global_list,
+            pending_correspondents=pending_correspondents_list,
+            pending_document_types=pending_doc_types_list,
+            pending_tags=pending_tags_list,
         )
 
         messages = [HumanMessage(content=formatted_prompt)]
@@ -229,6 +289,21 @@ Analyze the following document and determine if any NEW entities should be creat
 **Tags:**
 {existing_tags}
 
+## Already Suggested (pending review - do NOT duplicate)
+
+These have already been suggested during this analysis session. Do NOT suggest these again, even with slight variations:
+
+**Pending Correspondents:** {pending_correspondents}
+**Pending Document Types:** {pending_document_types}
+**Pending Tags:** {pending_tags}
+
+## Blocked Suggestions (NEVER suggest these)
+
+**Globally Blocked:** {blocked_global}
+**Blocked Correspondents:** {blocked_correspondents}
+**Blocked Document Types:** {blocked_document_types}
+**Blocked Tags:** {blocked_tags}
+
 ## Similar Documents
 {similar_docs}
 
@@ -239,16 +314,29 @@ Analyze the following document and determine if any NEW entities should be creat
 
 Analyze the document and suggest NEW entities (correspondents, document types, or tags) that:
 1. Do NOT already exist in the system (check the lists above carefully)
-2. Would be genuinely useful for organizing this and similar documents
-3. Are specific enough to be meaningful but general enough to apply to multiple documents
+2. Are NOT in the pending suggestions (already suggested for review)
+3. Are NOT in the blocked lists (NEVER suggest blocked items)
+4. Would be genuinely useful for organizing this and similar documents
+5. Are specific enough to be meaningful but general enough to apply to multiple documents
+
+**Important:** If you see a similar item in "Already Suggested", do NOT suggest a variation. For example:
+- If "Amazon" is pending, do NOT suggest "Amazon.de" or "Amazon EU"
+- If "Rechnung" is pending, do NOT suggest "Rechnungen" (plural)
+- If "Invoice" is pending, do NOT suggest "Bill" or "Receipt" as duplicates
+
+**Instead, report matches in matches_pending!**
+If this document matches a pending item, report it in the matches_pending field so we can count occurrences:
+- entity_type: the type of entity matched
+- matched_name: the exact name from the pending list
 
 **Guidelines:**
-- Only suggest entities that are clearly missing
-- Prefer matching to existing entities when possible
+- Only suggest NEW entities that are clearly missing AND not already pending
+- If document matches a pending item, report in matches_pending (don't create new suggestion)
+- Prefer matching to existing or pending entities when possible
 - For correspondents: Look for sender information, letterheads, signatures
 - For document types: Consider the document's purpose and format
 - For tags: Consider topics, categories, or attributes that would help with retrieval
 
-If the existing entities are sufficient for this document, respond with no suggestions and explain why.
+If the existing or pending entities are sufficient for this document, respond with no suggestions. But still report any matches_pending.
 
-Output a structured analysis with your suggestions."""
+Output a structured analysis with your suggestions and matches_pending."""

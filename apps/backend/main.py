@@ -17,6 +17,7 @@ from routers import (
     settings,
     translation,
 )
+from services.job_scheduler import get_job_scheduler
 from worker import get_worker
 
 
@@ -38,10 +39,16 @@ async def lifespan(app: FastAPI):
         print("   Starting background worker...")
         await worker.start()
 
+    # Start job scheduler
+    scheduler = get_job_scheduler()
+    print("   Starting job scheduler...")
+    await scheduler.start()
+
     yield
 
     # Shutdown
     print("👋 Shutting down Paperless Local LLM Backend...")
+    await scheduler.stop()
     await worker.stop()
 
 

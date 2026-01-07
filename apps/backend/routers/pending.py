@@ -15,6 +15,41 @@ from services.pending_reviews import (
 
 router = APIRouter()
 
+
+class SearchableEntitiesResponse(BaseModel):
+    """Response with all searchable entities."""
+
+    correspondents: list[str]
+    document_types: list[str]
+    tags: list[str]
+
+
+@router.get("/search-entities", response_model=SearchableEntitiesResponse)
+async def get_searchable_entities(
+    settings: Settings = Depends(get_settings),
+):
+    """Get all correspondents, document types, and tags for searching."""
+    url = settings.paperless_url
+    token = settings.paperless_token
+
+    if not url or not token:
+        return SearchableEntitiesResponse(correspondents=[], document_types=[], tags=[])
+
+    try:
+        client = PaperlessClient(url, token)
+        correspondents = await client.get_correspondents()
+        document_types = await client.get_document_types()
+        tags = await client.get_tags()
+
+        return SearchableEntitiesResponse(
+            correspondents=[c["name"] for c in correspondents],
+            document_types=[dt["name"] for dt in document_types],
+            tags=[t["name"] for t in tags],
+        )
+    except Exception:
+        return SearchableEntitiesResponse(correspondents=[], document_types=[], tags=[])
+
+
 # Schema-type prefixes that trigger schema review flow
 SCHEMA_ITEM_TYPES = (
     "schema_correspondent",
@@ -67,6 +102,13 @@ class PendingCounts(BaseModel):
     document_type: int
     tag: int
     total: int
+    # Schema analysis suggestion counts
+    schema_correspondent: int = 0
+    schema_document_type: int = 0
+    schema_tag: int = 0
+    schema_custom_field: int = 0
+    schema_cleanup: int = 0
+    metadata_description: int = 0
 
 
 class ApproveRequest(BaseModel):

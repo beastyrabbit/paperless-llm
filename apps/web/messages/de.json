@@ -122,6 +122,13 @@
     "less": "weniger",
     "loading": "Lade ausstehende Elemente...",
     "refresh": "Aktualisieren",
+    "selectAll": "Alle auswählen",
+    "deselectAll": "Auswahl aufheben",
+    "selected": "{count} ausgewählt",
+    "approveSelected": "Auswahl genehmigen",
+    "rejectSelected": "Auswahl ablehnen",
+    "searchExisting": "Bestehende {type} suchen...",
+    "noResults": "Keine Ergebnisse gefunden",
     "rejectModal": {
       "title": "Vorschlag ablehnen",
       "description": "\"{suggestion}\" als {type} ablehnen",
@@ -195,7 +202,8 @@
       "aiDocumentTypes": "Dokumenttypen",
       "workflowTags": "Workflow-Tags",
       "language": "Sprache",
-      "advanced": "Erweitert"
+      "advanced": "Erweitert",
+      "maintenance": "Wartung"
     },
     "paperless": {
       "title": "Paperless-ngx",
@@ -381,5 +389,67 @@
     "ollama": "Ollama LLM",
     "qdrant": "Qdrant Vector DB",
     "mistral": "Mistral OCR"
+  },
+  "maintenance": {
+    "title": "Wartung",
+    "subtitle": "Systemweite Jobs und Dokumentenanalyse",
+    "bootstrap": {
+      "title": "Bootstrap-Analyse",
+      "description": "Analysiert alle vorhandenen Dokumente, um Schema-Verbesserungen vorzuschlagen. Ergebnisse werden zur Überprüfung vorgemerkt.",
+      "analyzeCorrespondents": "Korrespondenten",
+      "analyzeTypes": "Dokumenttypen",
+      "analyzeTags": "Tags",
+      "fullAnalysis": "Vollständige Analyse",
+      "progress": "Fortschritt",
+      "currentDoc": "Aktuell",
+      "suggestionsFound": "Vorschläge gefunden",
+      "errors": "Fehler",
+      "cancel": "Abbrechen",
+      "running": "Läuft",
+      "completed": "Abgeschlossen",
+      "cancelled": "Abgebrochen",
+      "failed": "Fehlgeschlagen",
+      "details": "Details",
+      "byType": "Aufschlüsselung nach Typ",
+      "correspondentsCount": "Korrespondenten",
+      "typesCount": "Typen",
+      "tagsCount": "Tags",
+      "eta": "Verbleibend"
+    },
+    "bulkOCR": {
+      "title": "Massen-OCR",
+      "description": "OCR für alle Dokumente mit Mistral AI ausführen. Konfigurieren Sie die Verarbeitungsrate, um das System nicht zu überlasten.",
+      "docsPerSecond": "Dok./Sekunde",
+      "skipExisting": "Dokumente mit vorhandenem OCR überspringen",
+      "start": "OCR starten",
+      "progress": "Fortschritt",
+      "currentDoc": "Aktuell",
+      "processed": "Verarbeitet",
+      "skipped": "Übersprungen",
+      "errors": "Fehler",
+      "cancel": "Abbrechen",
+      "running": "Läuft",
+      "completed": "Abgeschlossen",
+      "cancelled": "Abgebrochen",
+      "failed": "Fehlgeschlagen"
+    },
+    "scheduled": {
+      "title": "Geplante Jobs",
+      "description": "Konfigurieren Sie automatische Wartungsjobs, die nach Zeitplan ausgeführt werden.",
+      "schemaCleanup": "Schema-Bereinigung",
+      "schemaCleanupDesc": "Doppelte und ähnliche Entitäten zum Zusammenführen finden",
+      "metadataEnhancement": "Metadaten-Erweiterung",
+      "metadataEnhancementDesc": "Beschreibungen für Entitäten ohne Beschreibung generieren",
+      "schedule": "Zeitplan",
+      "nextRun": "Nächste Ausführung",
+      "lastRun": "Letzte Ausführung",
+      "runNow": "Jetzt ausführen",
+      "never": "Nie",
+      "disabled": "Deaktiviert",
+      "daily": "Täglich",
+      "weekly": "Wöchentlich",
+      "monthly": "Monatlich",
+      "customCron": "Benutzerdefiniert"
+    }
   }
 }

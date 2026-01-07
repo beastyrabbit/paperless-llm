@@ -57,14 +57,22 @@ Before suggesting a new entity, check if it is similar to any existing entity:
 
 ## Output Format
 
-Provide a list of suggestions, each containing:
+### New Suggestions
+Provide a list of NEW entity suggestions, each containing:
 - **entity_type**: "correspondent" | "document_type" | "tag"
 - **suggested_name**: The proposed entity name (clean, normalized)
 - **reasoning**: Why this entity should be created
 - **confidence**: Confidence score (0-1, only suggest if >= 0.7)
 - **similar_to_existing**: List of existing entity names that are similar (to verify distinctness)
 
-If no new entities are needed, return an empty list with reasoning.
+### Matches to Pending Items
+If this document matches any items from the "Already Suggested" section, report them in **matches_pending**:
+- **entity_type**: "correspondent" | "document_type" | "tag"
+- **matched_name**: The exact name from the pending list that this document matches
+
+This is important! If "Amazon" is pending and this document is from Amazon, do NOT suggest "Amazon" again, but DO report it in matches_pending so we can count how many documents match.
+
+If no new entities are needed, return an empty suggestions list with reasoning. But still report any matches_pending.
 
 ---
 
@@ -83,6 +91,26 @@ If no new entities are needed, return an empty list with reasoning.
 ## Existing Tags
 
 {existing_tags}
+
+## Already Suggested (pending review - do NOT duplicate)
+
+These items have already been suggested during this analysis session and are pending user review.
+Do NOT suggest these again, even with slight variations like plurals or company suffixes.
+
+### Pending Correspondents
+{pending_correspondents}
+
+### Pending Document Types
+{pending_document_types}
+
+### Pending Tags
+{pending_tags}
+
+**Important Deduplication Rules:**
+- If "Amazon" is pending, do NOT suggest "Amazon.de", "Amazon EU", or "Amazon Inc."
+- If "Rechnung" is pending, do NOT suggest "Rechnungen" (plural form)
+- If "Invoice" is pending, do NOT suggest "Bill" or "Receipt" as alternatives
+- If a similar entity exists in pending, assume it covers this document too
 
 ## Blocked Suggestions (NEVER suggest these)
 
