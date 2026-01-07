@@ -45,6 +45,8 @@ class PendingReviewItem(BaseModel):
     last_feedback: str | None = None
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     metadata: dict[str, Any] = Field(default_factory=dict)
+    # Tag to apply when all schema reviews for this doc are complete
+    next_tag: str | None = None
 
 
 class PendingReviewsService:
@@ -95,6 +97,7 @@ class PendingReviewsService:
         attempts: int = 1,
         last_feedback: str | None = None,
         metadata: dict[str, Any] | None = None,
+        next_tag: str | None = None,
     ) -> PendingReviewItem:
         """Add a new pending review item.
 
@@ -121,6 +124,7 @@ class PendingReviewsService:
             attempts=attempts,
             last_feedback=last_feedback,
             metadata=metadata or {},
+            next_tag=next_tag,
         )
 
         if existing_idx is not None:

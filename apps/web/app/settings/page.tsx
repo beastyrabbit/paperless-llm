@@ -141,6 +141,7 @@ interface Settings {
   tags: {
     pending: string;
     ocr_done: string;
+    schema_review: string;
     correspondent_done: string;
     document_type_done: string;
     title_done: string;
@@ -232,6 +233,7 @@ export default function SettingsPage() {
     tags: {
       pending: "llm-pending",
       ocr_done: "llm-ocr-done",
+      schema_review: "llm-schema-review",
       correspondent_done: "llm-correspondent-done",
       document_type_done: "llm-document-type-done",
       title_done: "llm-title-done",

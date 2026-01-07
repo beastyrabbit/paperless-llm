@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     tag_pending: str = Field(default="llm-pending")
     tag_ocr_done: str = Field(default="llm-ocr-done")
     tag_schema_analysis_done: str = Field(default="llm-schema-analysis-done")
+    tag_schema_review: str = Field(default="llm-schema-review")
     tag_correspondent_done: str = Field(default="llm-correspondent-done")
     tag_document_type_done: str = Field(default="llm-document-type-done")
     tag_title_done: str = Field(default="llm-title-done")

@@ -15,6 +15,50 @@ from services.pending_reviews import (
 
 router = APIRouter()
 
+# Schema-type prefixes that trigger schema review flow
+SCHEMA_ITEM_TYPES = (
+    "schema_correspondent",
+    "schema_document_type",
+    "schema_tag",
+    "schema_custom_field",
+)
+
+
+async def _check_and_advance_schema_review(
+    doc_id: int,
+    item: PendingReviewItem,
+    service: PendingReviewsService,
+    client: PaperlessClient,
+    settings: Settings,
+) -> dict:
+    """Check if all schema reviews for a document are complete and advance the pipeline.
+
+    Returns a dict with information about whether the document was advanced.
+    """
+    result = {"schema_review_complete": False, "advanced_to": None}
+
+    # Only apply to schema-type items
+    if not item.type.startswith("schema_"):
+        return result
+
+    # Check if there are remaining schema-type pending reviews for this document
+    remaining = service.get_by_doc(doc_id)
+    remaining_schema = [r for r in remaining if r.type.startswith("schema_")]
+
+    if len(remaining_schema) == 0:
+        # All schema reviews complete - advance the document
+        result["schema_review_complete"] = True
+
+        # Remove the schema review tag
+        await client.remove_tag_from_document(doc_id, settings.tag_schema_review)
+
+        # Apply the next tag to resume pipeline (stored in the item)
+        if item.next_tag:
+            await client.add_tag_to_document(doc_id, item.next_tag)
+            result["advanced_to"] = item.next_tag
+
+    return result
+
 
 class PendingCounts(BaseModel):
     """Counts of pending items by type."""
@@ -154,6 +198,36 @@ async def approve_pending_item(
                 result["tag_id"] = tag_id
                 result["applied"] = True
 
+        # Handle schema-type items (from schema analysis)
+        elif item.type == "schema_correspondent":
+            if request.create_entity:
+                correspondent_id = await client.get_or_create_correspondent(item.suggestion)
+                await client.update_document(item.doc_id, correspondent=correspondent_id)
+                result["correspondent_id"] = correspondent_id
+                result["applied"] = True
+
+        elif item.type == "schema_document_type":
+            if request.create_entity:
+                doc_type_id = await client.get_or_create_document_type(item.suggestion)
+                await client.update_document(item.doc_id, document_type=doc_type_id)
+                result["document_type_id"] = doc_type_id
+                result["applied"] = True
+
+        elif item.type == "schema_tag":
+            if request.create_entity:
+                tag_id = await client.get_or_create_tag(item.suggestion)
+                doc = await client.get_document(item.doc_id)
+                current_tags = doc.get("tags", []) if doc else []
+                if tag_id not in current_tags:
+                    current_tags.append(tag_id)
+                    await client.update_document(item.doc_id, tags=current_tags)
+                result["tag_id"] = tag_id
+                result["applied"] = True
+
+        elif item.type == "schema_custom_field":
+            # Custom fields are handled separately - just mark as approved
+            result["applied"] = True
+
         # Remove from pending queue
         service.remove(item_id)
         result["removed"] = True
@@ -161,6 +235,13 @@ async def approve_pending_item(
         # Check if there are more pending items for this document
         remaining = service.get_by_doc(item.doc_id)
         result["remaining_items"] = len(remaining)
+
+        # For schema-type items, check if all schema reviews are complete
+        # and advance the document to the next pipeline stage
+        advance_result = await _check_and_advance_schema_review(
+            item.doc_id, item, service, client, settings
+        )
+        result.update(advance_result)
 
         return result
 
@@ -184,19 +265,29 @@ async def reject_pending_item(
     if not item:
         raise HTTPException(status_code=404, detail="Pending item not found")
 
+    result = {"id": item_id, "rejected": True, "type": item.type}
+
     # Update pipeline tag to continue processing (skip this step)
+    # Only for non-schema types - schema types use the schema review flow
     if item.type == "correspondent":
         await client.remove_tag_from_document(item.doc_id, settings.tag_ocr_done)
         await client.add_tag_to_document(item.doc_id, settings.tag_correspondent_done)
     elif item.type == "document_type":
         await client.remove_tag_from_document(item.doc_id, settings.tag_correspondent_done)
         await client.add_tag_to_document(item.doc_id, settings.tag_document_type_done)
-    # Tags don't block the pipeline, so no tag update needed
+    # Tags and schema-type items don't block the pipeline directly
 
     # Remove from pending queue
     service.remove(item_id)
 
-    return {"id": item_id, "rejected": True, "type": item.type}
+    # For schema-type items, check if all schema reviews are complete
+    # and advance the document to the next pipeline stage
+    advance_result = await _check_and_advance_schema_review(
+        item.doc_id, item, service, client, settings
+    )
+    result.update(advance_result)
+
+    return result
 
 
 @router.post("/{item_id}/reject-with-feedback")
@@ -253,22 +344,32 @@ async def reject_with_feedback(
         db.add_blocked_suggestion(block_request)
 
     # Update pipeline tag to continue processing (skip this step)
+    # Only for non-schema types - schema types use the schema review flow
     if item.type == "correspondent":
         await client.remove_tag_from_document(item.doc_id, settings.tag_ocr_done)
         await client.add_tag_to_document(item.doc_id, settings.tag_correspondent_done)
     elif item.type == "document_type":
         await client.remove_tag_from_document(item.doc_id, settings.tag_correspondent_done)
         await client.add_tag_to_document(item.doc_id, settings.tag_document_type_done)
-    # Tags don't block the pipeline, so no tag update needed
+    # Tags and schema-type items don't block the pipeline directly
 
     # Remove from pending reviews
     service.remove(item_id)
 
-    return {
+    result = {
         "success": True,
         "blocked": request.block_type != "none",
         "block_type": request.block_type if request.block_type != "none" else None,
     }
+
+    # For schema-type items, check if all schema reviews are complete
+    # and advance the document to the next pipeline stage
+    advance_result = await _check_and_advance_schema_review(
+        item.doc_id, item, service, client, settings
+    )
+    result.update(advance_result)
+
+    return result
 
 
 @router.delete("/{item_id}")

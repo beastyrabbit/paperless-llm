@@ -118,6 +118,7 @@ class SettingsUpdate(BaseModel):
     # Tags
     tag_pending: str | None = None
     tag_ocr_done: str | None = None
+    tag_schema_review: str | None = None
     tag_correspondent_done: str | None = None
     tag_document_type_done: str | None = None
     tag_title_done: str | None = None
@@ -204,6 +205,7 @@ async def get_current_settings(settings: Settings = Depends(get_settings)):
         tags={
             "pending": _get_setting("tag_pending", settings),
             "ocr_done": _get_setting("tag_ocr_done", settings),
+            "schema_review": _get_setting("tag_schema_review", settings),
             "correspondent_done": _get_setting("tag_correspondent_done", settings),
             "document_type_done": _get_setting("tag_document_type_done", settings),
             "title_done": _get_setting("tag_title_done", settings),
@@ -482,6 +484,7 @@ async def check_workflow_tags_status(settings: Settings = Depends(get_settings))
     workflow_tags = {
         "pending": _get_setting("tag_pending", settings),
         "ocr_done": _get_setting("tag_ocr_done", settings),
+        "schema_review": _get_setting("tag_schema_review", settings),
         "correspondent_done": _get_setting("tag_correspondent_done", settings),
         "document_type_done": _get_setting("tag_document_type_done", settings),
         "title_done": _get_setting("tag_title_done", settings),
