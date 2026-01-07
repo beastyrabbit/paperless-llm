@@ -127,6 +127,7 @@
     "selected": "{count} selected",
     "approveSelected": "Approve Selected",
     "rejectSelected": "Reject Selected",
+    "removeSelected": "Remove",
     "searchExisting": "Search existing {type}...",
     "noResults": "No results found",
     "rejectModal": {
@@ -144,6 +145,12 @@
       "additionalContext": "Additional context (optional)",
       "cancel": "Cancel",
       "confirmReject": "Reject"
+    },
+    "bulkRejectModal": {
+      "title": "Reject Selected Items",
+      "description": "Rejecting {count} selected items",
+      "blockPerType": "Block all as {type} only",
+      "confirmReject": "Reject {count} Items"
     }
   },
   "prompts": {

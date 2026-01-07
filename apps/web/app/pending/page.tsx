@@ -82,12 +82,18 @@ export default function PendingPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [existingEntities, setExistingEntities] = useState<SearchableEntities | null>(null);
 
-  // Rejection modal state
+  // Rejection modal state (single item)
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectingItem, setRejectingItem] = useState<PendingItem | null>(null);
   const [blockType, setBlockType] = useState<RejectBlockType>("none");
   const [rejectionCategory, setRejectionCategory] = useState<RejectionCategory | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
+
+  // Bulk rejection modal state
+  const [bulkRejectModalOpen, setBulkRejectModalOpen] = useState(false);
+  const [bulkBlockType, setBulkBlockType] = useState<RejectBlockType>("none");
+  const [bulkRejectionCategory, setBulkRejectionCategory] = useState<RejectionCategory | null>(null);
+  const [bulkRejectionReason, setBulkRejectionReason] = useState("");
 
   const loadData = useCallback(async (showLoading = false) => {
     // Only show loading spinner on initial load or manual refresh
@@ -338,7 +344,64 @@ export default function PendingPage() {
     setBulkLoading(false);
   };
 
-  const handleBulkReject = async () => {
+  // Open bulk reject modal
+  const openBulkRejectModal = () => {
+    if (selectedItems.size === 0) return;
+    setBulkRejectModalOpen(true);
+  };
+
+  // Reset bulk rejection modal form
+  const resetBulkRejectForm = () => {
+    setBulkBlockType("none");
+    setBulkRejectionCategory(null);
+    setBulkRejectionReason("");
+  };
+
+  // Handle bulk reject with feedback (from modal)
+  const handleBulkRejectWithFeedback = async () => {
+    if (selectedItems.size === 0) return;
+    setBulkLoading(true);
+    setError(null);
+
+    const idsToProcess = Array.from(selectedItems);
+    const successIds: string[] = [];
+
+    for (const id of idsToProcess) {
+      try {
+        const response = await pendingApi.rejectWithFeedback(id, {
+          block_type: bulkBlockType,
+          rejection_category: bulkRejectionCategory,
+          rejection_reason: bulkRejectionReason || null,
+        });
+        if (!response.error) {
+          successIds.push(id);
+        }
+      } catch {
+        // Continue with other items
+      }
+    }
+
+    // Remove successful items from state
+    if (successIds.length > 0) {
+      setItems((prev) => prev.filter((item) => !successIds.includes(item.id)));
+      setSelectedItems((prev) => {
+        const next = new Set(prev);
+        for (const id of successIds) {
+          next.delete(id);
+        }
+        return next;
+      });
+      // Reload counts
+      loadData(false);
+    }
+
+    setBulkLoading(false);
+    setBulkRejectModalOpen(false);
+    resetBulkRejectForm();
+  };
+
+  // Handle bulk remove (no blocking, just remove from queue)
+  const handleBulkRemove = async () => {
     if (selectedItems.size === 0) return;
     setBulkLoading(true);
     setError(null);
@@ -551,9 +614,19 @@ export default function PendingPage() {
                   </Button>
                   <Button
                     size="sm"
-                    variant="destructive"
-                    className="gap-2"
-                    onClick={handleBulkReject}
+                    variant="outline"
+                    className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    onClick={openBulkRejectModal}
+                    disabled={bulkLoading}
+                  >
+                    <X className="h-4 w-4" />
+                    {t("rejectSelected")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="gap-2 text-zinc-500 hover:text-zinc-700"
+                    onClick={handleBulkRemove}
                     disabled={bulkLoading}
                   >
                     {bulkLoading ? (
@@ -561,7 +634,7 @@ export default function PendingPage() {
                     ) : (
                       <Trash2 className="h-4 w-4" />
                     )}
-                    {t("rejectSelected")}
+                    {t("removeSelected")}
                   </Button>
                 </>
               )}
@@ -841,6 +914,108 @@ export default function PendingPage() {
                 <X className="h-4 w-4 mr-1" />
               )}
               {t("rejectModal.confirmReject")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Rejection Modal */}
+      <Dialog
+        open={bulkRejectModalOpen}
+        onOpenChange={(open) => {
+          setBulkRejectModalOpen(open);
+          if (!open) resetBulkRejectForm();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("bulkRejectModal.title")}</DialogTitle>
+            <DialogDescription>
+              {t("bulkRejectModal.description", { count: selectedItems.size })}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <RadioGroup
+              value={bulkBlockType}
+              onValueChange={(v: string) => setBulkBlockType(v as RejectBlockType)}
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="none" id="bulk-none" />
+                <Label htmlFor="bulk-none">{t("rejectModal.justReject")}</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="per_type" id="bulk-per_type" />
+                <Label htmlFor="bulk-per_type">
+                  {t("bulkRejectModal.blockPerType", {
+                    type: t(sections.find(s => s.key === activeSection)?.labelKey || "").toLowerCase(),
+                  })}
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="global" id="bulk-global" />
+                <Label htmlFor="bulk-global">{t("rejectModal.blockGlobal")}</Label>
+              </div>
+            </RadioGroup>
+
+            {bulkBlockType !== "none" && (
+              <>
+                <Select
+                  value={bulkRejectionCategory || ""}
+                  onValueChange={(v) =>
+                    setBulkRejectionCategory(v as RejectionCategory)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={t("rejectModal.whyOptional")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="duplicate">
+                      {t("rejectModal.duplicate")}
+                    </SelectItem>
+                    <SelectItem value="too_generic">
+                      {t("rejectModal.tooGeneric")}
+                    </SelectItem>
+                    <SelectItem value="irrelevant">
+                      {t("rejectModal.irrelevant")}
+                    </SelectItem>
+                    <SelectItem value="wrong_format">
+                      {t("rejectModal.wrongFormat")}
+                    </SelectItem>
+                    <SelectItem value="other">{t("rejectModal.other")}</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Input
+                  placeholder={t("rejectModal.additionalContext")}
+                  value={bulkRejectionReason}
+                  onChange={(e) => setBulkRejectionReason(e.target.value)}
+                />
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setBulkRejectModalOpen(false);
+                resetBulkRejectForm();
+              }}
+            >
+              {t("rejectModal.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleBulkRejectWithFeedback}
+              disabled={bulkLoading}
+            >
+              {bulkLoading ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <X className="h-4 w-4 mr-1" />
+              )}
+              {t("bulkRejectModal.confirmReject", { count: selectedItems.size })}
             </Button>
           </DialogFooter>
         </DialogContent>

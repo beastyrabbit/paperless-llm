@@ -127,6 +127,7 @@
     "selected": "{count} ausgewählt",
     "approveSelected": "Auswahl genehmigen",
     "rejectSelected": "Auswahl ablehnen",
+    "removeSelected": "Entfernen",
     "searchExisting": "Bestehende {type} suchen...",
     "noResults": "Keine Ergebnisse gefunden",
     "rejectModal": {
@@ -144,6 +145,12 @@
       "additionalContext": "Zusätzlicher Kontext (optional)",
       "cancel": "Abbrechen",
       "confirmReject": "Ablehnen"
+    },
+    "bulkRejectModal": {
+      "title": "Ausgewählte Elemente ablehnen",
+      "description": "{count} ausgewählte Elemente ablehnen",
+      "blockPerType": "Alle als {type} blockieren",
+      "confirmReject": "{count} Elemente ablehnen"
     }
   },
   "prompts": {
