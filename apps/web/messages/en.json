@@ -151,6 +151,16 @@
       "description": "Rejecting {count} selected items",
       "blockPerType": "Block all as {type} only",
       "confirmReject": "Reject {count} Items"
+    },
+    "blocked": {
+      "toggle": "Blocked",
+      "title": "Blocked Suggestions",
+      "noItems": "No blocked items",
+      "noItemsDesc": "Items you block will appear here. You can unblock them at any time.",
+      "globalBlocks": "Blocked Everywhere",
+      "correspondentBlocks": "Blocked Correspondents",
+      "documentTypeBlocks": "Blocked Document Types",
+      "tagBlocks": "Blocked Tags"
     }
   },
   "prompts": {

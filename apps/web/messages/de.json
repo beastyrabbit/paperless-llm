@@ -151,6 +151,16 @@
       "description": "{count} ausgewählte Elemente ablehnen",
       "blockPerType": "Alle als {type} blockieren",
       "confirmReject": "{count} Elemente ablehnen"
+    },
+    "blocked": {
+      "toggle": "Blockiert",
+      "title": "Blockierte Vorschläge",
+      "noItems": "Keine blockierten Elemente",
+      "noItemsDesc": "Elemente, die Sie blockieren, werden hier angezeigt. Sie können sie jederzeit entsperren.",
+      "globalBlocks": "Überall blockiert",
+      "correspondentBlocks": "Blockierte Korrespondenten",
+      "documentTypeBlocks": "Blockierte Dokumenttypen",
+      "tagBlocks": "Blockierte Tags"
     }
   },
   "prompts": {

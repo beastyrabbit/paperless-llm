@@ -16,6 +16,9 @@ import {
   CheckSquare,
   Trash2,
   Search,
+  Ban,
+  Unlock,
+  Globe,
 } from "lucide-react";
 import {
   Card,
@@ -47,6 +50,7 @@ import {
   RejectBlockType,
   RejectionCategory,
   SearchableEntities,
+  BlockedItemsResponse,
 } from "@/lib/api";
 
 const sections = [
@@ -81,6 +85,11 @@ export default function PendingPage() {
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
   const [existingEntities, setExistingEntities] = useState<SearchableEntities | null>(null);
+
+  // Blocked items state
+  const [showBlocked, setShowBlocked] = useState(false);
+  const [blockedItems, setBlockedItems] = useState<BlockedItemsResponse | null>(null);
+  const [unblockingId, setUnblockingId] = useState<number | null>(null);
 
   // Rejection modal state (single item)
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
@@ -152,11 +161,44 @@ export default function PendingPage() {
     }
   }, []);
 
+  // Load blocked items
+  const loadBlockedItems = useCallback(async () => {
+    try {
+      const response = await pendingApi.getBlocked();
+      if (!response.error && response.data) {
+        setBlockedItems(response.data);
+      }
+    } catch {
+      // Silently fail
+    }
+  }, []);
+
+  // Handle unblock
+  const handleUnblock = async (blockId: number) => {
+    setUnblockingId(blockId);
+    try {
+      const response = await pendingApi.unblock(blockId);
+      if (!response.error) {
+        // Reload blocked items
+        await loadBlockedItems();
+      }
+    } finally {
+      setUnblockingId(null);
+    }
+  };
+
   useEffect(() => {
     // Show loading only on initial load
     loadData(true);
     loadEntities();
   }, [loadData, loadEntities]);
+
+  // Load blocked items when switching to blocked view
+  useEffect(() => {
+    if (showBlocked) {
+      loadBlockedItems();
+    }
+  }, [showBlocked, loadBlockedItems]);
 
   // Auto-refresh every 5 seconds to pick up new items from bootstrap analysis
   // This is a silent refresh that doesn't reset scroll position
@@ -503,15 +545,31 @@ export default function PendingPage() {
               {t("subtitle", { count: totalCount })}
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => loadData(true)}
-            disabled={loading}
-          >
-            <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
-            {t("refresh")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={showBlocked ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowBlocked(!showBlocked)}
+              className="gap-2"
+            >
+              <Ban className="h-4 w-4" />
+              {t("blocked.toggle")}
+              {blockedItems && blockedItems.total > 0 && (
+                <Badge variant={showBlocked ? "secondary" : "outline"} className="ml-1">
+                  {blockedItems.total}
+                </Badge>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => loadData(true)}
+              disabled={loading}
+            >
+              <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
+              {t("refresh")}
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -532,6 +590,160 @@ export default function PendingPage() {
           </div>
         )}
 
+        {/* Blocked Items View */}
+        {showBlocked ? (
+          <div className="space-y-6">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Ban className="h-5 w-5" />
+              {t("blocked.title")}
+            </h2>
+
+            {!blockedItems ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+              </div>
+            ) : blockedItems.total === 0 ? (
+              <Card className="py-12">
+                <CardContent className="flex flex-col items-center justify-center text-center">
+                  <CheckCircle2 className="h-12 w-12 text-emerald-500 mb-4" />
+                  <h3 className="font-semibold text-lg mb-1">{t("blocked.noItems")}</h3>
+                  <p className="text-zinc-500 text-sm">{t("blocked.noItemsDesc")}</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-6">
+                {/* Global blocks */}
+                {blockedItems.global_blocks.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-zinc-500 mb-2 flex items-center gap-2">
+                      <Globe className="h-4 w-4" />
+                      {t("blocked.globalBlocks")} ({blockedItems.global_blocks.length})
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {blockedItems.global_blocks.map((item) => (
+                        <Badge
+                          key={item.id}
+                          variant="destructive"
+                          className="text-sm py-1 px-3 gap-2"
+                        >
+                          {item.suggestion_name}
+                          <button
+                            onClick={() => handleUnblock(item.id)}
+                            disabled={unblockingId === item.id}
+                            className="hover:bg-white/20 rounded p-0.5"
+                          >
+                            {unblockingId === item.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Unlock className="h-3 w-3" />
+                            )}
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Correspondent blocks */}
+                {blockedItems.correspondent_blocks.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-zinc-500 mb-2 flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      {t("blocked.correspondentBlocks")} ({blockedItems.correspondent_blocks.length})
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {blockedItems.correspondent_blocks.map((item) => (
+                        <Badge
+                          key={item.id}
+                          variant="outline"
+                          className="text-sm py-1 px-3 gap-2 border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-700 dark:bg-orange-950 dark:text-orange-300"
+                        >
+                          {item.suggestion_name}
+                          <button
+                            onClick={() => handleUnblock(item.id)}
+                            disabled={unblockingId === item.id}
+                            className="hover:bg-orange-200 dark:hover:bg-orange-900 rounded p-0.5"
+                          >
+                            {unblockingId === item.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Unlock className="h-3 w-3" />
+                            )}
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Document type blocks */}
+                {blockedItems.document_type_blocks.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-zinc-500 mb-2 flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      {t("blocked.documentTypeBlocks")} ({blockedItems.document_type_blocks.length})
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {blockedItems.document_type_blocks.map((item) => (
+                        <Badge
+                          key={item.id}
+                          variant="outline"
+                          className="text-sm py-1 px-3 gap-2 border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                        >
+                          {item.suggestion_name}
+                          <button
+                            onClick={() => handleUnblock(item.id)}
+                            disabled={unblockingId === item.id}
+                            className="hover:bg-blue-200 dark:hover:bg-blue-900 rounded p-0.5"
+                          >
+                            {unblockingId === item.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Unlock className="h-3 w-3" />
+                            )}
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Tag blocks */}
+                {blockedItems.tag_blocks.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-zinc-500 mb-2 flex items-center gap-2">
+                      <Tag className="h-4 w-4" />
+                      {t("blocked.tagBlocks")} ({blockedItems.tag_blocks.length})
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {blockedItems.tag_blocks.map((item) => (
+                        <Badge
+                          key={item.id}
+                          variant="outline"
+                          className="text-sm py-1 px-3 gap-2 border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                        >
+                          {item.suggestion_name}
+                          <button
+                            onClick={() => handleUnblock(item.id)}
+                            disabled={unblockingId === item.id}
+                            className="hover:bg-emerald-200 dark:hover:bg-emerald-900 rounded p-0.5"
+                          >
+                            {unblockingId === item.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Unlock className="h-3 w-3" />
+                            )}
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
         {/* Section Tabs */}
         <div className="flex gap-2 mb-6">
           {sections.map((section) => {
@@ -809,6 +1021,8 @@ export default function PendingPage() {
               );
             })}
           </div>
+        )}
+          </>
         )}
       </div>
 

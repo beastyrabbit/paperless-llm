@@ -129,6 +129,11 @@ export const pendingApi = {
       body: JSON.stringify(request),
     }),
   searchEntities: () => fetchApi<SearchableEntities>("/api/pending/search-entities"),
+  getBlocked: () => fetchApi<BlockedItemsResponse>("/api/pending/blocked"),
+  unblock: (blockId: number) =>
+    fetchApi<{ success: boolean; unblocked_id: number }>(`/api/pending/blocked/${blockId}`, {
+      method: "DELETE",
+    }),
 };
 
 // Metadata API
@@ -411,6 +416,25 @@ export interface SearchableEntities {
   correspondents: string[];
   document_types: string[];
   tags: string[];
+}
+
+export interface BlockedItem {
+  id: number;
+  suggestion_name: string;
+  normalized_name: string;
+  block_type: "global" | "correspondent" | "document_type" | "tag";
+  rejection_reason: string | null;
+  rejection_category: string | null;
+  doc_id: number | null;
+  created_at: string | null;
+}
+
+export interface BlockedItemsResponse {
+  global_blocks: BlockedItem[];
+  correspondent_blocks: BlockedItem[];
+  document_type_blocks: BlockedItem[];
+  tag_blocks: BlockedItem[];
+  total: number;
 }
 
 export interface PendingApproveResponse {

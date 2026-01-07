@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from config import Settings, get_settings
+from models.blocked import BlockedSuggestionResponse, BlockType
+from services.database import get_database_service
 from services.paperless import PaperlessClient
 from services.pending_reviews import (
     PendingReviewItem,
@@ -48,6 +50,60 @@ async def get_searchable_entities(
         )
     except Exception:
         return SearchableEntitiesResponse(correspondents=[], document_types=[], tags=[])
+
+
+class BlockedItemsResponse(BaseModel):
+    """Response with blocked items grouped by type."""
+
+    global_blocks: list[BlockedSuggestionResponse]
+    correspondent_blocks: list[BlockedSuggestionResponse]
+    document_type_blocks: list[BlockedSuggestionResponse]
+    tag_blocks: list[BlockedSuggestionResponse]
+    total: int
+
+
+@router.get("/blocked", response_model=BlockedItemsResponse)
+async def get_blocked_items():
+    """Get all blocked suggestions grouped by type."""
+    db = get_database_service()
+    all_blocked = db.get_blocked_suggestions()
+
+    # Group by block type
+    global_blocks = []
+    correspondent_blocks = []
+    document_type_blocks = []
+    tag_blocks = []
+
+    for item in all_blocked:
+        response = BlockedSuggestionResponse.from_blocked_suggestion(item)
+        if item.block_type == BlockType.GLOBAL:
+            global_blocks.append(response)
+        elif item.block_type == BlockType.CORRESPONDENT:
+            correspondent_blocks.append(response)
+        elif item.block_type == BlockType.DOCUMENT_TYPE:
+            document_type_blocks.append(response)
+        elif item.block_type == BlockType.TAG:
+            tag_blocks.append(response)
+
+    return BlockedItemsResponse(
+        global_blocks=global_blocks,
+        correspondent_blocks=correspondent_blocks,
+        document_type_blocks=document_type_blocks,
+        tag_blocks=tag_blocks,
+        total=len(all_blocked),
+    )
+
+
+@router.delete("/blocked/{block_id}")
+async def unblock_item(block_id: int):
+    """Remove an item from the blocked list."""
+    db = get_database_service()
+    success = db.remove_blocked_suggestion(block_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Blocked item not found")
+
+    return {"success": True, "unblocked_id": block_id}
 
 
 # Schema-type prefixes that trigger schema review flow
