@@ -37,6 +37,7 @@ import {
   Square,
   User,
   Calendar,
+  SkipForward,
 } from "lucide-react";
 import {
   Card,
@@ -1043,6 +1044,14 @@ export default function SettingsPage() {
       await loadBootstrapStatus();
     }
     setBootstrapLoading(false);
+  };
+
+  const handleSkipDocument = async (count: number = 1) => {
+    const response = await jobsApi.skipBootstrapDocument(count);
+    if (response.error) {
+      setMaintenanceError(response.error);
+    }
+    // Don't reload status - it will be picked up by the polling
   };
 
   const handleScheduleUpdate = async (
@@ -2889,19 +2898,48 @@ export default function SettingsPage() {
                         )}
                       </div>
                       {isBootstrapRunning && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleCancelBootstrap}
-                          disabled={bootstrapLoading}
-                        >
-                          {bootstrapLoading ? (
-                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                          ) : (
-                            <Square className="h-4 w-4 mr-1" />
-                          )}
-                          {tMaint("bootstrap.cancel")}
-                        </Button>
+                        <div className="flex gap-2 flex-wrap">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleSkipDocument(1)}
+                            title={tMaint("bootstrap.skipTooltip")}
+                          >
+                            <SkipForward className="h-4 w-4 mr-1" />
+                            {tMaint("bootstrap.skip")}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleSkipDocument(10)}
+                            title={tMaint("bootstrap.skip10Tooltip")}
+                          >
+                            <SkipForward className="h-4 w-4 mr-1" />
+                            {tMaint("bootstrap.skip10")}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleSkipDocument(100)}
+                            title={tMaint("bootstrap.skip100Tooltip")}
+                          >
+                            <SkipForward className="h-4 w-4 mr-1" />
+                            {tMaint("bootstrap.skip100")}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleCancelBootstrap}
+                            disabled={bootstrapLoading}
+                          >
+                            {bootstrapLoading ? (
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            ) : (
+                              <Square className="h-4 w-4 mr-1" />
+                            )}
+                            {tMaint("bootstrap.cancel")}
+                          </Button>
+                        </div>
                       )}
                     </div>
 
@@ -2944,6 +2982,12 @@ export default function SettingsPage() {
                             <div>
                               <span className="text-zinc-500">{tMaint("bootstrap.errors")}:</span>{" "}
                               <span className="font-medium text-red-600">{bootstrapProgress.errors}</span>
+                            </div>
+                          )}
+                          {bootstrapProgress.skipped > 0 && (
+                            <div>
+                              <span className="text-zinc-500">{tMaint("bootstrap.skipped")}:</span>{" "}
+                              <span className="font-medium text-amber-600">{bootstrapProgress.skipped}</span>
                             </div>
                           )}
                         </div>

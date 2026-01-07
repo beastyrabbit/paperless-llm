@@ -134,6 +134,21 @@ export const pendingApi = {
     fetchApi<{ success: boolean; unblocked_id: number }>(`/api/pending/blocked/${blockId}`, {
       method: "DELETE",
     }),
+  approveCleanup: (itemId: string, finalName?: string) =>
+    fetchApi<SchemaCleanupApproveResponse>(`/api/pending/${itemId}/approve-cleanup`, {
+      method: "POST",
+      body: JSON.stringify({ final_name: finalName }),
+    }),
+  // Pending cleanup (merge similar suggestions)
+  findSimilar: (threshold?: number) =>
+    fetchApi<SimilarGroupsResponse>(
+      `/api/pending/similar${threshold ? `?threshold=${threshold}` : ""}`
+    ),
+  mergeSuggestions: (itemIds: string[], finalName: string) =>
+    fetchApi<MergePendingResponse>("/api/pending/merge", {
+      method: "POST",
+      body: JSON.stringify({ item_ids: itemIds, final_name: finalName }),
+    }),
 };
 
 // Metadata API
@@ -223,6 +238,13 @@ export const jobsApi = {
     fetchApi<{ message: string; status: string }>("/api/jobs/bootstrap/cancel", {
       method: "POST",
     }),
+  skipBootstrapDocument: (count: number = 1) =>
+    fetchApi<{ message: string; status: string; count?: number }>(
+      `/api/jobs/bootstrap/skip?count=${count}`,
+      {
+        method: "POST",
+      }
+    ),
   // Job Schedules
   getSchedules: () =>
     fetchApi<JobScheduleStatus>("/api/jobs/schedule"),
@@ -386,12 +408,14 @@ export interface AvailableLanguagesResponse {
 
 // Pending Reviews Types
 export type PendingItemType = "correspondent" | "document_type" | "tag";
+export type SchemaItemType = "schema_correspondent" | "schema_document_type" | "schema_tag" | "schema_custom_field" | "schema_cleanup";
+export type AllPendingItemType = PendingItemType | SchemaItemType;
 
 export interface PendingItem {
   id: string;
   doc_id: number;
   doc_title: string;
-  type: PendingItemType;
+  type: AllPendingItemType;
   suggestion: string;
   reasoning: string;
   alternatives: string[];
@@ -399,6 +423,50 @@ export interface PendingItem {
   last_feedback: string | null;
   created_at: string;
   metadata: Record<string, unknown>;
+  next_tag?: string;
+}
+
+// Schema cleanup specific types
+export type SchemaCleanupType = "merge" | "delete";
+export type SchemaEntityType = "correspondent" | "document_type" | "tag";
+
+export interface SchemaCleanupMetadata {
+  cleanup_type: SchemaCleanupType;
+  entity_type: SchemaEntityType;
+  // For merges
+  source_id?: number;
+  target_id?: number;
+  source_name?: string;
+  target_name?: string;
+  doc_count_source?: number;
+  doc_count_target?: number;
+  // For deletes
+  entity_id?: number;
+  entity_name?: string;
+}
+
+export interface SchemaCleanupApproveResponse {
+  id: string;
+  type: "schema_cleanup";
+  cleanup_type: SchemaCleanupType;
+  entity_type: SchemaEntityType;
+  success: boolean;
+  removed: boolean;
+  merge_result?: {
+    entity_type: string;
+    source_id: number;
+    target_id: number;
+    documents_transferred: number;
+    source_deleted: boolean;
+    target_renamed: boolean;
+  };
+  delete_result?: {
+    entity_type: string;
+    entity_id: number;
+    deleted: boolean;
+    document_count: number;
+    error?: string;
+  };
 }
 
 export interface PendingCounts {
@@ -419,6 +487,26 @@ export interface SearchableEntities {
   correspondents: string[];
   document_types: string[];
   tags: string[];
+}
+
+// Pending cleanup (similar suggestions) types
+export interface SimilarGroup {
+  suggestions: string[];
+  item_ids: string[];
+  item_type: string;
+  doc_ids: number[];
+  recommended_name: string;
+}
+
+export interface SimilarGroupsResponse {
+  groups: SimilarGroup[];
+  total_mergeable: number;
+}
+
+export interface MergePendingResponse {
+  merged_count: number;
+  final_name: string;
+  updated_item_ids: string[];
 }
 
 export interface BlockedItem {
@@ -611,6 +699,7 @@ export interface BootstrapProgress {
   status: BootstrapStatusType;
   total: number;
   processed: number;
+  skipped: number;
   current_doc_id: number | null;
   current_doc_title: string | null;
   suggestions_found: number;

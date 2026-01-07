@@ -13,6 +13,7 @@ Key differences from per-document pipeline:
 
 import asyncio
 import logging
+import traceback
 from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
@@ -51,6 +52,7 @@ class ProgressUpdate(BaseModel):
     status: BootstrapStatus
     total: int = 0
     processed: int = 0
+    skipped: int = 0
     current_doc_id: int | None = None
     current_doc_title: str | None = None
     suggestions_found: int = 0
@@ -99,6 +101,8 @@ class BootstrapAnalysisJob:
 
         # State
         self._cancelled = False
+        self._skip_count = 0  # Number of documents to skip
+        self._current_task: asyncio.Task | None = None
         self._progress = ProgressUpdate(status=BootstrapStatus.IDLE)
 
     @classmethod
@@ -119,6 +123,29 @@ class BootstrapAnalysisJob:
         """Cancel the currently running job."""
         if cls._current_job and cls._current_job._progress.status == BootstrapStatus.RUNNING:
             cls._current_job._cancelled = True
+            # Also cancel the current task if running
+            if cls._current_job._current_task and not cls._current_job._current_task.done():
+                cls._current_job._current_task.cancel()
+            return True
+        return False
+
+    @classmethod
+    async def skip_current_document(cls, count: int = 1) -> bool:
+        """Skip the currently processing document(s) by cancelling the current task.
+
+        Args:
+            count: Number of documents to skip (default 1)
+        """
+        if cls._current_job and cls._current_job._progress.status == BootstrapStatus.RUNNING:
+            cls._current_job._skip_count += count
+            logger.info(
+                f"Skip requested for {count} document(s), "
+                f"total skip count: {cls._current_job._skip_count}"
+            )
+            # Cancel the current task to interrupt the LLM call
+            if cls._current_job._current_task and not cls._current_job._current_task.done():
+                cls._current_job._current_task.cancel()
+                logger.info("Cancelled current analysis task")
             return True
         return False
 
@@ -186,6 +213,16 @@ class BootstrapAnalysisJob:
                 self._progress.current_doc_id = doc_id
                 self._progress.current_doc_title = doc_title
 
+                # Check if skip was requested for previous document
+                if self._skip_count > 0:
+                    logger.info(
+                        f"Skipping document {doc_id} (user requested skip, {self._skip_count} remaining)"
+                    )
+                    self._skip_count -= 1
+                    self._progress.processed += 1
+                    self._progress.skipped += 1
+                    continue
+
                 try:
                     # Get document content
                     content = doc.get("content", "")
@@ -199,12 +236,101 @@ class BootstrapAnalysisJob:
                         self._progress.processed += 1
                         continue
 
-                    # Run schema analysis with pending suggestions context
-                    result = await agent.process(
-                        doc_id,
-                        content,
-                        pending_suggestions=self._pending_suggestions,
-                    )
+                    # Check for skip before the expensive LLM call
+                    if self._skip_count > 0:
+                        logger.info(
+                            f"Skipping document {doc_id} before analysis (user requested, {self._skip_count} remaining)"
+                        )
+                        self._skip_count -= 1
+                        self._progress.processed += 1
+                        self._progress.skipped += 1
+                        continue
+
+                    # Run schema analysis with retry logic
+                    max_retries = 5
+                    result = None
+                    last_error = None
+
+                    for attempt in range(1, max_retries + 1):
+                        # Check for skip/cancel between retries
+                        if self._skip_count > 0 or self._cancelled:
+                            break
+
+                        try:
+                            # Run schema analysis in a cancellable task
+                            self._current_task = asyncio.create_task(
+                                agent.process(
+                                    doc_id,
+                                    content,
+                                    pending_suggestions=self._pending_suggestions,
+                                )
+                            )
+
+                            try:
+                                result = await self._current_task
+                                break  # Success, exit retry loop
+                            except asyncio.CancelledError:
+                                # Task was cancelled (skip requested)
+                                logger.info(
+                                    f"Analysis cancelled for document {doc_id} (user skipped)"
+                                )
+                                if self._skip_count > 0:
+                                    self._skip_count -= 1
+                                self._progress.processed += 1
+                                self._progress.skipped += 1
+                                result = None  # Signal to skip processing
+                                break
+                            finally:
+                                self._current_task = None
+
+                        except (TimeoutError, ConnectionError) as e:
+                            last_error = e
+                            logger.warning(
+                                f"Attempt {attempt}/{max_retries} failed for document {doc_id}: "
+                                f"{type(e).__name__}: {e}"
+                            )
+                            if attempt < max_retries:
+                                # Wait before retry with exponential backoff
+                                wait_time = 2**attempt  # 2, 4, 8, 16, 32 seconds
+                                logger.info(f"Retrying in {wait_time} seconds...")
+                                await asyncio.sleep(wait_time)
+                        except Exception as e:
+                            # For other errors, also retry but log more details
+                            last_error = e
+                            error_type = type(e).__name__
+                            logger.warning(
+                                f"Attempt {attempt}/{max_retries} failed for document {doc_id}: "
+                                f"{error_type}: {e}"
+                            )
+                            if attempt < max_retries:
+                                wait_time = 2**attempt
+                                logger.info(f"Retrying in {wait_time} seconds...")
+                                await asyncio.sleep(wait_time)
+
+                    # Check if we exhausted all retries
+                    if result is None and last_error is not None:
+                        logger.error(
+                            f"Document {doc_id} failed after {max_retries} attempts, skipping. "
+                            f"Last error: {type(last_error).__name__}: {last_error}"
+                        )
+                        self._progress.processed += 1
+                        self._progress.skipped += 1
+                        self._progress.errors += 1
+                        continue
+
+                    # If result is None due to skip/cancel, continue to next doc
+                    if result is None:
+                        continue
+
+                    # Check for skip after analysis (won't process results)
+                    if self._skip_count > 0:
+                        logger.info(
+                            f"Skipping results for document {doc_id} (user requested, {self._skip_count} remaining)"
+                        )
+                        self._skip_count -= 1
+                        self._progress.processed += 1
+                        self._progress.skipped += 1
+                        continue
 
                     # Filter suggestions by analysis type
                     suggestions = self._filter_by_type(result.get("suggestions", []))
@@ -219,11 +345,14 @@ class BootstrapAnalysisJob:
                     for match in matches:
                         self._increment_pending_match(match)
 
-                except Exception as e:
-                    logger.error(f"Error analyzing document {doc_id}: {e}")
-                    self._progress.errors += 1
+                    self._progress.processed += 1
 
-                self._progress.processed += 1
+                except asyncio.CancelledError:
+                    # Full cancellation requested
+                    if self._cancelled:
+                        raise
+                    # Otherwise it was handled in the retry loop
+                    continue
 
                 # Calculate ETA
                 if self._progress.started_at and self._progress.processed > 0:
@@ -256,6 +385,7 @@ class BootstrapAnalysisJob:
 
         except Exception as e:
             logger.error(f"Bootstrap analysis failed: {e}")
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
             self._progress.status = BootstrapStatus.FAILED
             self._progress.error_message = str(e)
             self._progress.completed_at = datetime.now()

@@ -196,6 +196,28 @@ async def cancel_bootstrap_analysis() -> dict:
     return {"message": "No running bootstrap analysis to cancel", "status": "idle"}
 
 
+@router.post("/bootstrap/skip")
+async def skip_current_document(count: int = 1) -> dict:
+    """Skip document(s) in bootstrap analysis.
+
+    Args:
+        count: Number of documents to skip (default 1, max 1000)
+    """
+    # Limit count to prevent abuse
+    count = max(1, min(count, 1000))
+
+    skipped = await BootstrapAnalysisJob.skip_current_document(count)
+
+    if skipped:
+        return {
+            "message": f"Skip requested for {count} document(s)",
+            "status": "skipping",
+            "count": count,
+        }
+
+    return {"message": "No running bootstrap analysis to skip", "status": "idle"}
+
+
 # =============================================================================
 # Job Schedule Configuration Endpoints
 # =============================================================================
