@@ -108,9 +108,6 @@ class Settings(BaseSettings):
     schema_analysis_enabled: bool = Field(
         default=True, description="Enable schema analysis step in pipeline"
     )
-    schema_analysis_pause_for_review: bool = Field(
-        default=True, description="Pause pipeline when schema suggestions are found"
-    )
     schema_analysis_min_confidence: float = Field(
         default=0.7, description="Minimum confidence for schema suggestions"
     )
@@ -245,7 +242,6 @@ def _flatten_yaml_config(yaml_config: dict[str, Any]) -> dict[str, Any]:
     if "schema_analysis" in yaml_config:
         sa = yaml_config["schema_analysis"]
         flat["schema_analysis_enabled"] = sa.get("enabled")
-        flat["schema_analysis_pause_for_review"] = sa.get("pause_for_review")
         flat["schema_analysis_min_confidence"] = sa.get("min_confidence")
 
     # Language
@@ -397,10 +393,6 @@ def _unflatten_to_yaml(flat_settings: dict[str, Any]) -> dict[str, Any]:
         yaml_config["schema_analysis"] = {}
         if "schema_analysis_enabled" in flat_settings:
             yaml_config["schema_analysis"]["enabled"] = flat_settings["schema_analysis_enabled"]
-        if "schema_analysis_pause_for_review" in flat_settings:
-            yaml_config["schema_analysis"]["pause_for_review"] = flat_settings[
-                "schema_analysis_pause_for_review"
-            ]
         if "schema_analysis_min_confidence" in flat_settings:
             yaml_config["schema_analysis"]["min_confidence"] = flat_settings[
                 "schema_analysis_min_confidence"
