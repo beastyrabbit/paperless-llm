@@ -76,6 +76,38 @@ class PaperlessClient:
 
         return docs
 
+    async def get_documents_by_tags(
+        self,
+        tag_names: list[str],
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Get documents that have any of the specified tags."""
+        # Get all tag IDs
+        tag_ids = []
+        for tag_name in tag_names:
+            tag_id = await self._get_tag_id(tag_name)
+            if tag_id is not None:
+                tag_ids.append(tag_id)
+
+        if not tag_ids:
+            return []
+
+        # Paperless API supports tags__id__in for OR query
+        result = await self._request(
+            "GET",
+            "/documents/",
+            params={"tags__id__in": ",".join(map(str, tag_ids)), "page_size": limit},
+        )
+
+        docs = result.get("results", []) if result else []
+
+        # Enrich with tag and correspondent data
+        for doc in docs:
+            doc["tags_data"] = await self._get_tags_data(doc.get("tags", []))
+            doc["correspondent_name"] = await self._get_correspondent_name(doc.get("correspondent"))
+
+        return docs
+
     async def get_queue_stats(
         self,
         tag_pending: str,
@@ -242,6 +274,10 @@ class PaperlessClient:
         result = await self.create_tag(tag_name)
         return result["id"]
 
+    async def get_or_create_tag(self, name: str) -> int:
+        """Get tag ID, creating if needed (public method)."""
+        return await self._get_or_create_tag(name)
+
     async def _get_tags_data(self, tag_ids: list[int]) -> list[dict[str, Any]]:
         """Get tag data for a list of tag IDs."""
         if not tag_ids:
@@ -312,3 +348,215 @@ class PaperlessClient:
         """Get all custom field definitions."""
         result = await self._request("GET", "/custom_fields/", params={"page_size": 100})
         return result.get("results", []) if result else []
+
+    # Entity management methods (for schema cleanup)
+    async def get_documents_by_entity(
+        self,
+        entity_type: str,
+        entity_id: int,
+    ) -> list[dict[str, Any]]:
+        """Get all documents using a specific entity.
+
+        Args:
+            entity_type: 'correspondent', 'document_type', or 'tag'
+            entity_id: ID of the entity
+
+        Returns:
+            List of documents using this entity
+        """
+        param_map = {
+            "correspondent": "correspondent__id",
+            "document_type": "document_type__id",
+            "tag": "tags__id",
+        }
+        param = param_map.get(entity_type)
+        if not param:
+            return []
+
+        all_docs: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            result = await self._request(
+                "GET",
+                "/documents/",
+                params={param: entity_id, "page": page, "page_size": 100},
+            )
+            if not result:
+                break
+            docs = result.get("results", [])
+            all_docs.extend(docs)
+            if not result.get("next"):
+                break
+            page += 1
+
+        return all_docs
+
+    async def delete_correspondent(self, correspondent_id: int) -> bool:
+        """Delete a correspondent by ID."""
+        try:
+            await self._request("DELETE", f"/correspondents/{correspondent_id}/")
+            return True
+        except Exception:
+            return False
+
+    async def delete_document_type(self, doc_type_id: int) -> bool:
+        """Delete a document type by ID."""
+        try:
+            await self._request("DELETE", f"/document_types/{doc_type_id}/")
+            return True
+        except Exception:
+            return False
+
+    async def delete_tag(self, tag_id: int) -> bool:
+        """Delete a tag by ID."""
+        try:
+            await self._request("DELETE", f"/tags/{tag_id}/")
+            return True
+        except Exception:
+            return False
+
+    async def rename_correspondent(self, correspondent_id: int, new_name: str) -> bool:
+        """Rename a correspondent."""
+        try:
+            await self._request(
+                "PATCH",
+                f"/correspondents/{correspondent_id}/",
+                json={"name": new_name},
+            )
+            return True
+        except Exception:
+            return False
+
+    async def rename_document_type(self, doc_type_id: int, new_name: str) -> bool:
+        """Rename a document type."""
+        try:
+            await self._request(
+                "PATCH",
+                f"/document_types/{doc_type_id}/",
+                json={"name": new_name},
+            )
+            return True
+        except Exception:
+            return False
+
+    async def rename_tag(self, tag_id: int, new_name: str) -> bool:
+        """Rename a tag."""
+        try:
+            await self._request(
+                "PATCH",
+                f"/tags/{tag_id}/",
+                json={"name": new_name},
+            )
+            return True
+        except Exception:
+            return False
+
+    async def merge_entities(
+        self,
+        entity_type: str,
+        source_id: int,
+        target_id: int,
+        target_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Merge one entity into another.
+
+        This will:
+        1. Optionally rename the target entity if target_name is provided
+        2. Transfer all documents from source to target
+        3. Delete the source entity
+
+        Args:
+            entity_type: 'correspondent', 'document_type', or 'tag'
+            source_id: ID of entity to merge FROM (will be deleted)
+            target_id: ID of entity to merge INTO (will keep)
+            target_name: Optional new name for the target entity
+
+        Returns:
+            Dict with merge results
+        """
+        result = {
+            "entity_type": entity_type,
+            "source_id": source_id,
+            "target_id": target_id,
+            "documents_transferred": 0,
+            "source_deleted": False,
+            "target_renamed": False,
+        }
+
+        # 1. Optionally rename the target
+        if target_name:
+            if entity_type == "correspondent":
+                result["target_renamed"] = await self.rename_correspondent(target_id, target_name)
+            elif entity_type == "document_type":
+                result["target_renamed"] = await self.rename_document_type(target_id, target_name)
+            elif entity_type == "tag":
+                result["target_renamed"] = await self.rename_tag(target_id, target_name)
+
+        # 2. Get all documents using the source entity
+        docs = await self.get_documents_by_entity(entity_type, source_id)
+
+        # 3. Transfer documents to target
+        for doc in docs:
+            doc_id = doc["id"]
+            if entity_type == "correspondent":
+                await self.update_document(doc_id, correspondent=target_id)
+            elif entity_type == "document_type":
+                await self.update_document(doc_id, document_type=target_id)
+            elif entity_type == "tag":
+                # For tags, add the target tag and remove the source tag
+                current_tags = doc.get("tags", [])
+                if target_id not in current_tags:
+                    current_tags.append(target_id)
+                if source_id in current_tags:
+                    current_tags.remove(source_id)
+                await self.update_document(doc_id, tags=current_tags)
+            result["documents_transferred"] += 1
+
+        # 4. Delete the source entity
+        if entity_type == "correspondent":
+            result["source_deleted"] = await self.delete_correspondent(source_id)
+        elif entity_type == "document_type":
+            result["source_deleted"] = await self.delete_document_type(source_id)
+        elif entity_type == "tag":
+            result["source_deleted"] = await self.delete_tag(source_id)
+
+        return result
+
+    async def delete_entity(
+        self,
+        entity_type: str,
+        entity_id: int,
+    ) -> dict[str, Any]:
+        """Delete an entity if it has no documents.
+
+        Args:
+            entity_type: 'correspondent', 'document_type', or 'tag'
+            entity_id: ID of the entity to delete
+
+        Returns:
+            Dict with deletion results
+        """
+        result = {
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "deleted": False,
+            "document_count": 0,
+        }
+
+        # Check for documents using this entity
+        docs = await self.get_documents_by_entity(entity_type, entity_id)
+        result["document_count"] = len(docs)
+
+        if len(docs) > 0:
+            result["error"] = f"Cannot delete: {len(docs)} documents still use this entity"
+            return result
+
+        # Delete the entity
+        if entity_type == "correspondent":
+            result["deleted"] = await self.delete_correspondent(entity_id)
+        elif entity_type == "document_type":
+            result["deleted"] = await self.delete_document_type(entity_id)
+        elif entity_type == "tag":
+            result["deleted"] = await self.delete_tag(entity_id)
+
+        return result

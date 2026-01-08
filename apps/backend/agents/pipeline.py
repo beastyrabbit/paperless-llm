@@ -143,21 +143,33 @@ class ProcessingPipeline:
             results["steps"]["schema_analysis"] = result
 
             if result.get("has_suggestions"):
-                # Queue suggestions for review
-                await self._queue_schema_suggestions(doc_id, result)
+                # Queue suggestions for review with next_tag tracking
+                await self._queue_schema_suggestions(
+                    doc_id, result, next_tag=self.settings.tag_schema_analysis_done
+                )
 
-                if self.settings.schema_analysis_pause_for_review:
-                    results["needs_review"] = True
-                    results["schema_review_needed"] = True
-                    return results
+                # Apply schema review tag and remove OCR done tag
+                await self.paperless.remove_tag_from_document(doc_id, self.settings.tag_ocr_done)
+                await self.paperless.add_tag_to_document(doc_id, self.settings.tag_schema_review)
 
-            # Update tags to mark schema analysis as done
+                results["needs_review"] = True
+                results["schema_review_needed"] = True
+                return results
+
+            # No suggestions - skip schema review, continue to next step
             await self.paperless.remove_tag_from_document(doc_id, self.settings.tag_ocr_done)
             await self.paperless.add_tag_to_document(doc_id, self.settings.tag_schema_analysis_done)
             current_state = ProcessingState.SCHEMA_ANALYSIS_DONE
         elif current_state == ProcessingState.OCR_DONE:
             # Skip schema analysis if not enabled - move to next state
             current_state = ProcessingState.SCHEMA_ANALYSIS_DONE
+
+        # Step 2.5: Check if waiting for schema review
+        if current_state == ProcessingState.SCHEMA_REVIEW:
+            # Document is parked for schema review - pipeline should not run until reviews are complete
+            results["needs_review"] = True
+            results["schema_review_needed"] = True
+            return results
 
         # Step 3: Correspondent
         if current_state == ProcessingState.SCHEMA_ANALYSIS_DONE:
@@ -367,8 +379,18 @@ class ProcessingPipeline:
                     result = await self.schema_analysis_agent.process(doc_id, content)
 
                     if result.get("has_suggestions"):
-                        # Queue suggestions for review
-                        await self._queue_schema_suggestions(doc_id, result)
+                        # Queue suggestions for review with next_tag tracking
+                        await self._queue_schema_suggestions(
+                            doc_id, result, next_tag=self.settings.tag_schema_analysis_done
+                        )
+
+                        # Apply schema review tag and remove OCR done tag
+                        await self.paperless.remove_tag_from_document(
+                            doc_id, self.settings.tag_ocr_done
+                        )
+                        await self.paperless.add_tag_to_document(
+                            doc_id, self.settings.tag_schema_review
+                        )
 
                         yield {
                             "type": "schema_review_needed",
@@ -376,10 +398,10 @@ class ProcessingPipeline:
                             "result": result,
                         }
 
-                        if self.settings.schema_analysis_pause_for_review:
-                            yield {"type": "pipeline_paused", "reason": "schema_review_needed"}
-                            return  # Stop pipeline here
+                        yield {"type": "pipeline_paused", "reason": "schema_review_needed"}
+                        return  # Stop pipeline here - resume after schema review
 
+                    # No suggestions - continue to next step
                     yield {"type": "step_complete", "step": "schema_analysis", "result": result}
 
                     # Update tags to mark schema analysis as done
@@ -398,6 +420,11 @@ class ProcessingPipeline:
                     }
             # Move to next state (whether schema analysis ran or not)
             current_state = ProcessingState.SCHEMA_ANALYSIS_DONE
+
+        # Step 2.5: Check if waiting for schema review
+        if current_state == ProcessingState.SCHEMA_REVIEW:
+            yield {"type": "pipeline_paused", "reason": "schema_review_needed"}
+            return  # Document is parked for schema review
 
         # Step 3: Correspondent
         if current_state == ProcessingState.SCHEMA_ANALYSIS_DONE:
@@ -559,7 +586,7 @@ class ProcessingPipeline:
     def _get_current_state(self, tag_names: list[str]) -> ProcessingState:
         """Determine current processing state from tags.
 
-        Order: PENDING → OCR_DONE → SCHEMA_ANALYSIS_DONE → CORRESPONDENT_DONE → DOCUMENT_TYPE_DONE → TITLE_DONE → TAGS_DONE → CUSTOM_FIELDS_DONE → PROCESSED
+        Order: PENDING → OCR_DONE → SCHEMA_REVIEW → SCHEMA_ANALYSIS_DONE → CORRESPONDENT_DONE → DOCUMENT_TYPE_DONE → TITLE_DONE → TAGS_DONE → CUSTOM_FIELDS_DONE → PROCESSED
         """
         if self.settings.tag_processed in tag_names:
             return ProcessingState.PROCESSED
@@ -575,14 +602,24 @@ class ProcessingPipeline:
             return ProcessingState.CORRESPONDENT_DONE
         if self.settings.tag_schema_analysis_done in tag_names:
             return ProcessingState.SCHEMA_ANALYSIS_DONE
+        if self.settings.tag_schema_review in tag_names:
+            return ProcessingState.SCHEMA_REVIEW  # Parked for schema review
         if self.settings.tag_ocr_done in tag_names:
             return ProcessingState.OCR_DONE
         if self.settings.tag_pending in tag_names:
             return ProcessingState.PENDING
         return ProcessingState.PENDING
 
-    async def _queue_schema_suggestions(self, doc_id: int, result: dict) -> None:
-        """Queue schema suggestions for user review."""
+    async def _queue_schema_suggestions(
+        self, doc_id: int, result: dict, next_tag: str | None = None
+    ) -> None:
+        """Queue schema suggestions for user review.
+
+        Args:
+            doc_id: The document ID
+            result: Schema analysis result with suggestions
+            next_tag: Tag to apply when all schema reviews for this doc are complete
+        """
         from services.pending_reviews import get_pending_reviews_service
 
         pending = get_pending_reviews_service()
@@ -606,4 +643,5 @@ class ProcessingPipeline:
                     "entity_type": suggestion["entity_type"],
                     "confidence": confidence,
                 },
+                next_tag=next_tag,
             )

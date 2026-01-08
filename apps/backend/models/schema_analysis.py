@@ -20,12 +20,25 @@ class SchemaSuggestion(BaseModel):
     )
 
 
+class PendingMatch(BaseModel):
+    """A match to an already-pending suggestion."""
+
+    entity_type: Literal["correspondent", "document_type", "tag"] = Field(
+        description="Type of entity matched"
+    )
+    matched_name: str = Field(description="The pending suggestion name that this document matches")
+
+
 class SchemaAnalysisResult(BaseModel):
     """Result of schema analysis for a document."""
 
     suggestions: list[SchemaSuggestion] = Field(
         default_factory=list,
         description="List of suggested new entities",
+    )
+    matches_pending: list[PendingMatch] = Field(
+        default_factory=list,
+        description="List of pending suggestions that this document also matches (increment their count)",
     )
     reasoning: str = Field(description="Overall reasoning for the schema analysis")
     no_suggestions_reason: str | None = Field(

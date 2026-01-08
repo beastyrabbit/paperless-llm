@@ -57,6 +57,7 @@ confirmation:
 tags:
   pending: "llm-pending"                     # Documents waiting to be processed
   ocr_done: "llm-ocr-done"                   # OCR completed
+  schema_review: "llm-schema-review"         # Parked for schema review (new entities)
   correspondent_done: "llm-correspondent-done"  # Correspondent assigned
   document_type_done: "llm-document-type-done"  # Document type assigned
   title_done: "llm-title-done"               # Title assigned
@@ -111,3 +112,19 @@ debug:
   log_prompts: false               # Log full prompts sent to LLM
   log_responses: false             # Log full LLM responses
   save_processing_history: true    # Save processing history for each document
+
+# =============================================================================
+# Scheduled Jobs
+# =============================================================================
+
+# Background jobs that run on a schedule
+jobs:
+  schema_cleanup:
+    enabled: false                 # Enable scheduled schema cleanup
+    schedule: "daily"              # daily, weekly, monthly, or cron
+    cron: "0 3 * * *"             # Cron expression (only used if schedule is "cron")
+
+  metadata_enhancement:
+    enabled: false                 # Enable scheduled metadata enhancement
+    schedule: "weekly"             # daily, weekly, monthly, or cron
+    cron: "0 4 * * 0"             # Cron expression (Sundays at 4 AM)

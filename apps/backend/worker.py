@@ -1,12 +1,16 @@
 """Background Worker for automatic document processing."""
 
 import asyncio
+import logging
+import traceback
 from datetime import datetime
 from typing import Any
 
 from agents.pipeline import ProcessingPipeline
 from config import get_settings
 from services.paperless import PaperlessClient
+
+logger = logging.getLogger(__name__)
 
 
 class BackgroundWorker:
@@ -79,6 +83,7 @@ class BackgroundWorker:
 
     async def _run_loop(self):
         """Main processing loop."""
+        logger.info("Worker loop started")
         while self._running:
             try:
                 # Calculate next check time
@@ -104,9 +109,11 @@ class BackgroundWorker:
                 await asyncio.sleep(interval_seconds)
 
             except asyncio.CancelledError:
+                logger.info("Worker loop cancelled")
                 break
             except Exception as e:
-                print(f"Worker error: {e}")
+                logger.error(f"Worker error: {e}")
+                logger.error(f"Traceback:\n{traceback.format_exc()}")
                 await asyncio.sleep(60)  # Wait before retrying
 
     async def _process_queue(self):
@@ -121,7 +128,7 @@ class BackgroundWorker:
             if not pending_docs:
                 return
 
-            print(f"Found {len(pending_docs)} pending documents")
+            logger.info(f"Found {len(pending_docs)} pending documents")
 
             for doc in pending_docs:
                 if not self._running or self._paused:
@@ -131,18 +138,19 @@ class BackgroundWorker:
                 self._current_doc_id = doc_id
 
                 try:
-                    print(f"Processing document {doc_id}: {doc['title']}")
+                    logger.info(f"Processing document {doc_id}: {doc['title']}")
                     result = await self.pipeline.process_document(doc_id)
 
                     if result.get("needs_review"):
-                        print(f"Document {doc_id} needs review")
+                        logger.info(f"Document {doc_id} needs review")
                     elif result.get("success"):
-                        print(f"Document {doc_id} processed successfully")
+                        logger.info(f"Document {doc_id} processed successfully")
                     else:
-                        print(f"Document {doc_id} processing failed")
+                        logger.warning(f"Document {doc_id} processing failed")
 
                 except Exception as e:
-                    print(f"Error processing document {doc_id}: {e}")
+                    logger.error(f"Error processing document {doc_id}: {e}")
+                    logger.error(f"Traceback:\n{traceback.format_exc()}")
 
                 finally:
                     self._current_doc_id = None

@@ -28,11 +28,18 @@ LANGUAGE_NAMES = {
 }
 
 # Define prompt groups (main prompt -> confirmation prompt)
+# Use None for prompts without a confirmation step
 PROMPT_GROUPS = {
+    # Pipeline prompts (with confirmation)
     "title": "title_confirmation",
     "correspondent": "correspondent_confirmation",
     "document_type": "document_type_confirmation",
     "tags": "tags_confirmation",
+    # Standalone prompts (no confirmation)
+    "schema_analysis": None,
+    "schema_cleanup": None,
+    "metadata_description": None,
+    "custom_fields": None,
 }
 
 
@@ -189,7 +196,6 @@ async def list_prompt_groups(
 
     for main_name, confirmation_name in PROMPT_GROUPS.items():
         main_file = prompts_dir / f"{main_name}.md"
-        confirmation_file = prompts_dir / f"{confirmation_name}.md"
 
         if not main_file.exists():
             continue
@@ -204,15 +210,17 @@ async def list_prompt_groups(
         )
 
         confirmation_prompt = None
-        if confirmation_file.exists():
-            conf_content = confirmation_file.read_text()
-            confirmation_prompt = PromptInfo(
-                name=confirmation_name.replace("_", " ").title(),
-                filename=confirmation_file.name,
-                content=conf_content,
-                variables=_extract_variables(conf_content),
-                description=_extract_description(conf_content),
-            )
+        if confirmation_name:
+            confirmation_file = prompts_dir / f"{confirmation_name}.md"
+            if confirmation_file.exists():
+                conf_content = confirmation_file.read_text()
+                confirmation_prompt = PromptInfo(
+                    name=confirmation_name.replace("_", " ").title(),
+                    filename=confirmation_file.name,
+                    content=conf_content,
+                    variables=_extract_variables(conf_content),
+                    description=_extract_description(conf_content),
+                )
 
         groups.append(
             PromptGroup(
