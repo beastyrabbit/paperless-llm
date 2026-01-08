@@ -63,8 +63,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/beastyrabbit/paperless-local-llm.git
-cd paperless-local-llm
+git clone https://github.com/beastyrabbit/paperless-llm.git
+cd paperless-llm
 
 # Install frontend dependencies
 bun install
@@ -278,6 +278,6 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 <div align="center">
 
-**[Documentation](docs/)** · **[Report Bug](https://github.com/beastyrabbit/paperless-local-llm/issues)** · **[Request Feature](https://github.com/beastyrabbit/paperless-local-llm/issues)**
+**[Documentation](docs/)** · **[Report Bug](https://github.com/beastyrabbit/paperless-llm/issues)** · **[Request Feature](https://github.com/beastyrabbit/paperless-llm/issues)**
 
 </div>
