@@ -1,5 +1,6 @@
 """Pending Reviews API endpoints."""
 
+from difflib import SequenceMatcher
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -177,6 +178,12 @@ class ApproveRequest(BaseModel):
     create_entity: bool = True  # Whether to create the new entity in Paperless
 
 
+class SchemaCleanupApproveRequest(BaseModel):
+    """Request to approve a schema cleanup item (merge or delete)."""
+
+    final_name: str | None = None  # For merges: the final name to use (can be custom)
+
+
 class UpdateSuggestionRequest(BaseModel):
     """Request to update the selected suggestion."""
 
@@ -216,6 +223,183 @@ async def get_pending_counts(
     return PendingCounts(**counts)
 
 
+# --- Pending Cleanup routes (must be before /{item_id} to avoid being caught) ---
+
+
+class SimilarGroup(BaseModel):
+    """A group of similar pending suggestions."""
+
+    suggestions: list[str]  # The similar suggestion names
+    item_ids: list[str]  # IDs of pending items with these suggestions
+    item_type: str  # correspondent, document_type, tag, etc.
+    doc_ids: list[int]  # Document IDs affected
+    recommended_name: str  # Suggested merged name (longest/most complete)
+
+
+class SimilarGroupsResponse(BaseModel):
+    """Response with groups of similar pending suggestions."""
+
+    groups: list[SimilarGroup]
+    total_mergeable: int
+
+
+class MergePendingRequest(BaseModel):
+    """Request to merge pending suggestions."""
+
+    item_ids: list[str]  # IDs of pending items to merge
+    final_name: str  # The name to use for all merged items
+
+
+class MergePendingResponse(BaseModel):
+    """Response from merging pending suggestions."""
+
+    merged_count: int
+    final_name: str
+    updated_item_ids: list[str]
+
+
+def _calculate_similarity(s1: str, s2: str) -> float:
+    """Calculate similarity ratio between two strings."""
+    return SequenceMatcher(None, s1.lower(), s2.lower()).ratio()
+
+
+def _find_similar_groups(
+    items: list[PendingReviewItem],
+    threshold: float = 0.7,
+) -> list[SimilarGroup]:
+    """Find groups of similar pending suggestions.
+
+    Uses fuzzy string matching to find suggestions that might be duplicates
+    or variations of each other.
+    """
+    # Group items by type first
+    by_type: dict[str, list[PendingReviewItem]] = {}
+    for item in items:
+        # Only process regular pending types, not schema types
+        if item.type in ("correspondent", "document_type", "tag"):
+            if item.type not in by_type:
+                by_type[item.type] = []
+            by_type[item.type].append(item)
+
+    groups: list[SimilarGroup] = []
+
+    for item_type, type_items in by_type.items():
+        # Get unique suggestions
+        suggestions_map: dict[str, list[PendingReviewItem]] = {}
+        for item in type_items:
+            suggestion = item.suggestion
+            if suggestion not in suggestions_map:
+                suggestions_map[suggestion] = []
+            suggestions_map[suggestion].append(item)
+
+        unique_suggestions = list(suggestions_map.keys())
+        processed: set[str] = set()
+
+        for i, s1 in enumerate(unique_suggestions):
+            if s1 in processed:
+                continue
+
+            # Find all similar suggestions
+            similar = [s1]
+            for s2 in unique_suggestions[i + 1 :]:
+                if s2 in processed:
+                    continue
+                if _calculate_similarity(s1, s2) >= threshold:
+                    similar.append(s2)
+                    processed.add(s2)
+
+            # Only create a group if there are multiple similar suggestions
+            if len(similar) > 1:
+                processed.add(s1)
+                # Collect all items and doc_ids
+                all_items: list[PendingReviewItem] = []
+                for s in similar:
+                    all_items.extend(suggestions_map[s])
+
+                item_ids = [item.id for item in all_items]
+                doc_ids = list({item.doc_id for item in all_items})
+
+                # Recommend the longest name as it's usually most complete
+                recommended = max(similar, key=len)
+
+                groups.append(
+                    SimilarGroup(
+                        suggestions=similar,
+                        item_ids=item_ids,
+                        item_type=item_type,
+                        doc_ids=doc_ids,
+                        recommended_name=recommended,
+                    )
+                )
+
+    return groups
+
+
+@router.get("/similar", response_model=SimilarGroupsResponse)
+async def find_similar_pending(
+    threshold: float = 0.7,
+    service: PendingReviewsService = Depends(get_pending_reviews_service),
+):
+    """Find groups of similar pending suggestions that could be merged.
+
+    This helps clean up pending reviews by identifying duplicate or
+    near-duplicate suggestions across different documents.
+
+    Args:
+        threshold: Similarity threshold (0-1). Default 0.7 (70% similar).
+    """
+    items = service.get_all()
+    groups = _find_similar_groups(items, threshold)
+
+    return SimilarGroupsResponse(
+        groups=groups,
+        total_mergeable=sum(len(g.item_ids) for g in groups),
+    )
+
+
+@router.post("/merge", response_model=MergePendingResponse)
+async def merge_pending_suggestions(
+    request: MergePendingRequest,
+    service: PendingReviewsService = Depends(get_pending_reviews_service),
+):
+    """Merge multiple pending suggestions into one.
+
+    Updates all specified pending items to use the same suggestion name.
+    This doesn't create or modify entities in Paperless - it just
+    consolidates the pending suggestions so they can be reviewed together.
+
+    Note: Some items may have been removed since the similar groups were
+    calculated. This endpoint will update as many items as it can find.
+    """
+    if not request.item_ids:
+        return MergePendingResponse(
+            merged_count=0,
+            final_name=request.final_name,
+            updated_item_ids=[],
+        )
+
+    if not request.final_name or not request.final_name.strip():
+        raise HTTPException(status_code=400, detail="Final name cannot be empty")
+
+    updated_ids: list[str] = []
+
+    for item_id in request.item_ids:
+        item = service.update_suggestion(item_id, request.final_name.strip())
+        if item:
+            updated_ids.append(item_id)
+
+    # Don't fail if some items weren't found - they may have been
+    # approved/rejected between finding similar and merging
+    return MergePendingResponse(
+        merged_count=len(updated_ids),
+        final_name=request.final_name.strip(),
+        updated_item_ids=updated_ids,
+    )
+
+
+# --- End of Pending Cleanup routes ---
+
+
 @router.get("/{item_id}", response_model=PendingReviewItem)
 async def get_pending_item(
     item_id: str,
@@ -239,6 +423,113 @@ async def update_pending_suggestion(
     if not item:
         raise HTTPException(status_code=404, detail="Pending item not found")
     return item
+
+
+@router.post("/{item_id}/approve-cleanup")
+async def approve_schema_cleanup(
+    item_id: str,
+    request: SchemaCleanupApproveRequest = SchemaCleanupApproveRequest(),
+    service: PendingReviewsService = Depends(get_pending_reviews_service),
+    client: PaperlessClient = Depends(get_paperless_client),
+):
+    """Approve a schema cleanup item (merge or delete).
+
+    For merges:
+    - Transfers all documents from source entity to target entity
+    - Optionally renames target to final_name
+    - Deletes the source entity
+
+    For deletes:
+    - Deletes the entity (only if no documents use it)
+    """
+    item = service.get_by_id(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Pending item not found")
+
+    if item.type != "schema_cleanup":
+        raise HTTPException(
+            status_code=400,
+            detail="This endpoint is only for schema_cleanup items",
+        )
+
+    metadata = item.metadata or {}
+    cleanup_type = metadata.get("cleanup_type")
+    entity_type = metadata.get("entity_type")
+
+    if not cleanup_type or not entity_type:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid schema_cleanup item: missing cleanup_type or entity_type",
+        )
+
+    result = {
+        "id": item_id,
+        "type": "schema_cleanup",
+        "cleanup_type": cleanup_type,
+        "entity_type": entity_type,
+    }
+
+    try:
+        if cleanup_type == "merge":
+            source_id = metadata.get("source_id")
+            target_id = metadata.get("target_id")
+
+            if not source_id or not target_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid merge item: missing source_id or target_id",
+                )
+
+            # Use final_name from request, or fall back to target_name from metadata
+            final_name = request.final_name or metadata.get("target_name")
+
+            merge_result = await client.merge_entities(
+                entity_type=entity_type,
+                source_id=source_id,
+                target_id=target_id,
+                target_name=final_name,
+            )
+            result["merge_result"] = merge_result
+            result["success"] = merge_result.get("source_deleted", False)
+
+        elif cleanup_type == "delete":
+            entity_id = metadata.get("entity_id")
+
+            if not entity_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid delete item: missing entity_id",
+                )
+
+            delete_result = await client.delete_entity(
+                entity_type=entity_type,
+                entity_id=entity_id,
+            )
+            result["delete_result"] = delete_result
+            result["success"] = delete_result.get("deleted", False)
+
+            if not result["success"] and "error" in delete_result:
+                raise HTTPException(
+                    status_code=400,
+                    detail=delete_result["error"],
+                )
+
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown cleanup_type: {cleanup_type}",
+            )
+
+        # Remove from pending queue
+        service.remove(item_id)
+        result["removed"] = True
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to apply cleanup: {str(e)}")
 
 
 @router.post("/{item_id}/approve")

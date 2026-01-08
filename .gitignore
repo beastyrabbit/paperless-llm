@@ -25,6 +25,9 @@ venv/
 *.egg-info/
 .uv/
 
+# Logs
+apps/backend/logs/
+
 # LangGraph database
 *.db
 langgraph.db

@@ -1,9 +1,15 @@
 """FastAPI application for Paperless Local LLM."""
 
+import logging
+import os
+import sys
+import traceback
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from config import get_settings
 from routers import (
@@ -19,6 +25,24 @@ from routers import (
 )
 from services.job_scheduler import get_job_scheduler
 from worker import get_worker
+
+# Ensure logs directory exists
+os.makedirs("logs", exist_ok=True)
+
+# Configure logging with both console and file output
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        RotatingFileHandler(
+            "logs/backend.log",
+            maxBytes=10 * 1024 * 1024,  # 10MB per file
+            backupCount=5,  # Keep 5 backup files
+        ),
+    ],
+)
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -68,6 +92,37 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch all unhandled exceptions and log them."""
+    logger.error(f"Unhandled exception on {request.method} {request.url.path}")
+    logger.error(f"Exception type: {type(exc).__name__}")
+    logger.error(f"Exception message: {exc}")
+    logger.error(f"Traceback:\n{traceback.format_exc()}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {type(exc).__name__}: {exc}"},
+    )
+
+
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all incoming requests."""
+    logger.debug(f"Request: {request.method} {request.url.path}")
+    try:
+        response = await call_next(request)
+        logger.debug(f"Response: {request.method} {request.url.path} - {response.status_code}")
+        return response
+    except Exception as e:
+        logger.error(f"Request failed: {request.method} {request.url.path}")
+        logger.error(f"Error: {type(e).__name__}: {e}")
+        logger.error(f"Traceback:\n{traceback.format_exc()}")
+        raise
+
 
 # Include routers
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
