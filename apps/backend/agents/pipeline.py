@@ -164,6 +164,13 @@ class ProcessingPipeline:
             # Skip schema analysis if not enabled - move to next state
             current_state = ProcessingState.SCHEMA_ANALYSIS_DONE
 
+        # Step 2.5: Check if waiting for schema review
+        if current_state == ProcessingState.SCHEMA_REVIEW:
+            # Document is parked for schema review - pipeline should not run until reviews are complete
+            results["needs_review"] = True
+            results["schema_review_needed"] = True
+            return results
+
         # Step 3: Correspondent
         if current_state == ProcessingState.SCHEMA_ANALYSIS_DONE:
             result = await self.correspondent_agent.process(doc_id, content)
@@ -413,6 +420,11 @@ class ProcessingPipeline:
                     }
             # Move to next state (whether schema analysis ran or not)
             current_state = ProcessingState.SCHEMA_ANALYSIS_DONE
+
+        # Step 2.5: Check if waiting for schema review
+        if current_state == ProcessingState.SCHEMA_REVIEW:
+            yield {"type": "pipeline_paused", "reason": "schema_review_needed"}
+            return  # Document is parked for schema review
 
         # Step 3: Correspondent
         if current_state == ProcessingState.SCHEMA_ANALYSIS_DONE:
