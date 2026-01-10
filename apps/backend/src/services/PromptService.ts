@@ -205,7 +205,6 @@ export const PromptServiceLive = Layer.effect(
             'correspondent',
             'document_type',
             'tags',
-            'ocr',
             'confirmation',
           ];
 
