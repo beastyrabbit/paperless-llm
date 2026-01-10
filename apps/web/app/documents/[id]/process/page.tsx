@@ -192,7 +192,9 @@ export default function ProcessingPage({
 
         if (data.type === "pipeline_complete" || data.type === "complete") {
           setProcessing(false);
-          setProgress(100);
+          // Only set to 100% if there were no errors
+          const hadErrors = events.some(e => e.type === "error" || e.type === "step_error");
+          setProgress(hadErrors ? progress : 100);
           eventSource.close();
         }
 
