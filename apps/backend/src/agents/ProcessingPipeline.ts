@@ -61,6 +61,7 @@ export interface PipelineStreamEvent {
   data?: unknown;
   message?: string;
   reason?: string;
+  timestamp: string;
 }
 
 // ===========================================================================
@@ -521,8 +522,14 @@ export const ProcessingPipelineServiceLive = Layer.effect(
           Effect.gen(function* () {
             const { docId, mockOcr = false } = input;
 
+            // Helper to create events with timestamps
+            const event = (e: Omit<PipelineStreamEvent, 'timestamp'>): PipelineStreamEvent => ({
+              ...e,
+              timestamp: new Date().toISOString(),
+            });
+
             yield* Effect.sync(() =>
-              emit.single({ type: 'pipeline_start', docId })
+              emit.single(event({ type: 'pipeline_start', docId }))
             );
 
             // Get document
@@ -533,7 +540,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             // OCR
             if (currentState === 'pending' && pipelineConfig.enableOcr) {
               yield* Effect.sync(() =>
-                emit.single({ type: 'step_start', docId, step: 'ocr' })
+                emit.single(event({ type: 'step_start', docId, step: 'ocr' }))
               );
 
               const result = yield* ocrAgent.process({ docId, mockMode: mockOcr }).pipe(
@@ -544,17 +551,17 @@ export const ProcessingPipelineServiceLive = Layer.effect(
 
               if (!result.success) {
                 yield* Effect.sync(() =>
-                  emit.single({ type: 'step_error', docId, step: 'ocr', message: 'OCR failed' })
+                  emit.single(event({ type: 'step_error', docId, step: 'ocr', message: 'OCR failed' }))
                 );
                 yield* Effect.sync(() =>
-                  emit.single({ type: 'error', docId, message: 'Pipeline failed at OCR' })
+                  emit.single(event({ type: 'error', docId, message: 'Pipeline failed at OCR' }))
                 );
                 yield* Effect.sync(() => emit.end());
                 return;
               }
 
               yield* Effect.sync(() =>
-                emit.single({ type: 'step_complete', docId, step: 'ocr', data: result })
+                emit.single(event({ type: 'step_complete', docId, step: 'ocr', data: result }))
               );
 
               const updatedDoc = yield* paperless.getDocument(docId);
@@ -565,7 +572,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             // Schema Analysis
             if (currentState === 'ocr_done') {
               yield* Effect.sync(() =>
-                emit.single({ type: 'step_start', docId, step: 'schema_analysis' })
+                emit.single(event({ type: 'step_start', docId, step: 'schema_analysis' }))
               );
 
               const schemaResult = yield* schemaAnalysisAgent.process({ docId, content }).pipe(
@@ -581,7 +588,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
               );
 
               yield* Effect.sync(() =>
-                emit.single({ type: 'step_complete', docId, step: 'schema_analysis', data: schemaResult })
+                emit.single(event({ type: 'step_complete', docId, step: 'schema_analysis', data: schemaResult }))
               );
 
               if (schemaResult.hasSuggestions) {
@@ -592,10 +599,10 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                 );
 
                 yield* Effect.sync(() =>
-                  emit.single({ type: 'schema_review_needed', docId, step: 'schema_analysis', data: schemaResult })
+                  emit.single(event({ type: 'schema_review_needed', docId, step: 'schema_analysis', data: schemaResult }))
                 );
                 yield* Effect.sync(() =>
-                  emit.single({ type: 'pipeline_paused', docId, reason: 'schema_review_needed' })
+                  emit.single(event({ type: 'pipeline_paused', docId, reason: 'schema_review_needed' }))
                 );
                 yield* Effect.sync(() => emit.end());
                 return;
@@ -607,7 +614,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             // Title
             if (isState(currentState, 'ocr_done', 'schema_analysis_done') && pipelineConfig.enableTitle) {
               yield* Effect.sync(() =>
-                emit.single({ type: 'step_start', docId, step: 'title' })
+                emit.single(event({ type: 'step_start', docId, step: 'title' }))
               );
 
               const titleResult = yield* titleAgent
@@ -627,12 +634,12 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                 );
 
               yield* Effect.sync(() =>
-                emit.single({ type: 'step_complete', docId, step: 'title', data: titleResult })
+                emit.single(event({ type: 'step_complete', docId, step: 'title', data: titleResult }))
               );
 
               if (titleResult.needsReview) {
                 yield* Effect.sync(() =>
-                  emit.single({ type: 'needs_review', docId, step: 'title', data: titleResult })
+                  emit.single(event({ type: 'needs_review', docId, step: 'title', data: titleResult }))
                 );
                 yield* Effect.sync(() => emit.end());
                 return;
@@ -647,7 +654,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             // Correspondent
             if (currentState === 'title_done' && pipelineConfig.enableCorrespondent) {
               yield* Effect.sync(() =>
-                emit.single({ type: 'step_start', docId, step: 'correspondent' })
+                emit.single(event({ type: 'step_start', docId, step: 'correspondent' }))
               );
 
               const correspondents = yield* paperless.getCorrespondents();
@@ -673,12 +680,12 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                 );
 
               yield* Effect.sync(() =>
-                emit.single({ type: 'step_complete', docId, step: 'correspondent', data: corrResult })
+                emit.single(event({ type: 'step_complete', docId, step: 'correspondent', data: corrResult }))
               );
 
               if (corrResult.needsReview) {
                 yield* Effect.sync(() =>
-                  emit.single({ type: 'needs_review', docId, step: 'correspondent', data: corrResult })
+                  emit.single(event({ type: 'needs_review', docId, step: 'correspondent', data: corrResult }))
                 );
                 yield* Effect.sync(() => emit.end());
                 return;
@@ -692,7 +699,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             // Document Type
             if (currentState === 'correspondent_done' && pipelineConfig.enableDocumentType) {
               yield* Effect.sync(() =>
-                emit.single({ type: 'step_start', docId, step: 'document_type' })
+                emit.single(event({ type: 'step_start', docId, step: 'document_type' }))
               );
 
               const docTypes = yield* paperless.getDocumentTypes();
@@ -718,12 +725,12 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                 );
 
               yield* Effect.sync(() =>
-                emit.single({ type: 'step_complete', docId, step: 'document_type', data: dtResult })
+                emit.single(event({ type: 'step_complete', docId, step: 'document_type', data: dtResult }))
               );
 
               if (dtResult.needsReview) {
                 yield* Effect.sync(() =>
-                  emit.single({ type: 'needs_review', docId, step: 'document_type', data: dtResult })
+                  emit.single(event({ type: 'needs_review', docId, step: 'document_type', data: dtResult }))
                 );
                 yield* Effect.sync(() => emit.end());
                 return;
@@ -737,7 +744,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             // Tags
             if (currentState === 'document_type_done' && pipelineConfig.enableTags) {
               yield* Effect.sync(() =>
-                emit.single({ type: 'step_start', docId, step: 'tags' })
+                emit.single(event({ type: 'step_start', docId, step: 'tags' }))
               );
 
               const existingTags = yield* paperless.getTags();
@@ -779,12 +786,12 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                 );
 
               yield* Effect.sync(() =>
-                emit.single({ type: 'step_complete', docId, step: 'tags', data: tagsResult })
+                emit.single(event({ type: 'step_complete', docId, step: 'tags', data: tagsResult }))
               );
 
               if (tagsResult.needsReview && !tagsResult.success) {
                 yield* Effect.sync(() =>
-                  emit.single({ type: 'needs_review', docId, step: 'tags', data: tagsResult })
+                  emit.single(event({ type: 'needs_review', docId, step: 'tags', data: tagsResult }))
                 );
                 yield* Effect.sync(() => emit.end());
                 return;
@@ -798,7 +805,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             // Custom Fields (optional)
             if (currentState === 'tags_done' && pipelineConfig.enableCustomFields) {
               yield* Effect.sync(() =>
-                emit.single({ type: 'step_start', docId, step: 'custom_fields' })
+                emit.single(event({ type: 'step_start', docId, step: 'custom_fields' }))
               );
 
               const customFields = yield* paperless.getCustomFields();
@@ -838,7 +845,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                 );
 
               yield* Effect.sync(() =>
-                emit.single({ type: 'step_complete', docId, step: 'custom_fields', data: cfResult })
+                emit.single(event({ type: 'step_complete', docId, step: 'custom_fields', data: cfResult }))
               );
 
               currentState = 'custom_fields_done';
@@ -853,7 +860,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             }
 
             yield* Effect.sync(() =>
-              emit.single({ type: 'pipeline_complete', docId })
+              emit.single(event({ type: 'pipeline_complete', docId }))
             );
             yield* Effect.sync(() => emit.end());
           }).pipe(
@@ -977,25 +984,32 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             const doc = yield* paperless.getDocument(docId);
             const content = doc.content ?? '';
 
+            // Helper to create events with timestamps
+            const event = (e: Omit<PipelineStreamEvent, 'timestamp'>): PipelineStreamEvent => ({
+              ...e,
+              timestamp: new Date().toISOString(),
+            });
+
             // Helper to convert agent StreamEvent to PipelineStreamEvent
-            const mapEvent = (event: StreamEvent): PipelineStreamEvent => {
-              switch (event.type) {
+            const mapEvent = (agentEvent: StreamEvent): PipelineStreamEvent => {
+              const timestamp = agentEvent.timestamp ?? new Date().toISOString();
+              switch (agentEvent.type) {
                 case 'start':
-                  return { type: 'step_start', docId, step: event.step, data: event.data };
+                  return { type: 'step_start', docId, step: agentEvent.step, data: agentEvent.data, timestamp };
                 case 'thinking':
-                  return { type: 'thinking', docId, step: event.step, data: event.data };
+                  return { type: 'thinking', docId, step: agentEvent.step, data: agentEvent.data, timestamp };
                 case 'analyzing':
-                  return { type: 'analyzing', docId, step: event.step, data: event.data };
+                  return { type: 'analyzing', docId, step: agentEvent.step, data: agentEvent.data, timestamp };
                 case 'confirming':
-                  return { type: 'confirming', docId, step: event.step, data: event.data };
+                  return { type: 'confirming', docId, step: agentEvent.step, data: agentEvent.data, timestamp };
                 case 'result':
-                  return { type: 'step_complete', docId, step: event.step, data: event.data };
+                  return { type: 'step_complete', docId, step: agentEvent.step, data: agentEvent.data, timestamp };
                 case 'error':
-                  return { type: 'step_error', docId, step: event.step, message: String(event.data) };
+                  return { type: 'step_error', docId, step: agentEvent.step, message: String(agentEvent.data), timestamp };
                 case 'complete':
-                  return { type: 'step_complete', docId, step: event.step };
+                  return { type: 'step_complete', docId, step: agentEvent.step, timestamp };
                 default:
-                  return { type: 'step_complete', docId, step: event.step, data: event.data };
+                  return { type: 'step_complete', docId, step: agentEvent.step, data: agentEvent.data, timestamp };
               }
             };
 
@@ -1013,7 +1027,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                   yield* runAgentStream(titleAgent.processStream({ docId, content }));
                 } else {
                   const result = yield* titleAgent.process({ docId, content });
-                  yield* Effect.sync(() => emit.single({ type: 'step_complete', docId, step, data: result }));
+                  yield* Effect.sync(() => emit.single(event({ type: 'step_complete', docId, step, data: result })));
                 }
                 break;
 
@@ -1033,7 +1047,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                     docTitle: doc.title ?? `Document ${docId}`,
                     existingCorrespondents: correspondents.map((c) => c.name),
                   });
-                  yield* Effect.sync(() => emit.single({ type: 'step_complete', docId, step, data: result }));
+                  yield* Effect.sync(() => emit.single(event({ type: 'step_complete', docId, step, data: result })));
                 }
                 break;
 
@@ -1053,7 +1067,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                     docTitle: doc.title ?? `Document ${docId}`,
                     existingDocumentTypes: docTypes.map((dt) => dt.name),
                   });
-                  yield* Effect.sync(() => emit.single({ type: 'step_complete', docId, step, data: result }));
+                  yield* Effect.sync(() => emit.single(event({ type: 'step_complete', docId, step, data: result })));
                 }
                 break;
 
@@ -1075,7 +1089,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                     existingTags: existingTags.map((t) => t.name),
                     currentTagIds: [...(doc.tags ?? [])],
                   });
-                  yield* Effect.sync(() => emit.single({ type: 'step_complete', docId, step, data: result }));
+                  yield* Effect.sync(() => emit.single(event({ type: 'step_complete', docId, step, data: result })));
                 }
                 break;
 
@@ -1093,26 +1107,26 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                     content,
                     customFields,
                   });
-                  yield* Effect.sync(() => emit.single({ type: 'step_complete', docId, step, data: result }));
+                  yield* Effect.sync(() => emit.single(event({ type: 'step_complete', docId, step, data: result })));
                 }
                 break;
 
               case 'ocr':
                 // OCR doesn't have a stream mode
-                yield* Effect.sync(() => emit.single({ type: 'step_start', docId, step }));
+                yield* Effect.sync(() => emit.single(event({ type: 'step_start', docId, step })));
                 const ocrResult = yield* ocrAgent.process({ docId });
-                yield* Effect.sync(() => emit.single({ type: 'step_complete', docId, step, data: ocrResult }));
+                yield* Effect.sync(() => emit.single(event({ type: 'step_complete', docId, step, data: ocrResult })));
                 break;
 
               case 'schema_analysis':
                 // Schema analysis doesn't have a stream mode
-                yield* Effect.sync(() => emit.single({ type: 'step_start', docId, step }));
+                yield* Effect.sync(() => emit.single(event({ type: 'step_start', docId, step })));
                 const schemaResult = yield* schemaAnalysisAgent.process({ docId, content });
-                yield* Effect.sync(() => emit.single({ type: 'step_complete', docId, step, data: schemaResult }));
+                yield* Effect.sync(() => emit.single(event({ type: 'step_complete', docId, step, data: schemaResult })));
                 break;
 
               default:
-                yield* Effect.sync(() => emit.single({ type: 'step_error', docId, step, message: `Unknown step: ${step}` }));
+                yield* Effect.sync(() => emit.single(event({ type: 'step_error', docId, step, message: `Unknown step: ${step}` })));
             }
 
             yield* Effect.sync(() => emit.end());

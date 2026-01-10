@@ -216,16 +216,12 @@ export default function ProcessingPage({
 
         if (data.type === "pipeline_complete" || data.type === "complete") {
           setProcessing(false);
-          // Only set to 100% if there were no errors
-          setProgress((prev) => {
-            // Check current events for errors
-            return prev;
-          });
-          // Use callback to check hadErrors state
+          // Check for errors in accumulated events and set final progress
           setEvents((prevEvents) => {
             const hasErrors = prevEvents.some(e => e.type === "error" || e.type === "step_error");
-            setProgress(hasErrors ? progress : 100);
             setHadErrors(hasErrors);
+            // Keep at 95% if errors occurred, 100% only on clean success
+            setProgress(hasErrors ? 95 : 100);
             return prevEvents;
           });
           eventSource.close();

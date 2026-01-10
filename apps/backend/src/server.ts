@@ -87,6 +87,18 @@ const setCorsHeaders = (req: IncomingMessage, res: ServerResponse): void => {
 };
 
 // ===========================================================================
+// Tag Cache (avoid fetching all tags for every SSE request)
+// ===========================================================================
+
+interface TagCache {
+  tags: Array<{ id: number; name: string }>;
+  timestamp: number;
+}
+
+const TAG_CACHE_TTL_MS = 60 * 1000; // 60 seconds
+let tagCache: TagCache | null = null;
+
+// ===========================================================================
 // SSE Stream URL Pattern
 // ===========================================================================
 
@@ -119,6 +131,12 @@ export const createHttpServer = (port: number) =>
       res.setHeader('Connection', 'keep-alive');
       res.writeHead(200);
 
+      // Helper to create events with timestamps
+      const createEvent = (e: Omit<PipelineStreamEvent, 'timestamp'>): PipelineStreamEvent => ({
+        ...e,
+        timestamp: new Date().toISOString(),
+      });
+
       const sendEvent = (event: PipelineStreamEvent) => {
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       };
@@ -129,19 +147,28 @@ export const createHttpServer = (port: number) =>
             const paperless = yield* PaperlessService;
             const pipeline = yield* ProcessingPipelineService;
 
-            // Get document and resolve tag names with error handling
+            // Get document with error handling
             const doc = yield* paperless.getDocument(docId).pipe(
               Effect.catchAll((e) => {
-                sendEvent({ type: 'error', docId, message: `Failed to load document: ${e}` });
+                sendEvent(createEvent({ type: 'error', docId, message: `Failed to load document: ${e}` }));
                 return Effect.fail(e);
               })
             );
-            const allTags = yield* paperless.getTags().pipe(
-              Effect.catchAll((e) => {
-                sendEvent({ type: 'error', docId, message: `Failed to load tags: ${e}` });
-                return Effect.fail(e);
-              })
-            );
+
+            // Use cached tags or fetch fresh (with 60s TTL)
+            const now = Date.now();
+            let allTags: Array<{ id: number; name: string }>;
+            if (tagCache && (now - tagCache.timestamp) < TAG_CACHE_TTL_MS) {
+              allTags = tagCache.tags;
+            } else {
+              allTags = yield* paperless.getTags().pipe(
+                Effect.catchAll((e) => {
+                  sendEvent(createEvent({ type: 'error', docId, message: `Failed to load tags: ${e}` }));
+                  return Effect.fail(e);
+                })
+              );
+              tagCache = { tags: allTags, timestamp: now };
+            }
             const tagMap = new Map(allTags.map((t) => [t.id, t.name]));
             const tagNames = (doc.tags ?? []).map((id) => tagMap.get(id)).filter((n): n is string => n !== undefined);
 
@@ -161,7 +188,7 @@ export const createHttpServer = (port: number) =>
               currentState = 'ocr_done';
             }
 
-            sendEvent({ type: 'pipeline_start', docId });
+            sendEvent(createEvent({ type: 'pipeline_start', docId }));
 
             // Determine next step based on current state
             let nextStep: string | null = null;
@@ -185,14 +212,14 @@ export const createHttpServer = (port: number) =>
                 nextStep = 'custom_fields';
                 break;
               case 'processed':
-                sendEvent({ type: 'pipeline_complete', docId, message: 'Already processed' });
+                sendEvent(createEvent({ type: 'pipeline_complete', docId, message: 'Already processed' }));
                 return;
               default:
                 nextStep = 'title'; // Default to title if state unclear
             }
 
             if (!nextStep) {
-              sendEvent({ type: 'pipeline_complete', docId });
+              sendEvent(createEvent({ type: 'pipeline_complete', docId }));
               return;
             }
 
@@ -202,22 +229,22 @@ export const createHttpServer = (port: number) =>
               Stream.tap((event) => Effect.sync(() => sendEvent(event))),
               Stream.runDrain,
               Effect.catchAll((e) => {
-                sendEvent({ type: 'step_error', docId, step: nextStep, message: String(e) });
+                sendEvent(createEvent({ type: 'step_error', docId, step: nextStep, message: String(e) }));
                 return Effect.void;
               })
             );
 
-            sendEvent({ type: 'pipeline_complete', docId });
+            sendEvent(createEvent({ type: 'pipeline_complete', docId }));
           })
         );
       } catch (error) {
         console.error('[SSE] Stream error:', error);
         try {
-          sendEvent({
+          sendEvent(createEvent({
             type: 'error',
             docId,
             message: error instanceof Error ? error.message : String(error),
-          });
+          }));
         } catch (sendError) {
           console.error('[SSE] Failed to send error event:', sendError);
         }
