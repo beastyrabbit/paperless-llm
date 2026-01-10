@@ -349,6 +349,8 @@
       "titleDesc": "Beschreibende Dokumenttitel generieren",
       "correspondent": "Korrespondent-Zuweisung",
       "correspondentDesc": "Dokumentenabsender/-empfänger identifizieren und zuweisen",
+      "documentType": "Dokumenttyp-Zuweisung",
+      "documentTypeDesc": "Dokumente nach Typ klassifizieren (Rechnung, Vertrag, etc.)",
       "tags": "Tag-Zuweisung",
       "tagsDesc": "Automatisch relevante Tags zuweisen",
       "customFields": "Benutzerdefinierte Felder",

@@ -24,6 +24,11 @@ const PIPELINE_ITEMS = [
     labelKey: "pipeline.correspondent",
     descKey: "pipeline.correspondentDesc",
   },
+  {
+    key: "pipeline_document_type" as const,
+    labelKey: "pipeline.documentType",
+    descKey: "pipeline.documentTypeDesc",
+  },
   { key: "pipeline_tags" as const, labelKey: "pipeline.tags", descKey: "pipeline.tagsDesc" },
   {
     key: "pipeline_custom_fields" as const,

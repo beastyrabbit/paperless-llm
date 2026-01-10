@@ -357,6 +357,8 @@
       "titleDesc": "Generate descriptive document titles",
       "correspondent": "Correspondent Assignment",
       "correspondentDesc": "Identify and assign document sender/recipient",
+      "documentType": "Document Type Assignment",
+      "documentTypeDesc": "Classify documents by type (invoice, contract, etc.)",
       "tags": "Tag Assignment",
       "tagsDesc": "Automatically assign relevant tags",
       "customFields": "Custom Fields",

@@ -15,6 +15,11 @@ export interface Settings {
   auto_processing_enabled: boolean;
   auto_processing_interval_minutes: number;
   prompt_language: string;
+  pipeline_ocr: boolean;
+  pipeline_correspondent: boolean;
+  pipeline_document_type: boolean;
+  pipeline_title: boolean;
+  pipeline_tags: boolean;
   pipeline_custom_fields: boolean;
   tags: {
     pending: string;
