@@ -133,8 +133,8 @@ function toToonValue(value: unknown, indent = 0): string {
       return `[${value.map(v => toToonValue(v)).join(",")}]`;
     }
     // Array of objects - check if uniform structure for tabular
+    if (value.length === 0) return "[]";
     if (value.every(v => typeof v === "object" && v !== null && !Array.isArray(v))) {
-      if (value.length === 0) return "[]";
       const keys = Object.keys(value[0] as Record<string, unknown>);
       const isUniform = value.every(v => {
         const vKeys = Object.keys(v as Record<string, unknown>);
