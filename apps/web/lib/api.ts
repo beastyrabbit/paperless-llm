@@ -86,10 +86,12 @@ export const processingApi = {
       method: "POST",
       body: JSON.stringify({ step }),
     }),
-  stream: (docId: number, step?: string) => {
-    const url = `${API_BASE}/api/processing/${docId}/stream${
-      step ? `?step=${step}` : ""
-    }`;
+  stream: (docId: number, options?: { step?: string; full?: boolean }) => {
+    const params = new URLSearchParams();
+    if (options?.step) params.set("step", options.step);
+    if (options?.full) params.set("full", "true");
+    const query = params.toString();
+    const url = `${API_BASE}/api/processing/${docId}/stream${query ? `?${query}` : ""}`;
     return new EventSource(url);
   },
   confirm: (docId: number, confirmed: boolean) =>

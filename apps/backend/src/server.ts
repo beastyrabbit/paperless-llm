@@ -124,7 +124,8 @@ export const createHttpServer = (port: number) =>
     // Helper to run stream and pipe to SSE response
     const handleSSEStream = async (
       res: ServerResponse,
-      docId: number
+      docId: number,
+      fullPipeline: boolean = false
     ): Promise<void> => {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -200,51 +201,126 @@ export const createHttpServer = (port: number) =>
 
             sendEvent(createEvent({ type: 'pipeline_start', docId }));
 
-            // Determine next step based on current state
-            let nextStep: string | null = null;
-            switch (currentState) {
-              case 'pending':
-                nextStep = 'ocr';
-                break;
-              case 'ocr_done':
-                nextStep = 'title';
-                break;
-              case 'title_done':
-                nextStep = 'correspondent';
-                break;
-              case 'correspondent_done':
-                nextStep = 'document_type';
-                break;
-              case 'document_type_done':
-                nextStep = 'tags';
-                break;
-              case 'tags_done':
-                nextStep = 'custom_fields';
-                break;
-              case 'processed':
-                sendEvent(createEvent({ type: 'pipeline_complete', docId, message: 'Already processed' }));
-                return;
-              default:
-                nextStep = 'title'; // Default to title if state unclear
+            // Helper function to determine next step based on state
+            const getNextStepForState = (state: string): string | null => {
+              switch (state) {
+                case 'pending':
+                  return 'ocr';
+                case 'ocr_done':
+                  return 'title';
+                case 'title_done':
+                  return 'correspondent';
+                case 'correspondent_done':
+                  return 'document_type';
+                case 'document_type_done':
+                  return 'tags';
+                case 'tags_done':
+                  return 'custom_fields';
+                case 'processed':
+                  return null;
+                default:
+                  return 'title'; // Default to title if state unclear
+              }
+            };
+
+            // Helper to get current state from document tags (accepts tagMap for refresh support)
+            const getStateFromTags = (docTags: readonly number[], currentTagMap: Map<number, string>): string => {
+              const docTagNames = docTags.map((id) => currentTagMap.get(id)).filter((n): n is string => n !== undefined);
+              if (docTagNames.includes(tagConfig.processed)) return 'processed';
+              if (docTagNames.includes(tagConfig.tagsDone)) return 'tags_done';
+              if (docTagNames.includes(tagConfig.documentTypeDone)) return 'document_type_done';
+              if (docTagNames.includes(tagConfig.correspondentDone)) return 'correspondent_done';
+              if (docTagNames.includes(tagConfig.titleDone)) return 'title_done';
+              if (docTagNames.includes(tagConfig.ocrDone)) return 'ocr_done';
+              if (docTagNames.includes(tagConfig.pending)) return 'pending';
+              return 'pending';
+            };
+
+            // Check if already processed
+            if (currentState === 'processed') {
+              sendEvent(createEvent({ type: 'pipeline_complete', docId, message: 'Already processed' }));
+              return;
             }
+
+            let nextStep = getNextStepForState(currentState);
 
             if (!nextStep) {
               sendEvent(createEvent({ type: 'pipeline_complete', docId }));
               return;
             }
 
-            // Run the next step with streaming for detailed LLM info
+            // Run step(s) - either single step or full pipeline loop
             let stepHadError = false;
-            yield* pipe(
-              pipeline.processStepStream(docId, nextStep),
-              Stream.tap((event) => Effect.sync(() => sendEvent(event))),
-              Stream.runDrain,
-              Effect.catchAll((e) => {
+
+            if (fullPipeline) {
+              // Full pipeline mode: loop through all remaining steps
+              const MAX_PIPELINE_STEPS = 10;
+              let iterationCount = 0;
+              let needsReview = false;
+              let currentTagMap = tagMap;
+
+              while (nextStep !== null && !stepHadError && !needsReview && iterationCount < MAX_PIPELINE_STEPS) {
+                iterationCount++;
+
+                yield* pipe(
+                  pipeline.processStepStream(docId, nextStep),
+                  Stream.tap((event) => Effect.sync(() => {
+                    sendEvent(event);
+                    // Check if step needs manual review - stop the loop
+                    if (event.type === 'needs_review' || event.type === 'pipeline_paused' || event.type === 'schema_review_needed') {
+                      needsReview = true;
+                    }
+                  })),
+                  Stream.runDrain,
+                  Effect.catchAll((e) => {
+                    stepHadError = true;
+                    sendEvent(createEvent({ type: 'step_error', docId, step: nextStep!, message: String(e) }));
+                    return Effect.void;
+                  })
+                );
+
+                if (!stepHadError && !needsReview) {
+                  // Re-fetch tags to include any newly created ones
+                  const updatedTags = yield* paperless.getTags();
+                  currentTagMap = new Map(updatedTags.map((t) => [t.id, t.name]));
+
+                  // Re-fetch document to get updated state
+                  const updatedDoc = yield* paperless.getDocument(docId);
+                  const updatedState = getStateFromTags(updatedDoc.tags ?? [], currentTagMap);
+
+                  // Handle custom_fields completion -> transition to processed
+                  if (nextStep === 'custom_fields' && updatedState === 'tags_done') {
+                    // custom_fields completed but no state change - transition to processed
+                    yield* paperless.transitionDocumentTag(docId, tagConfig.tagsDone, tagConfig.processed);
+                    nextStep = null; // Pipeline complete
+                  } else {
+                    nextStep = getNextStepForState(updatedState);
+                  }
+                }
+              }
+
+              // Check for max iterations exceeded
+              if (iterationCount >= MAX_PIPELINE_STEPS && nextStep !== null) {
+                sendEvent(createEvent({
+                  type: 'error',
+                  docId,
+                  message: 'Pipeline exceeded maximum step count - possible infinite loop'
+                }));
                 stepHadError = true;
-                sendEvent(createEvent({ type: 'step_error', docId, step: nextStep, message: String(e) }));
-                return Effect.void;
-              })
-            );
+              }
+            } else {
+              // Single step mode: run only the next step
+              yield* pipe(
+                pipeline.processStepStream(docId, nextStep),
+                Stream.tap((event) => Effect.sync(() => sendEvent(event))),
+                Stream.runDrain,
+                Effect.catchAll((e) => {
+                  stepHadError = true;
+                  sendEvent(createEvent({ type: 'step_error', docId, step: nextStep!, message: String(e) }));
+                  return Effect.void;
+                })
+              );
+            }
 
             // Only send pipeline_complete on success (not after errors)
             if (!stepHadError) {
@@ -289,7 +365,9 @@ export const createHttpServer = (port: number) =>
           res.end(JSON.stringify({ error: 'Invalid document ID' }));
           return;
         }
-        await handleSSEStream(res, docId);
+        // Check for full pipeline mode
+        const fullPipeline = url.searchParams.get('full') === 'true';
+        await handleSSEStream(res, docId, fullPipeline);
         return;
       }
 
