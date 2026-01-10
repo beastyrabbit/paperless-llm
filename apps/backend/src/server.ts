@@ -190,13 +190,17 @@ export const createHttpServer = (port: number) =>
           sendEvent({ type: 'pipeline_complete', docId });
         });
 
-        await runWithRuntime(effect);
       } catch (error) {
-        sendEvent({
-          type: 'error',
-          docId,
-          message: error instanceof Error ? error.message : String(error),
-        });
+        console.error('[SSE] Stream error:', error);
+        try {
+          sendEvent({
+            type: 'error',
+            docId,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        } catch (sendError) {
+          console.error('[SSE] Failed to send error event:', sendError);
+        }
       } finally {
         res.end();
       }
