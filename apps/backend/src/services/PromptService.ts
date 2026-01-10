@@ -88,8 +88,8 @@ export const PromptServiceLive = Layer.effect(
     const configService = yield* ConfigService;
     const { language } = configService.config;
 
-    // Base prompts directory (relative to backend-ts)
-    const promptsBaseDir = path.join(process.cwd(), '..', 'backend', 'prompts');
+    // Base prompts directory (relative to apps/backend)
+    const promptsBaseDir = path.join(process.cwd(), 'prompts');
 
     const getPromptsDir = (lang: string): string =>
       path.join(promptsBaseDir, lang);
