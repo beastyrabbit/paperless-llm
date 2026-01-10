@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 import {
   Loader2,
@@ -36,7 +36,8 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 export function ConnectionsTab() {
   const t = useTranslations("settings");
-  const { updateSetting } = useTinyBase();
+  const { updateSetting, isSyncing } = useTinyBase();
+  const hasAutoTestedRef = useRef(false);
 
   // TinyBase settings (persisted)
   const paperlessUrl = useStringSetting("paperless.url");
@@ -131,8 +132,15 @@ export function ConnectionsTab() {
     }
   }, [fetchOllamaModels, fetchMistralModels]);
 
-  // Auto-test connections on mount when settings are available
+  // Auto-test connections when settings are loaded (isSyncing becomes false)
   useEffect(() => {
+    // Only auto-test once after initial sync is complete
+    if (isSyncing || hasAutoTestedRef.current) {
+      return;
+    }
+
+    hasAutoTestedRef.current = true;
+
     const autoTest = async () => {
       const tests: Promise<void>[] = [];
       if (paperlessUrl && paperlessToken) {
@@ -150,10 +158,8 @@ export function ConnectionsTab() {
       await Promise.all(tests);
     };
 
-    // Delay auto-test slightly to ensure settings are loaded
-    const timer = setTimeout(autoTest, 500);
-    return () => clearTimeout(timer);
-  }, []); // Only run once on mount
+    autoTest();
+  }, [isSyncing, paperlessUrl, paperlessToken, ollamaUrl, qdrantUrl, mistralApiKey, testConnection]);
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">

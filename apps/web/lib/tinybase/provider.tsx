@@ -155,7 +155,8 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
         // Clear existing logs for this document
         const existingTable = store.getTable('processingLogs');
         if (existingTable) {
-          for (const [rowId, row] of Object.entries(existingTable)) {
+          for (const rowId of Object.keys(existingTable)) {
+            const row = existingTable[rowId];
             if (row && row.docId === docId) {
               store.delRow('processingLogs', rowId);
             }
@@ -195,7 +196,8 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
         // Clear from local store
         const existingTable = store.getTable('processingLogs');
         if (existingTable) {
-          for (const [rowId, row] of Object.entries(existingTable)) {
+          for (const rowId of Object.keys(existingTable)) {
+            const row = existingTable[rowId];
             if (row && row.docId === docId) {
               store.delRow('processingLogs', rowId);
             }
@@ -246,14 +248,23 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
       const apiPayload: Record<string, unknown> = {};
 
       for (const [key, value] of Object.entries(updates)) {
-        // Check if key is a store key that needs mapping
-        const apiKey = STORE_TO_API_KEY_MAP[key] || key;
-        apiPayload[apiKey] = value;
+        // Determine if key is a store key or API key
+        const isStoreKey = key in valuesSchema;
 
-        // Optimistic update to store if it's a known store key
-        const storeKey = API_TO_STORE_KEY_MAP[key] || key;
-        if (storeKey in valuesSchema) {
-          store.setValue(storeKey, value as SettingValue);
+        if (isStoreKey) {
+          // Key is a store key - map to API key for payload
+          const apiKey = STORE_TO_API_KEY_MAP[key] || key;
+          apiPayload[apiKey] = value;
+          // Optimistic update to store
+          store.setValue(key, value as SettingValue);
+        } else {
+          // Key is an API key - use as-is for payload
+          apiPayload[key] = value;
+          // Map to store key for optimistic update if mapping exists
+          const storeKey = API_TO_STORE_KEY_MAP[key];
+          if (storeKey && storeKey in valuesSchema) {
+            store.setValue(storeKey, value as SettingValue);
+          }
         }
       }
 
