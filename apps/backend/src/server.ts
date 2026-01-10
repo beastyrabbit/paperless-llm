@@ -223,15 +223,16 @@ export const createHttpServer = (port: number) =>
               }
             };
 
-            // Helper to get current state from document tags
-            const getStateFromTags = (docTags: readonly number[]): string => {
-              const docTagNames = docTags.map((id) => tagMap.get(id)).filter((n): n is string => n !== undefined);
+            // Helper to get current state from document tags (accepts tagMap for refresh support)
+            const getStateFromTags = (docTags: readonly number[], currentTagMap: Map<number, string>): string => {
+              const docTagNames = docTags.map((id) => currentTagMap.get(id)).filter((n): n is string => n !== undefined);
               if (docTagNames.includes(tagConfig.processed)) return 'processed';
               if (docTagNames.includes(tagConfig.tagsDone)) return 'tags_done';
               if (docTagNames.includes(tagConfig.documentTypeDone)) return 'document_type_done';
               if (docTagNames.includes(tagConfig.correspondentDone)) return 'correspondent_done';
               if (docTagNames.includes(tagConfig.titleDone)) return 'title_done';
               if (docTagNames.includes(tagConfig.ocrDone)) return 'ocr_done';
+              if (docTagNames.includes(tagConfig.pending)) return 'pending';
               return 'pending';
             };
 
@@ -253,10 +254,23 @@ export const createHttpServer = (port: number) =>
 
             if (fullPipeline) {
               // Full pipeline mode: loop through all remaining steps
-              while (nextStep !== null && !stepHadError) {
+              const MAX_PIPELINE_STEPS = 10;
+              let iterationCount = 0;
+              let needsReview = false;
+              let currentTagMap = tagMap;
+
+              while (nextStep !== null && !stepHadError && !needsReview && iterationCount < MAX_PIPELINE_STEPS) {
+                iterationCount++;
+
                 yield* pipe(
                   pipeline.processStepStream(docId, nextStep),
-                  Stream.tap((event) => Effect.sync(() => sendEvent(event))),
+                  Stream.tap((event) => Effect.sync(() => {
+                    sendEvent(event);
+                    // Check if step needs manual review - stop the loop
+                    if (event.type === 'needs_review' || event.type === 'pipeline_paused' || event.type === 'schema_review_needed') {
+                      needsReview = true;
+                    }
+                  })),
                   Stream.runDrain,
                   Effect.catchAll((e) => {
                     stepHadError = true;
@@ -265,12 +279,34 @@ export const createHttpServer = (port: number) =>
                   })
                 );
 
-                if (!stepHadError) {
+                if (!stepHadError && !needsReview) {
+                  // Re-fetch tags to include any newly created ones
+                  const updatedTags = yield* paperless.getTags();
+                  currentTagMap = new Map(updatedTags.map((t) => [t.id, t.name]));
+
                   // Re-fetch document to get updated state
                   const updatedDoc = yield* paperless.getDocument(docId);
-                  const updatedState = getStateFromTags(updatedDoc.tags ?? []);
-                  nextStep = getNextStepForState(updatedState);
+                  const updatedState = getStateFromTags(updatedDoc.tags ?? [], currentTagMap);
+
+                  // Handle custom_fields completion -> transition to processed
+                  if (nextStep === 'custom_fields' && updatedState === 'tags_done') {
+                    // custom_fields completed but no state change - transition to processed
+                    yield* paperless.transitionDocumentTag(docId, tagConfig.tagsDone, tagConfig.processed);
+                    nextStep = null; // Pipeline complete
+                  } else {
+                    nextStep = getNextStepForState(updatedState);
+                  }
                 }
+              }
+
+              // Check for max iterations exceeded
+              if (iterationCount >= MAX_PIPELINE_STEPS && nextStep !== null) {
+                sendEvent(createEvent({
+                  type: 'error',
+                  docId,
+                  message: 'Pipeline exceeded maximum step count - possible infinite loop'
+                }));
+                stepHadError = true;
               }
             } else {
               // Single step mode: run only the next step
