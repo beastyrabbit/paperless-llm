@@ -104,15 +104,46 @@
     "statusDocTypeDone": "DocType Done",
     "statusTitleDone": "Title Done",
     "statusTagsDone": "Tags Done",
-    "statusProcessed": "Complete"
+    "statusProcessed": "Complete",
+    "statusInProgress": "In Progress"
   },
   "pending": {
     "title": "Pending Review",
     "subtitle": "{count} items requiring your approval",
+    "search": "Search pending items...",
     "noItems": "No items pending review",
     "allCaughtUp": "All caught up!",
+    "showMore": "show more",
+    "showLess": "show less",
+    "allClear": {
+      "title": "All Clear!",
+      "description": "No pending items requiring your review. Check back later or run a bootstrap analysis to find suggestions."
+    },
+    "reject": {
+      "title": "Reject Suggestion",
+      "bulkTitle": "Reject {count} Items",
+      "description": "Rejecting \"{suggestion}\"",
+      "bulkDescription": "Rejecting {count} selected items",
+      "blockTypeLabel": "Block Type",
+      "noBlock": "Don't block (just reject)",
+      "blockDocument": "Block for this document",
+      "blockSuggestion": "Block this suggestion",
+      "blockBoth": "Block both",
+      "categoryLabel": "Category",
+      "selectCategory": "Select a category...",
+      "reasonLabel": "Reason (optional)",
+      "reasonPlaceholder": "Why are you rejecting this?",
+      "cancel": "Cancel",
+      "confirm": "Reject",
+      "categories": {
+        "duplicate": "Duplicate",
+        "too_generic": "Too Generic",
+        "irrelevant": "Irrelevant",
+        "wrong_format": "Wrong Format",
+        "other": "Other"
+      }
+    },
     "approve": "Approve",
-    "reject": "Reject",
     "skip": "Skip",
     "correspondents": "Correspondents",
     "documentTypes": "Document Types",
@@ -175,6 +206,7 @@
       "description": "Merge similar pending suggestions to review them together.",
       "noSimilar": "No similar suggestions found",
       "noSimilarDesc": "All your pending suggestions are unique.",
+      "noGroups": "No similar groups found",
       "found": "Found {count} groups of similar suggestions",
       "items": "items",
       "mergeTo": "Merge all to",
@@ -246,11 +278,13 @@
       "pipeline": "Pipeline",
       "customFields": "Custom Fields",
       "aiTags": "Tags",
+      "aiDocTypes": "Document Types",
       "aiDocumentTypes": "Document Types",
       "workflowTags": "Workflow Tags",
       "language": "Language",
       "advanced": "Advanced",
-      "maintenance": "Maintenance"
+      "maintenance": "Maintenance",
+      "database": "Database"
     },
     "paperless": {
       "title": "Paperless-ngx",
@@ -339,7 +373,9 @@
       "fieldsSelected": "{selected} of {total} fields selected",
       "saveSelection": "Save Selection",
       "savedSuccess": "Saved {count} custom field(s) for LLM processing",
-      "options": "{count} options"
+      "options": "{count} options",
+      "enableAll": "Enable All",
+      "disableAll": "Disable All"
     },
     "aiTags": {
       "title": "AI Tag Selection",
@@ -364,7 +400,9 @@
       "optimizeDescription": "Use AI to optimize this description for clarity",
       "translateDescription": "Translate to all UI and prompt languages",
       "editingIn": "Editing in {lang}",
-      "alsoAvailableIn": "Also available in: {langs}"
+      "alsoAvailableIn": "Also available in: {langs}",
+      "enableAll": "Enable All",
+      "disableAll": "Disable All"
     },
     "aiDocumentTypes": {
       "title": "AI Document Types Selection",
@@ -378,7 +416,9 @@
       "savedSuccess": "Saved {count} document type(s) for AI suggestions",
       "aiEnabled": "AI Enabled",
       "aiDisabled": "AI Disabled",
-      "documentCount": "{count} document(s)"
+      "documentCount": "{count} document(s)",
+      "enableAll": "Enable All",
+      "disableAll": "Disable All"
     },
     "workflowTags": {
       "title": "Workflow Tags Status",

@@ -54,22 +54,25 @@ export default function DocumentsPage() {
   const t = useTranslations("documents");
   const tCommon = useTranslations("common");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("in_progress");
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchDocuments = useCallback(async (tag?: string) => {
+  const fetchDocuments = useCallback(async (filter?: string) => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (tag && tag !== "all") {
-        // Map status filter to tag names from settings
-        const settingsResponse = await fetch("http://localhost:8000/api/settings");
-        if (settingsResponse.ok) {
-          const settings = await settingsResponse.json();
-          const tagMap: Record<string, string> = {
+
+      // Get tag mappings from settings
+      const settingsResponse = await fetch("/api/settings");
+      let tagMap: Record<string, string> = {};
+
+      if (settingsResponse.ok) {
+        const settings = await settingsResponse.json();
+        if (settings.tags) {
+          tagMap = {
             pending: settings.tags.pending,
             ocr_done: settings.tags.ocr_done,
             correspondent_done: settings.tags.correspondent_done,
@@ -78,13 +81,18 @@ export default function DocumentsPage() {
             tags_done: settings.tags.tags_done,
             processed: settings.tags.processed,
           };
-          if (tagMap[tag]) {
-            params.set("tag", tagMap[tag]);
-          }
         }
       }
 
-      const response = await fetch(`http://localhost:8000/api/documents/pending?${params.toString()}`);
+      // Handle "in_progress" filter - all statuses except processed
+      if (filter === "in_progress") {
+        // Don't set any tag param - backend will fetch all pipeline documents except processed
+        // The backend's getPendingDocuments excludes processed by default when no tag specified
+      } else if (filter && filter !== "all" && tagMap[filter]) {
+        params.set("tag", tagMap[filter]);
+      }
+
+      const response = await fetch(`/api/documents/pending?${params.toString()}`);
       if (response.ok) {
         const data = await response.json();
         setDocuments(data);
@@ -163,6 +171,7 @@ export default function DocumentsPage() {
               <SelectValue placeholder={t("filterByStatus")} />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="in_progress">{t("statusInProgress")}</SelectItem>
               <SelectItem value="all">{t("allStatus")}</SelectItem>
               <SelectItem value="pending">{t("statusPending")}</SelectItem>
               <SelectItem value="ocr_done">{t("statusOcrDone")}</SelectItem>

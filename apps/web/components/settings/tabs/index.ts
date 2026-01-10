@@ -1,0 +1,11 @@
+export { ConnectionsTab } from "./ConnectionsTab";
+export { ProcessingTab } from "./ProcessingTab";
+export { PipelineTab } from "./PipelineTab";
+export { CustomFieldsTab } from "./CustomFieldsTab";
+export { AiTagsTab } from "./AiTagsTab";
+export { AiDocTypesTab } from "./AiDocTypesTab";
+export { WorkflowTagsTab } from "./WorkflowTagsTab";
+export { LanguageTab } from "./LanguageTab";
+export { AdvancedTab } from "./AdvancedTab";
+export { MaintenanceTab } from "./MaintenanceTab";
+export { DatabaseTab } from "./DatabaseTab";
