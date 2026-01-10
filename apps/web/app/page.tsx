@@ -121,7 +121,7 @@ export default function Dashboard() {
           const data = await response.json();
           setConnections(prev => ({
             ...prev,
-            [service]: data.status === "connected" ? "connected" : "disconnected",
+            [service]: data.status === "success" ? "connected" : "disconnected",
           }));
         } else {
           setConnections(prev => ({ ...prev, [service]: "disconnected" }));
