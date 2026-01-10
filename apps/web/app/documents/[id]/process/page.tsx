@@ -230,12 +230,6 @@ export default function ProcessingPage({
           </div>
         </div>
         <div className="flex items-center gap-4">
-          {processing && (
-            <Badge variant="outline" className="gap-2">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Processing...
-            </Badge>
-          )}
           {!processing && started && progress === 100 && (
             <Badge variant="outline" className="gap-2 text-green-600 border-green-600">
               <CheckCircle2 className="h-3 w-3" />
