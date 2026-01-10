@@ -187,7 +187,7 @@ function StatusIndicator({ status }: { status: ConnectionStatus }) {
   }
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 function formatETA(seconds: number): string {
   if (seconds < 60) {

@@ -5,7 +5,7 @@ import { Effect, pipe, Layer } from 'effect';
 import { createHttpServer } from './server.js';
 import { AppLayer } from './layers/index.js';
 
-const PORT = parseInt(process.env['PORT'] ?? '8001', 10);
+const PORT = parseInt(process.env['PORT'] ?? '8765', 10);
 
 const main = Effect.gen(function* () {
   console.log('Starting Paperless Local LLM TypeScript Backend...');

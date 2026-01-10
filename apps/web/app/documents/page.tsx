@@ -66,7 +66,7 @@ export default function DocumentsPage() {
       const params = new URLSearchParams();
       if (tag && tag !== "all") {
         // Map status filter to tag names from settings
-        const settingsResponse = await fetch("http://localhost:8000/api/settings");
+        const settingsResponse = await fetch("/api/settings");
         if (settingsResponse.ok) {
           const settings = await settingsResponse.json();
           const tagMap: Record<string, string> = {
@@ -84,7 +84,7 @@ export default function DocumentsPage() {
         }
       }
 
-      const response = await fetch(`http://localhost:8000/api/documents/pending?${params.toString()}`);
+      const response = await fetch(`/api/documents/pending?${params.toString()}`);
       if (response.ok) {
         const data = await response.json();
         setDocuments(data);

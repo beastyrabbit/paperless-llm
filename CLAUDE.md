@@ -10,26 +10,20 @@ Paperless Local LLM is an AI-powered document analysis system for Paperless-ngx.
 
 ### Frontend (Next.js)
 ```bash
-bun install          # Install dependencies (from root)
-bun run dev:web      # Development server (port 3000)
-bun run build        # Production build
-bun run lint         # ESLint
-bun run typecheck    # TypeScript check
+pnpm install         # Install dependencies (from root)
+pnpm run dev:web     # Development server (port 3765)
+pnpm run build       # Production build
+pnpm run lint        # ESLint
+pnpm run typecheck   # TypeScript check
 ```
 
-### Backend (FastAPI/Python)
+### Backend (TypeScript/Effect)
 ```bash
 cd apps/backend
-uv sync              # Install dependencies
-uv run uvicorn main:app --reload --port 8000  # Development server
-
-# Testing
-uv run pytest
-uv run pytest -k test_name  # Single test
-
-# Linting
-uv run ruff check .
-uv run ruff format .
+pnpm run dev         # Development server (port 8765)
+pnpm run build       # Production build
+pnpm run test        # Run tests with Vitest
+pnpm run typecheck   # TypeScript check
 ```
 
 ### Docker
@@ -41,31 +35,29 @@ docker compose down            # Stop services
 
 ### Pre-Commit Hooks
 ```bash
-# Install hooks (einmalig)
-cd apps/backend && uv sync --all-extras  # Installiert pre-commit
-uv run pre-commit install           # Aktiviert die Hooks
+# Install hooks
+pnpm exec pre-commit install
 
-# Manuell ausführen
-uv run pre-commit run --all-files
+# Run manually
+pnpm exec pre-commit run --all-files
 
-# Oder via bun
-bun run precommit
+# Or via pnpm
+pnpm run precommit
 ```
 
-**Aktive Checks:**
-- **gitleaks**: Erkennt versehentlich committete Secrets/API-Keys
-- **ruff**: Python Linting & Formatting
-- **mypy**: Python Type Checking
+**Active Checks:**
+- **gitleaks**: Detects accidentally committed secrets/API keys
 - **TypeScript**: `tsc --noEmit` Type Checking
 - **ESLint**: JavaScript/TypeScript Linting
+- **Turbo**: Unified pre-commit checks
 
-Bei Fehlern wird der Commit abgebrochen.
+On errors, the commit is aborted.
 
 ## Architecture
 
 **Two-service architecture:**
-- **Frontend**: Next.js 16 + React 19 + TailwindCSS 4 + shadcn/ui
-- **Backend**: FastAPI + LangGraph + LangChain
+- **Frontend**: Next.js 16 + React 19 + TailwindCSS 4 + shadcn/ui (port 3765)
+- **Backend**: TypeScript + Effect-TS + Hono HTTP server (port 8765)
 
 **External dependencies:**
 - Paperless-ngx (document management)
@@ -74,12 +66,14 @@ Bei Fehlern wird der Commit abgebrochen.
 - Qdrant (vector similarity search for context)
 
 ### Backend Structure (`apps/backend/`)
-- `main.py` - FastAPI app with CORS and router setup
-- `config.py` - Pydantic Settings loading from `config.yaml` + env vars
-- `routers/` - API endpoints (settings, documents, processing, prompts)
-- `services/` - External service clients (paperless.py, qdrant.py)
-- `agents/` - LangGraph agents for each processing step (ocr, title, correspondent, tags)
-- `prompts/` - Markdown prompt templates with variable placeholders
+- `src/index.ts` - Application entry point
+- `src/server.ts` - HTTP server with CORS and request handling
+- `src/api/` - API route handlers (settings, documents, processing, prompts, pending, jobs)
+- `src/services/` - External service clients (PaperlessService, OllamaService, MistralService, TinyBaseService)
+- `src/agents/` - Document processing agents (TitleAgent, CorrespondentAgent, TagAgent, etc.)
+- `src/config/` - Configuration management with Effect layers
+- `src/layers/` - Effect dependency injection layers
+- `tests/` - Vitest test suites
 
 ### Frontend Structure (`apps/web/`)
 - `app/page.tsx` - Dashboard
