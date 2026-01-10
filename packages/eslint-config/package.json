@@ -9,11 +9,11 @@
     "./nextjs": "./nextjs.mjs"
   },
   "dependencies": {
-    "@eslint/eslintrc": "^3"
+    "@eslint/eslintrc": "^3.3.3"
   },
   "devDependencies": {
-    "eslint": "^9",
+    "eslint": "^9.39.2",
     "eslint-config-next": "16.1.1",
-    "typescript-eslint": "^8"
+    "typescript-eslint": "^8.52.0"
   }
 }
