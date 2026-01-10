@@ -181,6 +181,18 @@ export default function DocumentDetailPage({
           }, 500);
         }
 
+        if (data.type === "needs_review" || data.type === "pipeline_paused" || data.type === "schema_review_needed") {
+          setProcessing(false);
+          setProcessingComplete(false);
+          eventSource.close();
+          eventSourceRef.current = null;
+          // Refresh document to show current state
+          setTimeout(async () => {
+            const { data: newDoc } = await documentsApi.get(docId);
+            if (newDoc) setDocument(newDoc);
+          }, 500);
+        }
+
         if (data.type === "error" || data.type === "step_error") {
           setProcessing(false);
           setProcessingError(true);
