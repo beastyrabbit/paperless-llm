@@ -125,20 +125,21 @@ export const createHttpServer = (port: number) =>
 
       try {
         // Get current state and run next step
-        const effect = Effect.gen(function* () {
-          const pipeline = yield* ProcessingPipelineService;
-          const paperless = yield* PaperlessService;
-
           // Get document and resolve tag names
-          const doc = yield* paperless.getDocument(docId);
-          const allTags = yield* paperless.getTags();
+          const doc = yield* paperless.getDocument(docId).pipe(
+            Effect.catchAll((e) => {
+              sendEvent({ type: 'error', docId, message: `Failed to load document: ${e}` });
+              return Effect.fail(e);
+            })
+          );
+          const allTags = yield* paperless.getTags().pipe(
+            Effect.catchAll((e) => {
+              sendEvent({ type: 'error', docId, message: `Failed to load tags: ${e}` });
+              return Effect.fail(e);
+            })
+          );
           const tagMap = new Map(allTags.map((t) => [t.id, t.name]));
           const tagNames = (doc.tags ?? []).map((id) => tagMap.get(id)).filter((n): n is string => n !== undefined);
-
-          // Create document with resolved tag names for state detection
-          const docWithTagNames = { ...doc, tag_names: tagNames };
-          const currentState = pipeline.getCurrentState(docWithTagNames);
-
           sendEvent({ type: 'pipeline_start', docId });
 
           // Determine next step based on current state
