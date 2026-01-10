@@ -2,11 +2,31 @@
   "name": "@repo/backend",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "uv run uvicorn main:app --reload --port 8000",
-    "lint": "uv run ruff check .",
-    "test": "uv run pytest",
-    "format": "uv run ruff format .",
-    "typecheck": "echo 'Skipping mypy - pre-existing type errors'"
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "effect": "^3.11.0",
+    "@effect/platform": "^0.71.0",
+    "@effect/platform-node": "^0.66.0",
+    "tinybase": "^5.4.2",
+    "@langchain/core": "^0.3.28",
+    "@langchain/ollama": "^0.1.4",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.4",
+    "@vitest/coverage-v8": "^3.0.4"
   }
 }
