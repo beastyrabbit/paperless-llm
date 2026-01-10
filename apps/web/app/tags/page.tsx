@@ -68,7 +68,7 @@ export default function TagsPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("http://localhost:8000/api/settings/tags/status");
+      const response = await fetch("/api/settings/tags/status");
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -95,7 +95,7 @@ export default function TagsPage() {
     setSuccessMessage(null);
 
     try {
-      const response = await fetch("http://localhost:8000/api/settings/tags/create", {
+      const response = await fetch("/api/settings/tags/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tag_names: missingTags }),

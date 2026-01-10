@@ -6,12 +6,12 @@ const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 const nextConfig: NextConfig = {
   output: "standalone",
 
-  // Proxy API requests to Python backend
+  // Proxy API requests to TypeScript backend
   async rewrites() {
     return [
       {
         source: "/api/:path*",
-        destination: `${process.env.BACKEND_URL || "http://localhost:8000"}/api/:path*`,
+        destination: `${process.env.BACKEND_URL || "http://localhost:8001"}/api/:path*`,
       },
     ];
   },

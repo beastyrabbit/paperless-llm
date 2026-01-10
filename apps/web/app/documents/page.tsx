@@ -54,37 +54,52 @@ export default function DocumentsPage() {
   const t = useTranslations("documents");
   const tCommon = useTranslations("common");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("in_progress");
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tagMap, setTagMap] = useState<Record<string, string>>({});
 
-  const fetchDocuments = useCallback(async (tag?: string) => {
+  // Fetch tag mappings once on mount
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const response = await fetch("/api/settings");
+        if (response.ok) {
+          const settings = await response.json();
+          if (settings.tags) {
+            setTagMap({
+              pending: settings.tags.pending,
+              ocr_done: settings.tags.ocr_done,
+              correspondent_done: settings.tags.correspondent_done,
+              document_type_done: settings.tags.document_type_done,
+              title_done: settings.tags.title_done,
+              tags_done: settings.tags.tags_done,
+              processed: settings.tags.processed,
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load settings:", err);
+      }
+    }
+    loadSettings();
+  }, []);
+
+  const fetchDocuments = useCallback(async (filter: string, tags: Record<string, string>) => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (tag && tag !== "all") {
-        // Map status filter to tag names from settings
-        const settingsResponse = await fetch("http://localhost:8000/api/settings");
-        if (settingsResponse.ok) {
-          const settings = await settingsResponse.json();
-          const tagMap: Record<string, string> = {
-            pending: settings.tags.pending,
-            ocr_done: settings.tags.ocr_done,
-            correspondent_done: settings.tags.correspondent_done,
-            document_type_done: settings.tags.document_type_done,
-            title_done: settings.tags.title_done,
-            tags_done: settings.tags.tags_done,
-            processed: settings.tags.processed,
-          };
-          if (tagMap[tag]) {
-            params.set("tag", tagMap[tag]);
-          }
-        }
+
+      // Handle "in_progress" filter - all statuses except processed
+      if (filter === "in_progress") {
+        // Don't set any tag param - backend will fetch all pipeline documents except processed
+      } else if (filter !== "all" && tags[filter]) {
+        params.set("tag", tags[filter]);
       }
 
-      const response = await fetch(`http://localhost:8000/api/documents/pending?${params.toString()}`);
+      const response = await fetch(`/api/documents/pending?${params.toString()}`);
       if (response.ok) {
         const data = await response.json();
         setDocuments(data);
@@ -99,9 +114,13 @@ export default function DocumentsPage() {
     }
   }, [t]);
 
+  // Fetch documents when filter changes or when tagMap is initially loaded
   useEffect(() => {
-    fetchDocuments(statusFilter);
-  }, [fetchDocuments, statusFilter]);
+    // Wait until tagMap is loaded to avoid double fetch
+    if (Object.keys(tagMap).length > 0 || statusFilter === "all" || statusFilter === "in_progress") {
+      fetchDocuments(statusFilter, tagMap);
+    }
+  }, [statusFilter, tagMap, fetchDocuments]);
 
   const filteredDocs = documents.filter((doc) => {
     const matchesSearch =
@@ -111,7 +130,7 @@ export default function DocumentsPage() {
   });
 
   const handleRefresh = () => {
-    fetchDocuments(statusFilter);
+    fetchDocuments(statusFilter, tagMap);
   };
 
   return (
@@ -163,6 +182,7 @@ export default function DocumentsPage() {
               <SelectValue placeholder={t("filterByStatus")} />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="in_progress">{t("statusInProgress")}</SelectItem>
               <SelectItem value="all">{t("allStatus")}</SelectItem>
               <SelectItem value="pending">{t("statusPending")}</SelectItem>
               <SelectItem value="ocr_done">{t("statusOcrDone")}</SelectItem>

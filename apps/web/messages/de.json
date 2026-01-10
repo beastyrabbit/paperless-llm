@@ -104,15 +104,39 @@
     "statusDocTypeDone": "Typ erledigt",
     "statusTitleDone": "Titel erledigt",
     "statusTagsDone": "Tags erledigt",
-    "statusProcessed": "Fertig"
+    "statusProcessed": "Fertig",
+    "statusInProgress": "In Bearbeitung"
   },
   "pending": {
     "title": "Zur Überprüfung",
     "subtitle": "{count} Elemente erfordern Ihre Genehmigung",
+    "search": "Ausstehende Elemente suchen...",
     "noItems": "Keine Elemente zur Überprüfung",
     "allCaughtUp": "Alles erledigt!",
     "approve": "Genehmigen",
-    "reject": "Ablehnen",
+    "reject": {
+      "title": "Vorschlag ablehnen",
+      "bulkTitle": "{count} Elemente ablehnen",
+      "description": "\"{suggestion}\" wird abgelehnt",
+      "bulkDescription": "{count} ausgewählte Elemente werden abgelehnt",
+      "blockTypeLabel": "Blockierungstyp",
+      "noBlock": "Nicht blockieren (nur ablehnen)",
+      "blockPerType": "Nur für diesen Entitätstyp blockieren",
+      "blockGlobal": "Diesen Vorschlag global blockieren",
+      "categoryLabel": "Kategorie",
+      "selectCategory": "Kategorie auswählen...",
+      "reasonLabel": "Grund (optional)",
+      "reasonPlaceholder": "Warum lehnen Sie das ab?",
+      "cancel": "Abbrechen",
+      "confirm": "Ablehnen",
+      "categories": {
+        "duplicate": "Duplikat",
+        "too_generic": "Zu allgemein",
+        "irrelevant": "Irrelevant",
+        "wrong_format": "Falsches Format",
+        "other": "Sonstiges"
+      }
+    },
     "skip": "Überspringen",
     "correspondents": "Korrespondenten",
     "documentTypes": "Dokumenttypen",
@@ -250,7 +274,8 @@
       "workflowTags": "Workflow-Tags",
       "language": "Sprache",
       "advanced": "Erweitert",
-      "maintenance": "Wartung"
+      "maintenance": "Wartung",
+      "database": "Datenbank"
     },
     "paperless": {
       "title": "Paperless-ngx",
@@ -324,6 +349,8 @@
       "titleDesc": "Beschreibende Dokumenttitel generieren",
       "correspondent": "Korrespondent-Zuweisung",
       "correspondentDesc": "Dokumentenabsender/-empfänger identifizieren und zuweisen",
+      "documentType": "Dokumenttyp-Zuweisung",
+      "documentTypeDesc": "Dokumente nach Typ klassifizieren (Rechnung, Vertrag, etc.)",
       "tags": "Tag-Zuweisung",
       "tagsDesc": "Automatisch relevante Tags zuweisen",
       "customFields": "Benutzerdefinierte Felder",
@@ -339,7 +366,9 @@
       "fieldsSelected": "{selected} von {total} Feldern ausgewählt",
       "saveSelection": "Auswahl speichern",
       "savedSuccess": "{count} benutzerdefinierte(s) Feld(er) für LLM-Verarbeitung gespeichert",
-      "options": "{count} Optionen"
+      "options": "{count} Optionen",
+      "enableAll": "Alle aktivieren",
+      "disableAll": "Alle deaktivieren"
     },
     "aiTags": {
       "title": "KI-Tag-Auswahl",
@@ -364,7 +393,9 @@
       "optimizeDescription": "KI zur Optimierung der Beschreibung verwenden",
       "translateDescription": "In alle UI- und Prompt-Sprachen übersetzen",
       "editingIn": "Bearbeiten in {lang}",
-      "alsoAvailableIn": "Auch verfügbar in: {langs}"
+      "alsoAvailableIn": "Auch verfügbar in: {langs}",
+      "enableAll": "Alle aktivieren",
+      "disableAll": "Alle deaktivieren"
     },
     "aiDocumentTypes": {
       "title": "KI-Dokumenttypen-Auswahl",
@@ -378,7 +409,9 @@
       "savedSuccess": "{count} Dokumenttyp(en) für KI-Vorschläge gespeichert",
       "aiEnabled": "KI aktiviert",
       "aiDisabled": "KI deaktiviert",
-      "documentCount": "{count} Dokument(e)"
+      "documentCount": "{count} Dokument(e)",
+      "enableAll": "Alle aktivieren",
+      "disableAll": "Alle deaktivieren"
     },
     "workflowTags": {
       "title": "Workflow-Tags Status",
