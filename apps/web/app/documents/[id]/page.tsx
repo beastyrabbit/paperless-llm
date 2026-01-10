@@ -176,6 +176,7 @@ export default function DocumentDetailPage({
               )}
             </Link>
           </Button>
+        </div>
       </header>
 
       <div className="flex flex-col gap-6 p-8">

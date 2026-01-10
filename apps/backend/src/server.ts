@@ -124,72 +124,92 @@ export const createHttpServer = (port: number) =>
       };
 
       try {
-        // Get current state and run next step
-          // Get document and resolve tag names
-          const doc = yield* paperless.getDocument(docId).pipe(
-            Effect.catchAll((e) => {
-              sendEvent({ type: 'error', docId, message: `Failed to load document: ${e}` });
-              return Effect.fail(e);
-            })
-          );
-          const allTags = yield* paperless.getTags().pipe(
-            Effect.catchAll((e) => {
-              sendEvent({ type: 'error', docId, message: `Failed to load tags: ${e}` });
-              return Effect.fail(e);
-            })
-          );
-          const tagMap = new Map(allTags.map((t) => [t.id, t.name]));
-          const tagNames = (doc.tags ?? []).map((id) => tagMap.get(id)).filter((n): n is string => n !== undefined);
-          sendEvent({ type: 'pipeline_start', docId });
+        await runWithRuntime(
+          Effect.gen(function* () {
+            const paperless = yield* PaperlessService;
+            const pipeline = yield* ProcessingPipelineService;
 
-          // Determine next step based on current state
-          let nextStep: string | null = null;
-          switch (currentState) {
-            case 'pending':
-              nextStep = 'ocr';
-              break;
-            case 'ocr_done':
-              nextStep = 'title';
-              break;
-            case 'title_done':
-              nextStep = 'correspondent';
-              break;
-            case 'correspondent_done':
-              nextStep = 'document_type';
-              break;
-            case 'document_type_done':
-              nextStep = 'tags';
-              break;
-            case 'tags_done':
-              nextStep = 'custom_fields';
-              break;
-            case 'processed':
-              sendEvent({ type: 'pipeline_complete', docId, message: 'Already processed' });
+            // Get document and resolve tag names with error handling
+            const doc = yield* paperless.getDocument(docId).pipe(
+              Effect.catchAll((e) => {
+                sendEvent({ type: 'error', docId, message: `Failed to load document: ${e}` });
+                return Effect.fail(e);
+              })
+            );
+            const allTags = yield* paperless.getTags().pipe(
+              Effect.catchAll((e) => {
+                sendEvent({ type: 'error', docId, message: `Failed to load tags: ${e}` });
+                return Effect.fail(e);
+              })
+            );
+            const tagMap = new Map(allTags.map((t) => [t.id, t.name]));
+            const tagNames = (doc.tags ?? []).map((id) => tagMap.get(id)).filter((n): n is string => n !== undefined);
+
+            // Determine current state from tags
+            let currentState = 'pending';
+            if (tagNames.some((t) => t.toLowerCase().includes('processed'))) {
+              currentState = 'processed';
+            } else if (tagNames.some((t) => t.toLowerCase().includes('tags-done'))) {
+              currentState = 'tags_done';
+            } else if (tagNames.some((t) => t.toLowerCase().includes('document-type-done'))) {
+              currentState = 'document_type_done';
+            } else if (tagNames.some((t) => t.toLowerCase().includes('correspondent-done'))) {
+              currentState = 'correspondent_done';
+            } else if (tagNames.some((t) => t.toLowerCase().includes('title-done'))) {
+              currentState = 'title_done';
+            } else if (tagNames.some((t) => t.toLowerCase().includes('ocr-done'))) {
+              currentState = 'ocr_done';
+            }
+
+            sendEvent({ type: 'pipeline_start', docId });
+
+            // Determine next step based on current state
+            let nextStep: string | null = null;
+            switch (currentState) {
+              case 'pending':
+                nextStep = 'ocr';
+                break;
+              case 'ocr_done':
+                nextStep = 'title';
+                break;
+              case 'title_done':
+                nextStep = 'correspondent';
+                break;
+              case 'correspondent_done':
+                nextStep = 'document_type';
+                break;
+              case 'document_type_done':
+                nextStep = 'tags';
+                break;
+              case 'tags_done':
+                nextStep = 'custom_fields';
+                break;
+              case 'processed':
+                sendEvent({ type: 'pipeline_complete', docId, message: 'Already processed' });
+                return;
+              default:
+                nextStep = 'title'; // Default to title if state unclear
+            }
+
+            if (!nextStep) {
+              sendEvent({ type: 'pipeline_complete', docId });
               return;
-            default:
-              nextStep = 'title'; // Default to title if state unclear
-          }
+            }
 
-          if (!nextStep) {
+            // Run the next step with streaming for detailed LLM info
+            yield* pipe(
+              pipeline.processStepStream(docId, nextStep),
+              Stream.tap((event) => Effect.sync(() => sendEvent(event))),
+              Stream.runDrain,
+              Effect.catchAll((e) => {
+                sendEvent({ type: 'step_error', docId, step: nextStep, message: String(e) });
+                return Effect.void;
+              })
+            );
+
             sendEvent({ type: 'pipeline_complete', docId });
-            return;
-          }
-
-          // Run the next step with streaming for detailed LLM info
-          // Note: step_start event is emitted by the agent stream
-          yield* pipe(
-            pipeline.processStepStream(docId, nextStep),
-            Stream.tap((event) => Effect.sync(() => sendEvent(event))),
-            Stream.runDrain,
-            Effect.catchAll((e) => {
-              sendEvent({ type: 'step_error', docId, step: nextStep, message: String(e) });
-              return Effect.void;
-            })
-          );
-
-          sendEvent({ type: 'pipeline_complete', docId });
-        });
-
+          })
+        );
       } catch (error) {
         console.error('[SSE] Stream error:', error);
         try {

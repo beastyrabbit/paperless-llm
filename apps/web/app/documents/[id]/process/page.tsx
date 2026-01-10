@@ -33,6 +33,7 @@ interface StreamEvent {
   data?: unknown;
   message?: string;
   reason?: string;
+  timestamp?: string;
 }
 
 // Format event data for display - show full details
@@ -156,7 +157,9 @@ export default function ProcessingPage({
   const [started, setStarted] = useState(false);
   const [events, setEvents] = useState<StreamEvent[]>([]);
   const [progress, setProgress] = useState(0);
+  const [hadErrors, setHadErrors] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   // Fetch document title
   useEffect(() => {
@@ -172,70 +175,91 @@ export default function ProcessingPage({
     }
   }, [events]);
 
+  // Cleanup EventSource on unmount
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, []);
+
   // Start processing
   const startProcessing = () => {
+    // Close any existing connection
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
     setProcessing(true);
     setStarted(true);
     setEvents([]);
     setProgress(0);
+    setHadErrors(false);
 
     const eventSource = processingApi.stream(docId);
+    eventSourceRef.current = eventSource;
     let eventCount = 0;
     const estimatedEvents = 15;
 
     eventSource.onmessage = (event) => {
       try {
-    eventSource.onmessage = (event) => {
-      try {
         const data: StreamEvent = JSON.parse(event.data);
-        setEvents((prev) => [...prev, data]);
-  // Start processing
-  const startProcessing = () => {
-    setProcessing(true);
-    setStarted(true);
-    setEvents([]);
-    setProgress(0);
-
-    const eventSource = processingApi.stream(docId);
-    let eventCount = 0;
-    const estimatedEvents = 15;
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data: StreamEvent = JSON.parse(event.data);
+        // Add timestamp if not present
+        if (!data.timestamp) {
+          data.timestamp = new Date().toISOString();
+        }
         setEvents((prev) => [...prev, data]);
         eventCount++;
         setProgress(Math.min((eventCount / estimatedEvents) * 100, 95));
 
         if (data.type === "pipeline_complete" || data.type === "complete") {
           setProcessing(false);
-          setProgress(100);
+          // Only set to 100% if there were no errors
+          setProgress((prev) => {
+            // Check current events for errors
+            return prev;
+          });
+          // Use callback to check hadErrors state
+          setEvents((prevEvents) => {
+            const hasErrors = prevEvents.some(e => e.type === "error" || e.type === "step_error");
+            setProgress(hasErrors ? progress : 100);
+            setHadErrors(hasErrors);
+            return prevEvents;
+          });
           eventSource.close();
+          eventSourceRef.current = null;
         }
 
         if (data.type === "error" || data.type === "step_error") {
+          setHadErrors(true);
           setProcessing(false);
           eventSource.close();
+          eventSourceRef.current = null;
         }
-      } catch {
-        // Ignore parse errors
+      } catch (parseError) {
+        console.error("Failed to parse SSE event:", parseError, "Raw data:", event.data);
+        setEvents((prev) => [
+          ...prev,
+          { type: "error", message: `Failed to parse event: ${parseError}`, timestamp: new Date().toISOString() },
+        ]);
       }
     };
 
-    eventSource.onerror = () => {
+    eventSource.onerror = (error) => {
+      console.error("SSE connection error:", error);
       setProcessing(false);
+      setHadErrors(true);
       eventSource.close();
+      eventSourceRef.current = null;
       setEvents((prev) => [
         ...prev,
-        { type: "error", message: "Connection lost" },
+        { type: "error", message: "Connection lost. Check console for details.", timestamp: new Date().toISOString() },
       ]);
     };
-
-    // Return cleanup function
-    return () => {
-      eventSource.close();
-    };
   };
+
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header */}
@@ -254,10 +278,16 @@ export default function ProcessingPage({
           </div>
         </div>
         <div className="flex items-center gap-4">
-          {!processing && started && progress === 100 && (
+          {!processing && started && progress === 100 && !hadErrors && (
             <Badge variant="outline" className="gap-2 text-green-600 border-green-600">
               <CheckCircle2 className="h-3 w-3" />
               Complete
+            </Badge>
+          )}
+          {!processing && started && hadErrors && (
+            <Badge variant="outline" className="gap-2 text-red-600 border-red-600">
+              <XCircle className="h-3 w-3" />
+              Completed with Errors
             </Badge>
           )}
           <Button
@@ -351,8 +381,11 @@ export default function ProcessingPage({
                           )}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString()}
+                          {event.timestamp
+                            ? new Date(event.timestamp).toLocaleTimeString()
+                            : new Date().toLocaleTimeString()}
                         </div>
+                      </div>
                     </div>
                   );
                 })}
