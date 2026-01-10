@@ -6,7 +6,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { AppLayer } from './layers/index.js';
 import { handleRequest } from './api/index.js';
 import { ProcessingPipelineService, type PipelineStreamEvent } from './agents/index.js';
-import { PaperlessService } from './services/index.js';
+import { PaperlessService, ConfigService } from './services/index.js';
 
 // ===========================================================================
 // Security Configuration
@@ -146,6 +146,8 @@ export const createHttpServer = (port: number) =>
           Effect.gen(function* () {
             const paperless = yield* PaperlessService;
             const pipeline = yield* ProcessingPipelineService;
+            const configService = yield* ConfigService;
+            const tagConfig = configService.config.tags;
 
             // Get document with error handling
             const doc = yield* paperless.getDocument(docId).pipe(
@@ -155,7 +157,7 @@ export const createHttpServer = (port: number) =>
               })
             );
 
-            // Use cached tags or fetch fresh (with 60s TTL)
+            // Use cached tags or fetch fresh (with 60s TTL, graceful fallback)
             const now = Date.now();
             let allTags: Array<{ id: number; name: string }>;
             if (tagCache && (now - tagCache.timestamp) < TAG_CACHE_TTL_MS) {
@@ -163,6 +165,12 @@ export const createHttpServer = (port: number) =>
             } else {
               allTags = yield* paperless.getTags().pipe(
                 Effect.catchAll((e) => {
+                  console.error('[SSE] Failed to fetch tags, using stale cache:', e);
+                  // Fall back to stale cache if available, otherwise empty array
+                  if (tagCache?.tags) {
+                    sendEvent(createEvent({ type: 'step_start', docId, step: 'init', message: 'Using cached tag data' }));
+                    return Effect.succeed(tagCache.tags);
+                  }
                   sendEvent(createEvent({ type: 'error', docId, message: `Failed to load tags: ${e}` }));
                   return Effect.fail(e);
                 })
@@ -172,20 +180,22 @@ export const createHttpServer = (port: number) =>
             const tagMap = new Map(allTags.map((t) => [t.id, t.name]));
             const tagNames = (doc.tags ?? []).map((id) => tagMap.get(id)).filter((n): n is string => n !== undefined);
 
-            // Determine current state from tags
+            // Determine current state from tags using exact match (consistent with ProcessingPipeline)
             let currentState = 'pending';
-            if (tagNames.some((t) => t.toLowerCase().includes('processed'))) {
+            if (tagNames.includes(tagConfig.processed)) {
               currentState = 'processed';
-            } else if (tagNames.some((t) => t.toLowerCase().includes('tags-done'))) {
+            } else if (tagNames.includes(tagConfig.tagsDone)) {
               currentState = 'tags_done';
-            } else if (tagNames.some((t) => t.toLowerCase().includes('document-type-done'))) {
+            } else if (tagNames.includes(tagConfig.documentTypeDone)) {
               currentState = 'document_type_done';
-            } else if (tagNames.some((t) => t.toLowerCase().includes('correspondent-done'))) {
+            } else if (tagNames.includes(tagConfig.correspondentDone)) {
               currentState = 'correspondent_done';
-            } else if (tagNames.some((t) => t.toLowerCase().includes('title-done'))) {
+            } else if (tagNames.includes(tagConfig.titleDone)) {
               currentState = 'title_done';
-            } else if (tagNames.some((t) => t.toLowerCase().includes('ocr-done'))) {
+            } else if (tagNames.includes(tagConfig.ocrDone)) {
               currentState = 'ocr_done';
+            } else if (tagNames.includes(tagConfig.pending)) {
+              currentState = 'pending';
             }
 
             sendEvent(createEvent({ type: 'pipeline_start', docId }));
@@ -224,17 +234,22 @@ export const createHttpServer = (port: number) =>
             }
 
             // Run the next step with streaming for detailed LLM info
+            let stepHadError = false;
             yield* pipe(
               pipeline.processStepStream(docId, nextStep),
               Stream.tap((event) => Effect.sync(() => sendEvent(event))),
               Stream.runDrain,
               Effect.catchAll((e) => {
+                stepHadError = true;
                 sendEvent(createEvent({ type: 'step_error', docId, step: nextStep, message: String(e) }));
                 return Effect.void;
               })
             );
 
-            sendEvent(createEvent({ type: 'pipeline_complete', docId }));
+            // Only send pipeline_complete on success (not after errors)
+            if (!stepHadError) {
+              sendEvent(createEvent({ type: 'pipeline_complete', docId }));
+            }
           })
         );
       } catch (error) {
@@ -268,7 +283,8 @@ export const createHttpServer = (port: number) =>
       const sseMatch = url.pathname.match(SSE_STREAM_PATTERN);
       if (sseMatch && req.method === 'GET') {
         const docId = parseInt(sseMatch[1]!, 10);
-        if (isNaN(docId)) {
+        // Validate document ID is a positive number
+        if (isNaN(docId) || docId <= 0) {
           res.writeHead(400);
           res.end(JSON.stringify({ error: 'Invalid document ID' }));
           return;

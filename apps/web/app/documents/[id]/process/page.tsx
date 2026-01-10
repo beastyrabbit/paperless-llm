@@ -187,9 +187,13 @@ export default function ProcessingPage({
 
   // Start processing
   const startProcessing = () => {
-    // Close any existing connection
+    // Close any existing connection and clear handlers to prevent race condition
     if (eventSourceRef.current) {
-      eventSourceRef.current.close();
+      const oldEventSource = eventSourceRef.current;
+      oldEventSource.onmessage = null;
+      oldEventSource.onerror = null;
+      oldEventSource.close();
+      eventSourceRef.current = null;
     }
 
     setProcessing(true);
@@ -206,8 +210,9 @@ export default function ProcessingPage({
     eventSource.onmessage = (event) => {
       try {
         const data: StreamEvent = JSON.parse(event.data);
-        // Add timestamp if not present
+        // Warn if timestamp is missing (server should always provide it)
         if (!data.timestamp) {
+          console.warn("[SSE] Event missing timestamp:", data);
           data.timestamp = new Date().toISOString();
         }
         setEvents((prev) => [...prev, data]);
@@ -220,8 +225,10 @@ export default function ProcessingPage({
           setEvents((prevEvents) => {
             const hasErrors = prevEvents.some(e => e.type === "error" || e.type === "step_error");
             setHadErrors(hasErrors);
-            // Keep at 95% if errors occurred, 100% only on clean success
-            setProgress(hasErrors ? 95 : 100);
+            // On success, complete to 100%. On error, keep progress where it stopped (don't fake a percentage)
+            if (!hasErrors) {
+              setProgress(100);
+            }
             return prevEvents;
           });
           eventSource.close();

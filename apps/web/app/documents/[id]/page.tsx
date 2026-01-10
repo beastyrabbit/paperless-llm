@@ -86,13 +86,13 @@ export default function DocumentDetailPage({
   // Content accordion - open if OCR not complete
   const [contentAccordionValue, setContentAccordionValue] = useState<string[]>([]);
 
-  // Fetch document on mount
+  // Fetch document on mount and when tab regains focus (in case processing happened in another tab)
   useEffect(() => {
-    async function fetchDocument() {
-      setLoading(true);
-      const { data, error } = await documentsApi.get(docId);
-      if (error) {
-        setError(error);
+    async function fetchDocument(showLoading = true) {
+      if (showLoading) setLoading(true);
+      const { data, error: fetchError } = await documentsApi.get(docId);
+      if (fetchError) {
+        setError(fetchError);
       } else if (data) {
         setDocument(data);
         // Set initial content accordion state based on processing status
@@ -101,9 +101,23 @@ export default function DocumentDetailPage({
           setContentAccordionValue(["content"]);
         }
       }
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
+
+    // Initial fetch
     fetchDocument();
+
+    // Refresh when tab becomes visible again (user may have processed in another tab)
+    const handleVisibilityChange = () => {
+      if (globalThis.document.visibilityState === "visible") {
+        fetchDocument(false); // Don't show loading spinner on refetch
+      }
+    };
+
+    globalThis.document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      globalThis.document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [docId]);
 
   const processingStatus = document ? getProcessingStatus(document.tags) : "unknown";
