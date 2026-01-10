@@ -350,6 +350,8 @@ export interface DocumentDetail {
   title: string;
   correspondent: string | null;
   correspondent_id: number | null;
+  document_type: string | null;
+  document_type_id: number | null;
   created: string;
   modified: string;
   added: string;
