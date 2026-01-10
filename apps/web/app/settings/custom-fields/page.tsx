@@ -81,7 +81,7 @@ export default function CustomFieldsPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("http://localhost:8000/api/settings/custom-fields");
+      const response = await fetch("/api/settings/custom-fields");
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -101,7 +101,7 @@ export default function CustomFieldsPage() {
     setError(null);
     setSuccessMessage(null);
     try {
-      const response = await fetch("http://localhost:8000/api/settings/custom-fields", {
+      const response = await fetch("/api/settings/custom-fields", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ selected_field_ids: selectedFields }),

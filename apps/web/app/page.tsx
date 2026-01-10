@@ -71,7 +71,7 @@ export default function Dashboard() {
 
   const fetchSettings = useCallback(async () => {
     try {
-      const response = await fetch("http://localhost:8000/api/settings");
+      const response = await fetch("/api/settings");
       if (response.ok) {
         const data = await response.json();
         setServices([
@@ -88,7 +88,7 @@ export default function Dashboard() {
 
   const fetchQueueStats = useCallback(async () => {
     try {
-      const response = await fetch("http://localhost:8000/api/documents/queue");
+      const response = await fetch("/api/documents/queue");
       if (response.ok) {
         const data = await response.json();
         setStats(data);
@@ -114,7 +114,7 @@ export default function Dashboard() {
 
     for (const service of serviceKeys) {
       try {
-        const response = await fetch(`http://localhost:8000/api/settings/test-connection/${service}`, {
+        const response = await fetch(`/api/settings/test-connection/${service}`, {
           method: "POST",
         });
         if (response.ok) {

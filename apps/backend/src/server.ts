@@ -15,10 +15,10 @@ const MAX_BODY_SIZE = 10 * 1024 * 1024;
 
 // Allowed CORS origins - localhost variants for development
 const ALLOWED_ORIGINS = new Set([
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  'http://localhost:8000',
-  'http://127.0.0.1:8000',
+  'http://localhost:3765',
+  'http://127.0.0.1:3765',
+  'http://localhost:8765',
+  'http://127.0.0.1:8765',
 ]);
 
 // ===========================================================================
@@ -75,7 +75,7 @@ const setCorsHeaders = (req: IncomingMessage, res: ServerResponse): void => {
     res.setHeader('Access-Control-Allow-Origin', origin);
   } else if (!origin) {
     // Same-origin requests don't have Origin header - allow these
-    res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
+    res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3765');
   }
   // If origin is not in allowed list and is present, don't set header (browser will block)
 
