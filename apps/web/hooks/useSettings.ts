@@ -1030,6 +1030,7 @@ export function useSettings(initialTab: SettingsTab = "connections") {
     scheduleSaving,
     handleScheduleUpdate,
     maintenanceError,
+    setMaintenanceError,
     manualTriggerLoading,
     handleManualTrigger,
 

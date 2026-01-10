@@ -116,7 +116,7 @@ function SettingsPageContent() {
         </TabsContent>
         <TabsContent value="maintenance">
           <MaintenanceTab tMaint={tMaint} tCommon={tCommon} maintenanceError={s.maintenanceError}
-            setMaintenanceError={() => {}} bootstrapProgress={s.bootstrapProgress}
+            setMaintenanceError={s.setMaintenanceError} bootstrapProgress={s.bootstrapProgress}
             bootstrapStarting={s.bootstrapStarting} bootstrapLoading={s.bootstrapLoading}
             bootstrapDetailsOpen={s.bootstrapDetailsOpen} setBootstrapDetailsOpen={s.setBootstrapDetailsOpen}
             isBootstrapRunning={s.isBootstrapRunning} bootstrapProgressPercent={s.bootstrapProgressPercent}

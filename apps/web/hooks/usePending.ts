@@ -363,17 +363,29 @@ export function usePending() {
     const idsToApprove = filteredItems.filter((item) => selectedItems.has(item.id)).map((item) => item.id);
     if (idsToApprove.length === 0) return;
     setBulkLoading(true);
+    setError(null);
     try {
-      for (const id of idsToApprove) {
-        const selectedValue = selectedValues[id];
-        await pendingApi.approve(id, selectedValue);
+      const results = await Promise.allSettled(
+        idsToApprove.map((id) => pendingApi.approve(id, selectedValues[id]))
+      );
+
+      const succeeded = idsToApprove.filter((_, i) => results[i].status === "fulfilled");
+      const failed = idsToApprove.filter((_, i) => results[i].status === "rejected");
+
+      // Only remove successfully approved items
+      if (succeeded.length > 0) {
+        setItems((prev) => prev.filter((item) => !succeeded.includes(item.id)));
+        setSelectedItems((prev) => {
+          const next = new Set(prev);
+          succeeded.forEach((id) => next.delete(id));
+          return next;
+        });
       }
-      setItems((prev) => prev.filter((item) => !idsToApprove.includes(item.id)));
-      setSelectedItems((prev) => {
-        const next = new Set(prev);
-        idsToApprove.forEach((id) => next.delete(id));
-        return next;
-      });
+
+      if (failed.length > 0) {
+        setError(`Failed to approve ${failed.length} of ${idsToApprove.length} items`);
+      }
+
       await loadData(false);
     } finally {
       setBulkLoading(false);
@@ -394,24 +406,39 @@ export function usePending() {
     const idsToReject = filteredItems.filter((item) => selectedItems.has(item.id)).map((item) => item.id);
     if (idsToReject.length === 0) return;
     setBulkLoading(true);
+    setError(null);
     try {
-      for (const id of idsToReject) {
-        if (bulkBlockType === "none") {
-          await pendingApi.reject(id);
-        } else {
-          await pendingApi.rejectWithFeedback(id, {
-            block_type: bulkBlockType,
-            rejection_category: bulkRejectionCategory || undefined,
-            rejection_reason: bulkRejectionReason || undefined,
-          });
-        }
+      const results = await Promise.allSettled(
+        idsToReject.map((id) => {
+          if (bulkBlockType === "none") {
+            return pendingApi.reject(id);
+          } else {
+            return pendingApi.rejectWithFeedback(id, {
+              block_type: bulkBlockType,
+              rejection_category: bulkRejectionCategory || undefined,
+              rejection_reason: bulkRejectionReason || undefined,
+            });
+          }
+        })
+      );
+
+      const succeeded = idsToReject.filter((_, i) => results[i].status === "fulfilled");
+      const failed = idsToReject.filter((_, i) => results[i].status === "rejected");
+
+      // Only remove successfully rejected items
+      if (succeeded.length > 0) {
+        setItems((prev) => prev.filter((item) => !succeeded.includes(item.id)));
+        setSelectedItems((prev) => {
+          const next = new Set(prev);
+          succeeded.forEach((id) => next.delete(id));
+          return next;
+        });
       }
-      setItems((prev) => prev.filter((item) => !idsToReject.includes(item.id)));
-      setSelectedItems((prev) => {
-        const next = new Set(prev);
-        idsToReject.forEach((id) => next.delete(id));
-        return next;
-      });
+
+      if (failed.length > 0) {
+        setError(`Failed to reject ${failed.length} of ${idsToReject.length} items`);
+      }
+
       setBulkRejectModalOpen(false);
       resetBulkRejectForm();
       await loadData(false);

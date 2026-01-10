@@ -58,38 +58,46 @@ export default function DocumentsPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tagMap, setTagMap] = useState<Record<string, string>>({});
 
-  const fetchDocuments = useCallback(async (filter?: string) => {
+  // Fetch tag mappings once on mount
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const response = await fetch("/api/settings");
+        if (response.ok) {
+          const settings = await response.json();
+          if (settings.tags) {
+            setTagMap({
+              pending: settings.tags.pending,
+              ocr_done: settings.tags.ocr_done,
+              correspondent_done: settings.tags.correspondent_done,
+              document_type_done: settings.tags.document_type_done,
+              title_done: settings.tags.title_done,
+              tags_done: settings.tags.tags_done,
+              processed: settings.tags.processed,
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load settings:", err);
+      }
+    }
+    loadSettings();
+  }, []);
+
+  const fetchDocuments = useCallback(async (filter?: string, tags?: Record<string, string>) => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
-
-      // Get tag mappings from settings
-      const settingsResponse = await fetch("/api/settings");
-      let tagMap: Record<string, string> = {};
-
-      if (settingsResponse.ok) {
-        const settings = await settingsResponse.json();
-        if (settings.tags) {
-          tagMap = {
-            pending: settings.tags.pending,
-            ocr_done: settings.tags.ocr_done,
-            correspondent_done: settings.tags.correspondent_done,
-            document_type_done: settings.tags.document_type_done,
-            title_done: settings.tags.title_done,
-            tags_done: settings.tags.tags_done,
-            processed: settings.tags.processed,
-          };
-        }
-      }
+      const currentTagMap = tags || tagMap;
 
       // Handle "in_progress" filter - all statuses except processed
       if (filter === "in_progress") {
         // Don't set any tag param - backend will fetch all pipeline documents except processed
-        // The backend's getPendingDocuments excludes processed by default when no tag specified
-      } else if (filter && filter !== "all" && tagMap[filter]) {
-        params.set("tag", tagMap[filter]);
+      } else if (filter && filter !== "all" && currentTagMap[filter]) {
+        params.set("tag", currentTagMap[filter]);
       }
 
       const response = await fetch(`/api/documents/pending?${params.toString()}`);
@@ -105,7 +113,7 @@ export default function DocumentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [t, tagMap]);
 
   useEffect(() => {
     fetchDocuments(statusFilter);
