@@ -490,14 +490,14 @@ export default function SettingsPage() {
       const data = await response.json();
       setConnectionStatus((prev) => ({
         ...prev,
-        [service]: data.status === "connected" ? "success" : "error",
+        [service]: data.status === "success" ? "success" : "error",
       }));
 
       // If connection successful, load models directly (avoid stale closure)
-      if (data.status === "connected" && service === "ollama") {
+      if (data.status === "success" && service === "ollama") {
         fetchOllamaModels();
       }
-      if (data.status === "connected" && service === "mistral") {
+      if (data.status === "success" && service === "mistral") {
         fetchMistralModels();
       }
     } catch {
@@ -545,14 +545,14 @@ export default function SettingsPage() {
       const data = await response.json();
       setConnectionStatus((prev) => ({
         ...prev,
-        [service]: data.status === "connected" ? "success" : "error",
+        [service]: data.status === "success" ? "success" : "error",
       }));
 
       // If connection successful, load models
-      if (data.status === "connected" && service === "ollama") {
+      if (data.status === "success" && service === "ollama") {
         fetchOllamaModels();
       }
-      if (data.status === "connected" && service === "mistral") {
+      if (data.status === "success" && service === "mistral") {
         fetchMistralModels();
       }
     } catch {
