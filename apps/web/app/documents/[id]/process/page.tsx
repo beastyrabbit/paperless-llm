@@ -185,6 +185,8 @@ export default function ProcessingPage({
 
     eventSource.onmessage = (event) => {
       try {
+    eventSource.onmessage = (event) => {
+      try {
         const data: StreamEvent = JSON.parse(event.data);
         setEvents((prev) => [...prev, data]);
         eventCount++;
@@ -192,9 +194,7 @@ export default function ProcessingPage({
 
         if (data.type === "pipeline_complete" || data.type === "complete") {
           setProcessing(false);
-          // Only set to 100% if there were no errors
-          const hadErrors = events.some(e => e.type === "error" || e.type === "step_error");
-          setProgress(hadErrors ? progress : 100);
+          setProgress(100);
           eventSource.close();
         }
 
@@ -202,9 +202,23 @@ export default function ProcessingPage({
           setProcessing(false);
           eventSource.close();
         }
-      } catch {
-        // Ignore parse errors
+      } catch (error) {
+        console.error("Failed to parse SSE event:", error, "Raw data:", event.data);
+        setEvents((prev) => [
+          ...prev,
+          { type: "error", message: `Failed to parse event: ${error}` },
+        ]);
       }
+    };
+
+    eventSource.onerror = (error) => {
+      console.error("SSE connection error:", error);
+      setProcessing(false);
+      eventSource.close();
+      setEvents((prev) => [
+        ...prev,
+        { type: "error", message: "Connection lost. Check console for details." },
+      ]);
     };
 
     eventSource.onerror = () => {
