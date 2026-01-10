@@ -28,7 +28,9 @@ import {
   streamConfirmationLoop,
   createAgentTools,
   type ConfirmationLoopConfig,
+  type ConfirmationLoopLogEvent,
 } from './graph/index.js';
+import type { ProcessingLogEventType } from '../services/TinyBaseService.js';
 
 // ===========================================================================
 // Types
@@ -161,13 +163,36 @@ Review this title suggestion and provide your confirmation decision.`;
       },
     };
 
-    const graph = createConfirmationLoopGraph(graphConfig);
-
     return {
       name: 'title' as const,
 
       process: (input: TitleInput) =>
         Effect.gen(function* () {
+          // Create logger to collect all events
+          const logEntries: ConfirmationLoopLogEvent[] = [];
+          const logger = (event: ConfirmationLoopLogEvent) => {
+            logEntries.push(event);
+          };
+
+          // Log document context at start
+          logger({
+            eventType: 'prompt',
+            data: {
+              type: 'context',
+              docId: input.docId,
+              existingTitle: input.existingTitle,
+              similarTitles: input.similarTitles,
+            },
+            timestamp: new Date().toISOString(),
+          });
+
+          // Create graph with logger
+          const graphConfigWithLogger: ConfirmationLoopConfig<TitleAnalysis> = {
+            ...graphConfig,
+            logger,
+          };
+          const graph = createConfirmationLoopGraph(graphConfigWithLogger);
+
           const result = yield* Effect.tryPromise({
             try: () =>
               runConfirmationLoop(graph, {
@@ -179,6 +204,19 @@ Review this title suggestion and provide your confirmation decision.`;
               }, `title-${input.docId}-${Date.now()}`),
             catch: (e) => new AgentError({ message: `Title graph failed: ${e}`, agent: 'title', cause: e }),
           });
+
+          // Store all log entries (use captured timestamps and IDs)
+          for (const entry of logEntries) {
+            yield* tinybase.addProcessingLog({
+              id: entry.id,
+              docId: input.docId,
+              timestamp: entry.timestamp,
+              step: 'title',
+              eventType: entry.eventType as ProcessingLogEventType,
+              data: entry.data,
+              parentId: entry.parentId,
+            });
+          }
 
           const analysis = result.analysis as TitleAnalysis | null;
 
@@ -198,6 +236,20 @@ Review this title suggestion and provide your confirmation decision.`;
 
             yield* paperless.addTagToDocument(input.docId, tagConfig.manualReview);
 
+            // Log result
+            yield* tinybase.addProcessingLog({
+              docId: input.docId,
+              timestamp: new Date().toISOString(),
+              step: 'title',
+              eventType: 'result',
+              data: {
+                success: false,
+                needsReview: true,
+                reasoning: result.error ?? 'Confirmation failed',
+                attempts: result.attempts,
+              },
+            });
+
             return {
               success: false,
               value: analysis?.suggested_title ?? null,
@@ -212,6 +264,21 @@ Review this title suggestion and provide your confirmation decision.`;
           // Apply the title
           yield* paperless.updateDocument(input.docId, { title: analysis.suggested_title });
           yield* paperless.transitionDocumentTag(input.docId, tagConfig.ocrDone, tagConfig.titleDone);
+
+          // Log result
+          yield* tinybase.addProcessingLog({
+            docId: input.docId,
+            timestamp: new Date().toISOString(),
+            step: 'title',
+            eventType: 'result',
+            data: {
+              success: true,
+              value: analysis.suggested_title,
+              reasoning: analysis.reasoning,
+              confidence: analysis.confidence,
+              attempts: result.attempts,
+            },
+          });
 
           return {
             success: true,
@@ -232,6 +299,31 @@ Review this title suggestion and provide your confirmation decision.`;
         Stream.asyncEffect<StreamEvent, AgentError>((emit) =>
           Effect.gen(function* () {
             yield* Effect.sync(() => emit.single(emitStart('title')));
+
+            // Create logger to collect all events
+            const logEntries: ConfirmationLoopLogEvent[] = [];
+            const logger = (event: ConfirmationLoopLogEvent) => {
+              logEntries.push(event);
+            };
+
+            // Log document context at start
+            logger({
+              eventType: 'prompt',
+              data: {
+                type: 'context',
+                docId: input.docId,
+                existingTitle: input.existingTitle,
+                similarTitles: input.similarTitles,
+              },
+              timestamp: new Date().toISOString(),
+            });
+
+            // Create graph with logger
+            const graphConfigWithLogger: ConfirmationLoopConfig<TitleAnalysis> = {
+              ...graphConfig,
+              logger,
+            };
+            const graph = createConfirmationLoopGraph(graphConfigWithLogger);
 
             const result = yield* Effect.tryPromise({
               try: async () => {
@@ -274,6 +366,20 @@ Review this title suggestion and provide your confirmation decision.`;
                 yield* paperless.updateDocument(input.docId, { title: lastAnalysis.suggested_title });
                 yield* paperless.transitionDocumentTag(input.docId, tagConfig.ocrDone, tagConfig.titleDone);
                 yield* Effect.sync(() => emit.single(emitResult('title', { success: true, value: lastAnalysis!.suggested_title })));
+
+                // Log result
+                yield* tinybase.addProcessingLog({
+                  docId: input.docId,
+                  timestamp: new Date().toISOString(),
+                  step: 'title',
+                  eventType: 'result',
+                  data: {
+                    success: true,
+                    value: lastAnalysis.suggested_title,
+                    reasoning: lastAnalysis.reasoning,
+                    confidence: lastAnalysis.confidence,
+                  },
+                });
               }
 
               if (node === 'queue_review' && lastAnalysis) {
@@ -291,7 +397,33 @@ Review this title suggestion and provide your confirmation decision.`;
                 });
                 yield* paperless.addTagToDocument(input.docId, tagConfig.manualReview);
                 yield* Effect.sync(() => emit.single(emitResult('title', { success: false, needsReview: true })));
+
+                // Log result
+                yield* tinybase.addProcessingLog({
+                  docId: input.docId,
+                  timestamp: new Date().toISOString(),
+                  step: 'title',
+                  eventType: 'result',
+                  data: {
+                    success: false,
+                    needsReview: true,
+                    reasoning: 'Max retries exceeded',
+                  },
+                });
               }
+            }
+
+            // Store all log entries (use captured timestamps and IDs)
+            for (const entry of logEntries) {
+              yield* tinybase.addProcessingLog({
+                id: entry.id,
+                docId: input.docId,
+                timestamp: entry.timestamp,
+                step: 'title',
+                eventType: entry.eventType as ProcessingLogEventType,
+                data: entry.data,
+                parentId: entry.parentId,
+              });
             }
 
             yield* Effect.sync(() => emit.single(emitComplete('title')));

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, use, useRef } from "react";
 import {
   ArrowLeft,
   Play,
@@ -10,6 +10,9 @@ import {
   Sparkles,
   Calendar,
   Tag,
+  ScrollText,
+  CheckCircle2,
+  XCircle,
   ExternalLink,
 } from "lucide-react";
 import {
@@ -27,7 +30,7 @@ import {
   AccordionTrigger,
 } from "@repo/ui";
 import Link from "next/link";
-import { documentsApi, type DocumentDetail } from "@/lib/api";
+import { documentsApi, processingApi, settingsApi, type DocumentDetail } from "@/lib/api";
 
 // Helper to determine processing status from tags
 function getProcessingStatus(tags: Array<{ id: number; name: string }>): string {
@@ -82,9 +85,25 @@ export default function DocumentDetailPage({
   const [document, setDocument] = useState<DocumentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [paperlessUrl, setPaperlessUrl] = useState<string | null>(null);
+
+  // Processing state
+  const [processing, setProcessing] = useState(false);
+  const [processingComplete, setProcessingComplete] = useState(false);
+  const [processingError, setProcessingError] = useState(false);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   // Content accordion - open if OCR not complete
   const [contentAccordionValue, setContentAccordionValue] = useState<string[]>([]);
+
+  // Fetch Paperless URL from settings
+  useEffect(() => {
+    settingsApi.get().then(({ data }) => {
+      if (data?.paperless_url) {
+        setPaperlessUrl(data.paperless_url);
+      }
+    });
+  }, []);
 
   // Fetch document on mount and when tab regains focus (in case processing happened in another tab)
   useEffect(() => {
@@ -119,6 +138,65 @@ export default function DocumentDetailPage({
       globalThis.document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [docId]);
+
+  // Cleanup EventSource on unmount
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, []);
+
+  // Start processing function
+  const startProcessing = async () => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    setProcessing(true);
+    setProcessingComplete(false);
+    setProcessingError(false);
+
+    const eventSource = processingApi.stream(docId);
+    eventSourceRef.current = eventSource;
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "pipeline_complete" || data.type === "complete") {
+          setProcessing(false);
+          setProcessingComplete(true);
+          eventSource.close();
+          eventSourceRef.current = null;
+          // Refresh document data after processing
+          setTimeout(async () => {
+            const { data: newDoc } = await documentsApi.get(docId);
+            if (newDoc) setDocument(newDoc);
+          }, 500);
+        }
+
+        if (data.type === "error" || data.type === "step_error") {
+          setProcessing(false);
+          setProcessingError(true);
+          eventSource.close();
+          eventSourceRef.current = null;
+        }
+      } catch (parseError) {
+        console.error("Failed to parse SSE event:", parseError);
+      }
+    };
+
+    eventSource.onerror = () => {
+      setProcessing(false);
+      setProcessingError(true);
+      eventSource.close();
+      eventSourceRef.current = null;
+    };
+  };
 
   const processingStatus = document ? getProcessingStatus(document.tags) : "unknown";
   const nextStep = getNextStep(processingStatus);
@@ -170,13 +248,55 @@ export default function DocumentDetailPage({
               </div>
             </div>
           </div>
-          <Button
-            asChild
-            variant={isProcessed ? "secondary" : "default"}
-            disabled={isProcessed}
-          >
-            <Link href={`/documents/${docId}/process`} target="_blank">
-              {isProcessed ? (
+          <div className="flex items-center gap-2">
+            {/* Processing status badges */}
+            {processingComplete && !processingError && (
+              <Badge variant="outline" className="gap-1.5 text-green-600 border-green-600">
+                <CheckCircle2 className="h-3 w-3" />
+                Complete
+              </Badge>
+            )}
+            {processingError && (
+              <Badge variant="outline" className="gap-1.5 text-red-600 border-red-600">
+                <XCircle className="h-3 w-3" />
+                Error
+              </Badge>
+            )}
+
+            {/* Open in Paperless button */}
+            {paperlessUrl && (
+              <Button variant="outline" size="sm" asChild>
+                <a
+                  href={`${paperlessUrl}/documents/${docId}/details`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Open in Paperless
+                </a>
+              </Button>
+            )}
+
+            {/* View Logs button */}
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/documents/${docId}/process`}>
+                <ScrollText className="mr-2 h-4 w-4" />
+                View Logs
+              </Link>
+            </Button>
+
+            {/* Start Processing button */}
+            <Button
+              onClick={startProcessing}
+              disabled={processing || isProcessed}
+              size="sm"
+            >
+              {processing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : isProcessed ? (
                 <>
                   <Sparkles className="mr-2 h-4 w-4" />
                   Fully Processed
@@ -185,11 +305,10 @@ export default function DocumentDetailPage({
                 <>
                   <Play className="mr-2 h-4 w-4" />
                   Run {nextStep?.label ?? "Next"} Step
-                  <ExternalLink className="ml-2 h-3 w-3" />
                 </>
               )}
-            </Link>
-          </Button>
+            </Button>
+          </div>
         </div>
       </header>
 

@@ -116,6 +116,11 @@ addRoute('GET', '/api/settings/check-import', () => settingsHandlers.checkAndImp
 
 addRoute('POST', '/api/settings/clear-database', () => settingsHandlers.clearDatabase);
 
+// Processing Logs Settings
+addRoute('GET', '/api/settings/processing-logs/stats', () => settingsHandlers.getProcessingLogStats);
+
+addRoute('DELETE', '/api/settings/processing-logs', () => settingsHandlers.clearAllProcessingLogs);
+
 // ===========================================================================
 // Pending Reviews API - /api/pending
 // ===========================================================================
@@ -284,6 +289,15 @@ addRoute('POST', '/api/processing/:docId/confirm', (params) => {
 });
 
 addRoute('GET', '/api/processing/status', () => processingHandlers.getProcessingStatus);
+
+// Processing Logs
+addRoute('GET', '/api/processing/:docId/logs', (params) =>
+  processingHandlers.getProcessingLogs(parseInt(params.docId!, 10))
+);
+
+addRoute('DELETE', '/api/processing/:docId/logs', (params) =>
+  processingHandlers.clearProcessingLogs(parseInt(params.docId!, 10))
+);
 
 // ===========================================================================
 // Prompts API - /api/prompts

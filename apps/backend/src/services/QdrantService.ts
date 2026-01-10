@@ -105,7 +105,7 @@ export const QdrantServiceLive = Layer.effect(
         tinybaseService.getAllSettings(),
         Effect.map((settings) => ({
           url: settings['qdrant.url'] ?? configQdrant.url,
-          collectionName: settings['qdrant.collection_name'] ?? configQdrant.collectionName,
+          collectionName: settings['qdrant.collection'] ?? settings['qdrant_collection'] ?? configQdrant.collectionName,
           embeddingDimension: configQdrant.embeddingDimension ?? 768,
         })),
         Effect.catchAll(() =>

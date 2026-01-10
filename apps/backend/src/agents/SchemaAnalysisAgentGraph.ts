@@ -301,6 +301,7 @@ Analyze this document and suggest any new entities that should be added to the s
             baseUrl: ollamaUrl,
             model: largeModel,
             temperature: 0.1,
+            think: true,
           }).bindTools(tools);
 
           const response = await toolModel.invoke(allMessages);
@@ -317,6 +318,7 @@ Analyze this document and suggest any new entities that should be added to the s
           model: largeModel,
           temperature: 0.1,
           format: 'json',
+          think: true,
         }).withStructuredOutput(SchemaAnalysisResultSchema);
 
         const analysis = await structuredModel.invoke(allMessages);

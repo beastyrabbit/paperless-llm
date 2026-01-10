@@ -53,6 +53,27 @@ export const ConfirmationLoopState = Annotation.Root({
 export type ConfirmationLoopStateType = typeof ConfirmationLoopState.State;
 
 // ===========================================================================
+// Logger Event Type
+// ===========================================================================
+
+export type ConfirmationLoopLogEventType =
+  | 'prompt'
+  | 'response'
+  | 'thinking'
+  | 'tool_call'
+  | 'tool_result'
+  | 'confirming'
+  | 'retry';
+
+export interface ConfirmationLoopLogEvent {
+  eventType: ConfirmationLoopLogEventType;
+  data: Record<string, unknown>;
+  timestamp: string;
+  id?: string;
+  parentId?: string;
+}
+
+// ===========================================================================
 // Graph Factory Configuration
 // ===========================================================================
 
@@ -89,11 +110,104 @@ export interface ConfirmationLoopConfig<TAnalysis> {
 
   /** Small model name */
   smallModelName: string;
+
+  /** Optional logger for detailed event capture */
+  logger?: (event: ConfirmationLoopLogEvent) => void;
+}
+
+// ===========================================================================
+// Helper Functions
+// ===========================================================================
+
+/**
+ * Extract thinking content from model response.
+ * Handles <think>...</think> blocks, additional_kwargs.reasoning_content (LangChain),
+ * and additional_kwargs.thinking (fallback).
+ */
+function extractThinking(response: AIMessage): string | undefined {
+  const content = typeof response.content === 'string'
+    ? response.content
+    : Array.isArray(response.content)
+      ? response.content.map(c => typeof c === 'string' ? c : (c as { text?: string }).text ?? '').join('')
+      : '';
+
+  // Extract <think>...</think> blocks (some models still use this)
+  const thinkMatch = content.match(/<think>([\s\S]*?)<\/think>/);
+  if (thinkMatch?.[1]) {
+    return thinkMatch[1].trim();
+  }
+
+  // Check for reasoning_content (LangChain with reasoning: true)
+  if (response.additional_kwargs?.reasoning_content) {
+    return response.additional_kwargs.reasoning_content as string;
+  }
+
+  // Fallback: check thinking (older convention)
+  if (response.additional_kwargs?.thinking) {
+    return response.additional_kwargs.thinking as string;
+  }
+
+  return undefined;
+}
+
+/**
+ * Check if a message is a ToolMessage.
+ * Uses _getType() method when available (LangChain standard), with fallback to property check.
+ * This is serialization-safe - works even after messages are deserialized from checkpointer.
+ */
+function isToolMessage(m: BaseMessage): boolean {
+  // Check by _getType() method (LangChain standard)
+  const msg = m as unknown as Record<string, unknown>;
+  if (typeof msg._getType === 'function') {
+    return (msg._getType as () => string)() === 'tool';
+  }
+  // Fallback: check for tool_call_id property (unique to ToolMessage)
+  return 'tool_call_id' in m;
+}
+
+/**
+ * Check if a message is an AIMessage with tool_calls.
+ * Uses _getType() method when available, with fallback to property check.
+ * This is serialization-safe - works even after messages are deserialized from checkpointer.
+ */
+function isAIMessageWithToolCalls(m: BaseMessage): boolean {
+  const msg = m as unknown as Record<string, unknown>;
+  // Check by _getType() method
+  if (typeof msg._getType === 'function') {
+    const isAI = (msg._getType as () => string)() === 'ai';
+    return isAI && Array.isArray(msg.tool_calls) && (msg.tool_calls as unknown[]).length > 0;
+  }
+  // Fallback: check for tool_calls property
+  return 'tool_calls' in msg && Array.isArray(msg.tool_calls) && (msg.tool_calls as unknown[]).length > 0;
+}
+
+/**
+ * Get the type string of a message for logging purposes.
+ * Returns a human-readable type identifier.
+ */
+function getMessageType(m: BaseMessage): string {
+  if (isToolMessage(m)) return 'tool_result';
+  if (isAIMessageWithToolCalls(m)) return 'ai_tool_call';
+  // Use _getType if available
+  const msg = m as unknown as Record<string, unknown>;
+  if (typeof msg._getType === 'function') {
+    return (msg._getType as () => string)();
+  }
+  // Fallback to constructor name
+  return m.constructor?.name || 'unknown';
 }
 
 // ===========================================================================
 // Node Functions
 // ===========================================================================
+
+// Helper to generate unique IDs for log events
+const generateLogId = (prefix: string): string =>
+  `${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${prefix}`;
+
+// Track the last prompt ID for parent-child relationships
+let lastPromptId: string | undefined;
+let lastResponseId: string | undefined;
 
 /**
  * Creates the analyze node that can use tools before producing structured output.
@@ -107,10 +221,13 @@ export interface ConfirmationLoopConfig<TAnalysis> {
 const createAnalyzeNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>) => {
   return async (state: ConfirmationLoopStateType): Promise<Partial<ConfirmationLoopStateType>> => {
     try {
+      // Build user prompt
+      const userPrompt = config.buildAnalysisPrompt(state);
+
       // Build base messages
       const baseMessages: BaseMessage[] = [
         new SystemMessage(config.analysisSystemPrompt),
-        new HumanMessage(config.buildAnalysisPrompt(state)),
+        new HumanMessage(userPrompt),
       ];
 
       // Add feedback if this is a retry
@@ -118,14 +235,48 @@ const createAnalyzeNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>)
         baseMessages.push(
           new HumanMessage(`Previous attempt was rejected. Feedback: ${state.feedback}\n\nPlease revise your analysis.`)
         );
+
+        // Log retry event
+        config.logger?.({
+          eventType: 'retry',
+          data: {
+            attempt: state.attempt + 1,
+            feedback: state.feedback,
+          },
+          timestamp: new Date().toISOString(),
+          id: generateLogId('retry'),
+        });
       }
 
       // Combine with any existing messages (tool calls and results from previous iterations)
       // Include both AIMessages with tool_calls and ToolMessages for proper message flow
+      // Use serialization-safe checks instead of instanceof (which fails after checkpointer deserialization)
       const toolRelatedMessages = state.messages.filter(
-        m => m instanceof ToolMessage || (m instanceof AIMessage && (m as AIMessage).tool_calls?.length)
+        m => isToolMessage(m) || isAIMessageWithToolCalls(m)
       );
       const allMessages = [...baseMessages, ...toolRelatedMessages];
+
+      // Check if this is a continuation after tool calls
+      const isToolContinuation = state.messages.some(m => isToolMessage(m));
+
+      // Generate prompt ID and log prompt event with message structure
+      const promptId = generateLogId('prompt');
+      lastPromptId = promptId;
+      config.logger?.({
+        eventType: 'prompt',
+        data: {
+          systemPrompt: config.analysisSystemPrompt,
+          userPrompt,
+          model: config.largeModelName,
+          attempt: state.attempt + 1,
+          // Include message structure for debugging
+          isToolContinuation,
+          messageCount: allMessages.length,
+          messageTypes: allMessages.map(m => getMessageType(m)),
+        },
+        timestamp: new Date().toISOString(),
+        id: promptId,
+      });
 
       // Check if we have tools and should allow tool calls
       // Allow tools on first attempt OR when retrying with feedback (analysis was rejected)
@@ -136,12 +287,49 @@ const createAnalyzeNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>)
           baseUrl: config.largeModelUrl,
           model: config.largeModelName,
           temperature: 0.1,
+          think: true,
         }).bindTools(config.tools!); // Non-null assertion safe due to shouldAllowTools check
+
+        // Debug: Log actual messages being sent to verify tool results are included
+        console.log('[DEBUG] Messages being sent to tool model:', JSON.stringify(allMessages.map(m => ({
+          type: getMessageType(m),
+          contentPreview: typeof m.content === 'string' ? m.content.slice(0, 100) : 'non-string',
+          hasToolCalls: 'tool_calls' in m && Array.isArray((m as Record<string, unknown>).tool_calls),
+          toolCallId: 'tool_call_id' in m ? (m as Record<string, unknown>).tool_call_id : undefined,
+        })), null, 2));
 
         const response = await toolModel.invoke(allMessages);
 
+        // Extract thinking from response
+        const thinking = extractThinking(response as AIMessage);
+        if (thinking) {
+          config.logger?.({
+            eventType: 'thinking',
+            data: { thinking },
+            timestamp: new Date().toISOString(),
+            id: generateLogId('thinking'),
+            parentId: promptId,
+          });
+        }
+
         // Check if model wants to call tools
         if ((response as AIMessage).tool_calls?.length) {
+          // Log response with tool calls
+          const responseId = generateLogId('response');
+          lastResponseId = responseId;
+          config.logger?.({
+            eventType: 'response',
+            data: {
+              content: response.content,
+              thinking,
+              hasToolCalls: true,
+              toolCalls: (response as AIMessage).tool_calls,
+            },
+            timestamp: new Date().toISOString(),
+            id: responseId,
+            parentId: promptId,
+          });
+
           return {
             messages: [response],
             attempt: state.attempt, // Don't increment yet, we're still in tool loop
@@ -155,9 +343,25 @@ const createAnalyzeNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>)
         model: config.largeModelName,
         temperature: 0.1,
         format: 'json',
+        think: true,
       }).withStructuredOutput(config.analysisSchema);
 
       const analysis = await structuredModel.invoke(allMessages);
+
+      // Log response event
+      const responseId = generateLogId('response');
+      lastResponseId = responseId;
+      config.logger?.({
+        eventType: 'response',
+        data: {
+          content: JSON.stringify(analysis),
+          hasToolCalls: false,
+          analysis,
+        },
+        timestamp: new Date().toISOString(),
+        id: responseId,
+        parentId: promptId,
+      });
 
       return {
         analysis,
@@ -185,16 +389,33 @@ const createConfirmNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>)
         model: config.smallModelName,
         temperature: 0,
         format: 'json', // Request JSON output
+        think: true,
       });
 
       const structuredModel = model.withStructuredOutput(ConfirmationResultSchema);
 
+      const confirmPrompt = config.buildConfirmationPrompt(state, state.analysis as TAnalysis);
       const messages = [
         new SystemMessage(config.confirmationSystemPrompt),
-        new HumanMessage(config.buildConfirmationPrompt(state, state.analysis as TAnalysis)),
+        new HumanMessage(confirmPrompt),
       ];
 
       const confirmation = await structuredModel.invoke(messages);
+
+      // Log confirming event (child of the prompt that produced the analysis)
+      config.logger?.({
+        eventType: 'confirming',
+        data: {
+          model: config.smallModelName,
+          systemPrompt: config.confirmationSystemPrompt,
+          confirmPrompt,
+          confirmed: confirmation.confirmed,
+          feedback: confirmation.feedback,
+        },
+        timestamp: new Date().toISOString(),
+        id: generateLogId('confirming'),
+        parentId: lastPromptId,
+      });
 
       return {
         confirmation,
@@ -219,20 +440,49 @@ const createToolNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>) =>
     }
 
     // Get the last message to check for tool calls
+    // Use serialization-safe check instead of instanceof/type assertion
     const lastMessage = state.messages[state.messages.length - 1];
-    if (!lastMessage || !(lastMessage as AIMessage).tool_calls?.length) {
+    if (!lastMessage || !isAIMessageWithToolCalls(lastMessage)) {
       return {};
     }
 
-    const toolCalls = (lastMessage as AIMessage).tool_calls!;
+    const toolCalls = (lastMessage as unknown as { tool_calls: Array<{ name: string; args: Record<string, unknown>; id?: string }> }).tool_calls;
     const toolMessages: ToolMessage[] = [];
 
     for (const toolCall of toolCalls) {
       const tool = config.tools.find((t) => t.name === toolCall.name);
       if (tool) {
+        // Generate tool call ID
+        const toolCallId = generateLogId('tool_call');
+
+        // Log tool_call event (child of the response that requested tools)
+        config.logger?.({
+          eventType: 'tool_call',
+          data: {
+            toolName: toolCall.name,
+            toolArgs: toolCall.args,
+          },
+          timestamp: new Date().toISOString(),
+          id: toolCallId,
+          parentId: lastResponseId,
+        });
+
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const result = await (tool as any).invoke(toolCall.args);
+
+          // Log tool_result event (child of the tool call)
+          config.logger?.({
+            eventType: 'tool_result',
+            data: {
+              toolName: toolCall.name,
+              result: typeof result === 'string' ? result : result,
+            },
+            timestamp: new Date().toISOString(),
+            id: generateLogId('tool_result'),
+            parentId: toolCallId,
+          });
+
           toolMessages.push(
             new ToolMessage({
               content: typeof result === 'string' ? result : JSON.stringify(result),
@@ -240,6 +490,18 @@ const createToolNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>) =>
             })
           );
         } catch (error) {
+          // Log tool error (child of the tool call)
+          config.logger?.({
+            eventType: 'tool_result',
+            data: {
+              toolName: toolCall.name,
+              error: String(error),
+            },
+            timestamp: new Date().toISOString(),
+            id: generateLogId('tool_result'),
+            parentId: toolCallId,
+          });
+
           toolMessages.push(
             new ToolMessage({
               content: `Tool error: ${String(error)}`,
@@ -263,9 +525,9 @@ const shouldContinueAfterAnalysis = (state: ConfirmationLoopStateType): string =
     return 'error';
   }
 
-  // Check for tool calls
+  // Check for tool calls (use serialization-safe check)
   const lastMessage = state.messages[state.messages.length - 1];
-  if (lastMessage && (lastMessage as AIMessage).tool_calls?.length) {
+  if (lastMessage && isAIMessageWithToolCalls(lastMessage)) {
     return 'tools';
   }
 

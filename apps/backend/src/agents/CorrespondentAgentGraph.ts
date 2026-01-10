@@ -28,7 +28,9 @@ import {
   streamConfirmationLoop,
   createAgentTools,
   type ConfirmationLoopConfig,
+  type ConfirmationLoopLogEvent,
 } from './graph/index.js';
+import type { ProcessingLogEventType } from '../services/TinyBaseService.js';
 
 // ===========================================================================
 // Types
@@ -170,13 +172,36 @@ Review this correspondent identification and provide your confirmation decision.
       },
     };
 
-    const graph = createConfirmationLoopGraph(graphConfig);
-
     return {
       name: 'correspondent' as const,
 
       process: (input: CorrespondentInput) =>
         Effect.gen(function* () {
+          // Create logger to collect all events
+          const logEntries: ConfirmationLoopLogEvent[] = [];
+          const logger = (event: ConfirmationLoopLogEvent) => {
+            logEntries.push(event);
+          };
+
+          // Log document context at start
+          logger({
+            eventType: 'prompt',
+            data: {
+              type: 'context',
+              docId: input.docId,
+              docTitle: input.docTitle,
+              existingCorrespondents: input.existingCorrespondents,
+            },
+            timestamp: new Date().toISOString(),
+          });
+
+          // Create graph with logger
+          const graphConfigWithLogger: ConfirmationLoopConfig<CorrespondentAnalysis> = {
+            ...graphConfig,
+            logger,
+          };
+          const graph = createConfirmationLoopGraph(graphConfigWithLogger);
+
           const result = yield* Effect.tryPromise({
             try: () =>
               runConfirmationLoop(graph, {
@@ -188,6 +213,19 @@ Review this correspondent identification and provide your confirmation decision.
               }, `correspondent-${input.docId}-${Date.now()}`),
             catch: (e) => new AgentError({ message: `Correspondent graph failed: ${e}`, agent: 'correspondent', cause: e }),
           });
+
+          // Store all log entries (use captured timestamps and IDs)
+          for (const entry of logEntries) {
+            yield* tinybase.addProcessingLog({
+              id: entry.id,
+              docId: input.docId,
+              timestamp: entry.timestamp,
+              step: 'correspondent',
+              eventType: entry.eventType as ProcessingLogEventType,
+              data: entry.data,
+              parentId: entry.parentId,
+            });
+          }
 
           const analysis = result.analysis as CorrespondentAnalysis | null;
 
@@ -207,6 +245,20 @@ Review this correspondent identification and provide your confirmation decision.
 
             yield* paperless.addTagToDocument(input.docId, tagConfig.manualReview);
 
+            // Log result
+            yield* tinybase.addProcessingLog({
+              docId: input.docId,
+              timestamp: new Date().toISOString(),
+              step: 'correspondent',
+              eventType: 'result',
+              data: {
+                success: false,
+                needsReview: true,
+                reasoning: result.error ?? 'Confirmation failed',
+                attempts: result.attempts,
+              },
+            });
+
             return {
               success: false,
               value: analysis?.suggested_correspondent ?? null,
@@ -221,6 +273,20 @@ Review this correspondent identification and provide your confirmation decision.
           // Check if blocked
           const isBlocked = yield* tinybase.isBlocked(analysis.suggested_correspondent, 'correspondent');
           if (isBlocked) {
+            // Log blocked result
+            yield* tinybase.addProcessingLog({
+              docId: input.docId,
+              timestamp: new Date().toISOString(),
+              step: 'correspondent',
+              eventType: 'result',
+              data: {
+                success: false,
+                blocked: true,
+                value: analysis.suggested_correspondent,
+                reasoning: `Correspondent "${analysis.suggested_correspondent}" is blocked`,
+              },
+            });
+
             return {
               success: false,
               value: null,
@@ -236,6 +302,22 @@ Review this correspondent identification and provide your confirmation decision.
           const correspondentId = yield* paperless.getOrCreateCorrespondent(analysis.suggested_correspondent);
           yield* paperless.updateDocument(input.docId, { correspondent: correspondentId });
           yield* paperless.transitionDocumentTag(input.docId, tagConfig.titleDone, tagConfig.correspondentDone);
+
+          // Log result
+          yield* tinybase.addProcessingLog({
+            docId: input.docId,
+            timestamp: new Date().toISOString(),
+            step: 'correspondent',
+            eventType: 'result',
+            data: {
+              success: true,
+              value: analysis.suggested_correspondent,
+              isNew: analysis.is_new,
+              reasoning: analysis.reasoning,
+              confidence: analysis.confidence,
+              attempts: result.attempts,
+            },
+          });
 
           return {
             success: true,
@@ -256,6 +338,31 @@ Review this correspondent identification and provide your confirmation decision.
         Stream.asyncEffect<StreamEvent, AgentError>((emit) =>
           Effect.gen(function* () {
             yield* Effect.sync(() => emit.single(emitStart('correspondent')));
+
+            // Create logger to collect all events
+            const logEntries: ConfirmationLoopLogEvent[] = [];
+            const logger = (event: ConfirmationLoopLogEvent) => {
+              logEntries.push(event);
+            };
+
+            // Log document context at start
+            logger({
+              eventType: 'prompt',
+              data: {
+                type: 'context',
+                docId: input.docId,
+                docTitle: input.docTitle,
+                existingCorrespondents: input.existingCorrespondents,
+              },
+              timestamp: new Date().toISOString(),
+            });
+
+            // Create graph with logger
+            const graphConfigWithLogger: ConfirmationLoopConfig<CorrespondentAnalysis> = {
+              ...graphConfig,
+              logger,
+            };
+            const graph = createConfirmationLoopGraph(graphConfigWithLogger);
 
             const result = yield* Effect.tryPromise({
               try: async () => {
@@ -303,6 +410,21 @@ Review this correspondent identification and provide your confirmation decision.
                   value: lastAnalysis!.suggested_correspondent,
                   isNew: lastAnalysis!.is_new,
                 })));
+
+                // Log result
+                yield* tinybase.addProcessingLog({
+                  docId: input.docId,
+                  timestamp: new Date().toISOString(),
+                  step: 'correspondent',
+                  eventType: 'result',
+                  data: {
+                    success: true,
+                    value: lastAnalysis.suggested_correspondent,
+                    isNew: lastAnalysis.is_new,
+                    reasoning: lastAnalysis.reasoning,
+                    confidence: lastAnalysis.confidence,
+                  },
+                });
               }
 
               if (node === 'queue_review') {
@@ -320,7 +442,33 @@ Review this correspondent identification and provide your confirmation decision.
                 });
                 yield* paperless.addTagToDocument(input.docId, tagConfig.manualReview);
                 yield* Effect.sync(() => emit.single(emitResult('correspondent', { success: false, needsReview: true })));
+
+                // Log result
+                yield* tinybase.addProcessingLog({
+                  docId: input.docId,
+                  timestamp: new Date().toISOString(),
+                  step: 'correspondent',
+                  eventType: 'result',
+                  data: {
+                    success: false,
+                    needsReview: true,
+                    reasoning: 'Max retries exceeded',
+                  },
+                });
               }
+            }
+
+            // Store all log entries (use captured timestamps and IDs)
+            for (const entry of logEntries) {
+              yield* tinybase.addProcessingLog({
+                id: entry.id,
+                docId: input.docId,
+                timestamp: entry.timestamp,
+                step: 'correspondent',
+                eventType: entry.eventType as ProcessingLogEventType,
+                data: entry.data,
+                parentId: entry.parentId,
+              });
             }
 
             yield* Effect.sync(() => emit.single(emitComplete('correspondent')));

@@ -152,7 +152,49 @@ export const storeSchema = {
     value: { type: 'string' as const },
     updatedAt: { type: 'string' as const },
   },
+  processingLogs: {
+    id: { type: 'string' as const },
+    docId: { type: 'number' as const },
+    timestamp: { type: 'string' as const },
+    step: { type: 'string' as const },
+    eventType: { type: 'string' as const },
+    data: { type: 'string' as const }, // JSON stringified
+    parentId: { type: 'string' as const },
+  },
 };
+
+// ===========================================================================
+// Processing Log Types
+// ===========================================================================
+
+export type ProcessingLogEventType =
+  | 'context'
+  | 'prompt'
+  | 'response'
+  | 'thinking'
+  | 'tool_call'
+  | 'tool_result'
+  | 'confirming'
+  | 'retry'
+  | 'result'
+  | 'error'
+  | 'state_transition';
+
+export interface ProcessingLogEntry {
+  id: string;
+  docId: number;
+  timestamp: string;
+  step: string;
+  eventType: ProcessingLogEventType;
+  data: Record<string, unknown>;
+  parentId?: string;
+}
+
+export interface ProcessingLogStats {
+  totalLogs: number;
+  oldestLog: string | null;
+  newestLog: string | null;
+}
 
 // ===========================================================================
 // Service Interface
@@ -205,6 +247,13 @@ export interface TinyBaseService {
   // Store operations
   readonly getStoreJson: () => Effect.Effect<string, DatabaseError>;
   readonly loadFromJson: (json: string) => Effect.Effect<void, DatabaseError>;
+
+  // Processing Logs
+  readonly addProcessingLog: (entry: Omit<ProcessingLogEntry, 'id'> & { id?: string }) => Effect.Effect<string, DatabaseError>;
+  readonly getProcessingLogs: (docId: number) => Effect.Effect<ProcessingLogEntry[], DatabaseError>;
+  readonly clearProcessingLogs: (docId: number) => Effect.Effect<void, DatabaseError>;
+  readonly clearAllProcessingLogs: () => Effect.Effect<void, DatabaseError>;
+  readonly getProcessingLogStats: () => Effect.Effect<ProcessingLogStats, DatabaseError>;
 }
 
 // ===========================================================================
@@ -868,6 +917,90 @@ export const TinyBaseServiceLive = Layer.effect(
             store.setJson(json);
           },
           catch: (e) => new DatabaseError({ message: `Failed to load from JSON: ${e}`, operation: 'loadFromJson', cause: e }),
+        }),
+
+      // =====================================================================
+      // Processing Logs
+      // =====================================================================
+
+      addProcessingLog: (entry) =>
+        Effect.try({
+          try: () => {
+            const id = entry.id ?? generateId();
+            const rowData = {
+              id,
+              docId: entry.docId,
+              timestamp: entry.timestamp,
+              step: entry.step,
+              eventType: entry.eventType,
+              data: JSON.stringify(entry.data),
+              parentId: entry.parentId ?? '',
+            };
+            store.setRow('processingLogs', id, rowData);
+            return id;
+          },
+          catch: (e) => new DatabaseError({ message: `Failed to add processing log: ${e}`, operation: 'addProcessingLog', cause: e }),
+        }),
+
+      getProcessingLogs: (docId) =>
+        Effect.try({
+          try: () => {
+            const table = store.getTable('processingLogs') ?? {};
+            const logs = Object.entries(table)
+              .filter(([, row]) => row?.['docId'] === docId)
+              .map(([id, row]) => ({
+                id,
+                docId: row?.['docId'] as number,
+                timestamp: row?.['timestamp'] as string,
+                step: row?.['step'] as string,
+                eventType: row?.['eventType'] as ProcessingLogEventType,
+                data: JSON.parse((row?.['data'] as string) || '{}') as Record<string, unknown>,
+                parentId: (row?.['parentId'] as string) || undefined,
+              }))
+              .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+            return logs;
+          },
+          catch: (e) => new DatabaseError({ message: `Failed to get processing logs: ${e}`, operation: 'getProcessingLogs', cause: e }),
+        }),
+
+      clearProcessingLogs: (docId) =>
+        Effect.try({
+          try: () => {
+            const table = store.getTable('processingLogs') ?? {};
+            for (const [id, row] of Object.entries(table)) {
+              if (row?.['docId'] === docId) {
+                store.delRow('processingLogs', id);
+              }
+            }
+          },
+          catch: (e) => new DatabaseError({ message: `Failed to clear processing logs: ${e}`, operation: 'clearProcessingLogs', cause: e }),
+        }),
+
+      clearAllProcessingLogs: () =>
+        Effect.try({
+          try: () => {
+            store.delTable('processingLogs');
+          },
+          catch: (e) => new DatabaseError({ message: `Failed to clear all processing logs: ${e}`, operation: 'clearAllProcessingLogs', cause: e }),
+        }),
+
+      getProcessingLogStats: () =>
+        Effect.try({
+          try: (): ProcessingLogStats => {
+            const table = store.getTable('processingLogs') ?? {};
+            const rows = Object.values(table);
+            const timestamps = rows
+              .map((row) => row?.['timestamp'] as string)
+              .filter(Boolean)
+              .sort();
+
+            return {
+              totalLogs: rows.length,
+              oldestLog: timestamps[0] ?? null,
+              newestLog: timestamps[timestamps.length - 1] ?? null,
+            };
+          },
+          catch: (e) => new DatabaseError({ message: `Failed to get processing log stats: ${e}`, operation: 'getProcessingLogStats', cause: e }),
         }),
     };
   })
