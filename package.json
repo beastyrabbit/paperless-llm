@@ -17,7 +17,7 @@
     "test:e2e": "turbo run test:e2e",
     "format": "turbo run format",
     "clean": "turbo run clean && rm -rf node_modules .turbo",
-    "precommit": "pre-commit run --all-files",
+    "precommit": "pnpm run typecheck && pnpm run lint",
     "demo:record": "bunx tsx scripts/record-demo.ts"
   },
   "devDependencies": {

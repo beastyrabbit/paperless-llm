@@ -1,10 +1,12 @@
 /**
  * HTTP server implementation.
  */
-import { Effect, pipe, Layer, Runtime, Scope } from 'effect';
+import { Effect, pipe, Layer, Runtime, Scope, Stream } from 'effect';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { AppLayer } from './layers/index.js';
 import { handleRequest } from './api/index.js';
+import { ProcessingPipelineService, type PipelineStreamEvent } from './agents/index.js';
+import { PaperlessService, ConfigService } from './services/index.js';
 
 // ===========================================================================
 // Security Configuration
@@ -85,6 +87,24 @@ const setCorsHeaders = (req: IncomingMessage, res: ServerResponse): void => {
 };
 
 // ===========================================================================
+// Tag Cache (avoid fetching all tags for every SSE request)
+// ===========================================================================
+
+interface TagCache {
+  tags: Array<{ id: number; name: string }>;
+  timestamp: number;
+}
+
+const TAG_CACHE_TTL_MS = 60 * 1000; // 60 seconds
+let tagCache: TagCache | null = null;
+
+// ===========================================================================
+// SSE Stream URL Pattern
+// ===========================================================================
+
+const SSE_STREAM_PATTERN = /^\/api\/processing\/(\d+)\/stream$/;
+
+// ===========================================================================
 // Server Creation
 // ===========================================================================
 
@@ -101,6 +121,153 @@ export const createHttpServer = (port: number) =>
     const runWithRuntime = <A>(effect: Effect.Effect<A, unknown, unknown>) =>
       Runtime.runPromise(runtime)(effect as Effect.Effect<A, never, never>);
 
+    // Helper to run stream and pipe to SSE response
+    const handleSSEStream = async (
+      res: ServerResponse,
+      docId: number
+    ): Promise<void> => {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.writeHead(200);
+
+      // Helper to create events with timestamps
+      const createEvent = (e: Omit<PipelineStreamEvent, 'timestamp'>): PipelineStreamEvent => ({
+        ...e,
+        timestamp: new Date().toISOString(),
+      });
+
+      const sendEvent = (event: PipelineStreamEvent) => {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      };
+
+      try {
+        await runWithRuntime(
+          Effect.gen(function* () {
+            const paperless = yield* PaperlessService;
+            const pipeline = yield* ProcessingPipelineService;
+            const configService = yield* ConfigService;
+            const tagConfig = configService.config.tags;
+
+            // Get document with error handling
+            const doc = yield* paperless.getDocument(docId).pipe(
+              Effect.catchAll((e) => {
+                sendEvent(createEvent({ type: 'error', docId, message: `Failed to load document: ${e}` }));
+                return Effect.fail(e);
+              })
+            );
+
+            // Use cached tags or fetch fresh (with 60s TTL, graceful fallback)
+            const now = Date.now();
+            let allTags: Array<{ id: number; name: string }>;
+            if (tagCache && (now - tagCache.timestamp) < TAG_CACHE_TTL_MS) {
+              allTags = tagCache.tags;
+            } else {
+              allTags = yield* paperless.getTags().pipe(
+                Effect.catchAll((e) => {
+                  console.error('[SSE] Failed to fetch tags, using stale cache:', e);
+                  // Fall back to stale cache if available, otherwise empty array
+                  if (tagCache?.tags) {
+                    sendEvent(createEvent({ type: 'step_start', docId, step: 'init', message: 'Using cached tag data' }));
+                    return Effect.succeed(tagCache.tags);
+                  }
+                  sendEvent(createEvent({ type: 'error', docId, message: `Failed to load tags: ${e}` }));
+                  return Effect.fail(e);
+                })
+              );
+              tagCache = { tags: allTags, timestamp: now };
+            }
+            const tagMap = new Map(allTags.map((t) => [t.id, t.name]));
+            const tagNames = (doc.tags ?? []).map((id) => tagMap.get(id)).filter((n): n is string => n !== undefined);
+
+            // Determine current state from tags using exact match (consistent with ProcessingPipeline)
+            let currentState = 'pending';
+            if (tagNames.includes(tagConfig.processed)) {
+              currentState = 'processed';
+            } else if (tagNames.includes(tagConfig.tagsDone)) {
+              currentState = 'tags_done';
+            } else if (tagNames.includes(tagConfig.documentTypeDone)) {
+              currentState = 'document_type_done';
+            } else if (tagNames.includes(tagConfig.correspondentDone)) {
+              currentState = 'correspondent_done';
+            } else if (tagNames.includes(tagConfig.titleDone)) {
+              currentState = 'title_done';
+            } else if (tagNames.includes(tagConfig.ocrDone)) {
+              currentState = 'ocr_done';
+            } else if (tagNames.includes(tagConfig.pending)) {
+              currentState = 'pending';
+            }
+
+            sendEvent(createEvent({ type: 'pipeline_start', docId }));
+
+            // Determine next step based on current state
+            let nextStep: string | null = null;
+            switch (currentState) {
+              case 'pending':
+                nextStep = 'ocr';
+                break;
+              case 'ocr_done':
+                nextStep = 'title';
+                break;
+              case 'title_done':
+                nextStep = 'correspondent';
+                break;
+              case 'correspondent_done':
+                nextStep = 'document_type';
+                break;
+              case 'document_type_done':
+                nextStep = 'tags';
+                break;
+              case 'tags_done':
+                nextStep = 'custom_fields';
+                break;
+              case 'processed':
+                sendEvent(createEvent({ type: 'pipeline_complete', docId, message: 'Already processed' }));
+                return;
+              default:
+                nextStep = 'title'; // Default to title if state unclear
+            }
+
+            if (!nextStep) {
+              sendEvent(createEvent({ type: 'pipeline_complete', docId }));
+              return;
+            }
+
+            // Run the next step with streaming for detailed LLM info
+            let stepHadError = false;
+            yield* pipe(
+              pipeline.processStepStream(docId, nextStep),
+              Stream.tap((event) => Effect.sync(() => sendEvent(event))),
+              Stream.runDrain,
+              Effect.catchAll((e) => {
+                stepHadError = true;
+                sendEvent(createEvent({ type: 'step_error', docId, step: nextStep, message: String(e) }));
+                return Effect.void;
+              })
+            );
+
+            // Only send pipeline_complete on success (not after errors)
+            if (!stepHadError) {
+              sendEvent(createEvent({ type: 'pipeline_complete', docId }));
+            }
+          })
+        );
+      } catch (error) {
+        console.error('[SSE] Stream error:', error);
+        try {
+          sendEvent(createEvent({
+            type: 'error',
+            docId,
+            message: error instanceof Error ? error.message : String(error),
+          }));
+        } catch (sendError) {
+          console.error('[SSE] Failed to send error event:', sendError);
+        }
+      } finally {
+        res.end();
+      }
+    };
+
     const server = createServer(async (req, res) => {
       setCorsHeaders(req, res);
 
@@ -108,6 +275,21 @@ export const createHttpServer = (port: number) =>
       if (req.method === 'OPTIONS') {
         res.writeHead(204);
         res.end();
+        return;
+      }
+
+      // Check for SSE stream requests
+      const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+      const sseMatch = url.pathname.match(SSE_STREAM_PATTERN);
+      if (sseMatch && req.method === 'GET') {
+        const docId = parseInt(sseMatch[1]!, 10);
+        // Validate document ID is a positive number
+        if (isNaN(docId) || docId <= 0) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: 'Invalid document ID' }));
+          return;
+        }
+        await handleSSEStream(res, docId);
         return;
       }
 
@@ -120,6 +302,16 @@ export const createHttpServer = (port: number) =>
         );
 
         const result = await runWithRuntime(effect);
+
+        // Handle binary PDF responses
+        if (result instanceof Uint8Array) {
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', 'inline');
+          res.setHeader('Content-Length', result.length);
+          res.writeHead(200);
+          res.end(Buffer.from(result));
+          return;
+        }
 
         res.setHeader('Content-Type', 'application/json');
 

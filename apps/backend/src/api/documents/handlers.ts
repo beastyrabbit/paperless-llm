@@ -208,3 +208,13 @@ export const getDocumentContent = (id: number) =>
       content,
     };
   });
+
+// ===========================================================================
+// PDF Download (Binary)
+// ===========================================================================
+
+export const getDocumentPdf = (id: number) =>
+  Effect.gen(function* () {
+    const paperless = yield* PaperlessService;
+    return yield* paperless.downloadPdf(id);
+  });
