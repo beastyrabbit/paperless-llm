@@ -1,10 +1,12 @@
 /**
  * HTTP server implementation.
  */
-import { Effect, pipe, Layer, Runtime, Scope } from 'effect';
+import { Effect, pipe, Layer, Runtime, Scope, Stream } from 'effect';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { AppLayer } from './layers/index.js';
 import { handleRequest } from './api/index.js';
+import { ProcessingPipelineService, type PipelineStreamEvent } from './agents/index.js';
+import { PaperlessService } from './services/index.js';
 
 // ===========================================================================
 // Security Configuration
@@ -85,6 +87,12 @@ const setCorsHeaders = (req: IncomingMessage, res: ServerResponse): void => {
 };
 
 // ===========================================================================
+// SSE Stream URL Pattern
+// ===========================================================================
+
+const SSE_STREAM_PATTERN = /^\/api\/processing\/(\d+)\/stream$/;
+
+// ===========================================================================
 // Server Creation
 // ===========================================================================
 
@@ -101,6 +109,110 @@ export const createHttpServer = (port: number) =>
     const runWithRuntime = <A>(effect: Effect.Effect<A, unknown, unknown>) =>
       Runtime.runPromise(runtime)(effect as Effect.Effect<A, never, never>);
 
+    // Helper to run stream and pipe to SSE response
+    const handleSSEStream = async (
+      res: ServerResponse,
+      docId: number
+    ): Promise<void> => {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.writeHead(200);
+
+      const sendEvent = (event: PipelineStreamEvent) => {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      };
+
+      try {
+        // Get current state and run next step
+        const effect = Effect.gen(function* () {
+          const pipeline = yield* ProcessingPipelineService;
+          const paperless = yield* PaperlessService;
+
+          // Get document and resolve tag names
+          const doc = yield* paperless.getDocument(docId);
+          const allTags = yield* paperless.getTags();
+          const tagMap = new Map(allTags.map((t) => [t.id, t.name]));
+          const tagNames = (doc.tags ?? []).map((id) => tagMap.get(id)).filter((n): n is string => n !== undefined);
+
+          // Create document with resolved tag names for state detection
+          const docWithTagNames = { ...doc, tag_names: tagNames };
+          const currentState = pipeline.getCurrentState(docWithTagNames);
+
+          sendEvent({ type: 'pipeline_start', docId });
+
+          // Determine next step based on current state
+          let nextStep: string | null = null;
+          switch (currentState) {
+            case 'pending':
+              nextStep = 'ocr';
+              break;
+            case 'ocr_done':
+              nextStep = 'title';
+              break;
+            case 'title_done':
+              nextStep = 'correspondent';
+              break;
+            case 'correspondent_done':
+              nextStep = 'document_type';
+              break;
+            case 'document_type_done':
+              nextStep = 'tags';
+              break;
+            case 'tags_done':
+              nextStep = 'custom_fields';
+              break;
+            case 'processed':
+              sendEvent({ type: 'pipeline_complete', docId, message: 'Already processed' });
+              return;
+            default:
+              nextStep = 'title'; // Default to title if state unclear
+          }
+
+          if (!nextStep) {
+            sendEvent({ type: 'pipeline_complete', docId });
+            return;
+          }
+
+          sendEvent({ type: 'step_start', docId, step: nextStep });
+
+          // Run the next step
+          const result = yield* pipeline.processStep(docId, nextStep).pipe(
+            Effect.catchAll((e) =>
+              Effect.succeed({
+                step: nextStep!,
+                success: false,
+                error: String(e),
+                data: undefined as unknown,
+              })
+            )
+          );
+
+          if (result.success) {
+            sendEvent({ type: 'step_complete', docId, step: nextStep, data: result.data });
+          } else {
+            const errorMsg = 'error' in result ? result.error : 'Unknown error';
+            sendEvent({ type: 'step_error', docId, step: nextStep, message: errorMsg });
+            if (result.data && typeof result.data === 'object' && 'needsReview' in result.data) {
+              sendEvent({ type: 'needs_review', docId, step: nextStep, data: result.data });
+            }
+          }
+
+          sendEvent({ type: 'pipeline_complete', docId });
+        });
+
+        await runWithRuntime(effect);
+      } catch (error) {
+        sendEvent({
+          type: 'error',
+          docId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        res.end();
+      }
+    };
+
     const server = createServer(async (req, res) => {
       setCorsHeaders(req, res);
 
@@ -108,6 +220,15 @@ export const createHttpServer = (port: number) =>
       if (req.method === 'OPTIONS') {
         res.writeHead(204);
         res.end();
+        return;
+      }
+
+      // Check for SSE stream requests
+      const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+      const sseMatch = url.pathname.match(SSE_STREAM_PATTERN);
+      if (sseMatch && req.method === 'GET') {
+        const docId = parseInt(sseMatch[1]!, 10);
+        await handleSSEStream(res, docId);
         return;
       }
 
@@ -120,6 +241,16 @@ export const createHttpServer = (port: number) =>
         );
 
         const result = await runWithRuntime(effect);
+
+        // Handle binary PDF responses
+        if (result instanceof Uint8Array) {
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', 'inline');
+          res.setHeader('Content-Length', result.length);
+          res.writeHead(200);
+          res.end(Buffer.from(result));
+          return;
+        }
 
         res.setHeader('Content-Type', 'application/json');
 

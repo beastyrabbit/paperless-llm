@@ -265,7 +265,9 @@ addRoute('GET', '/api/documents/:id/content', (params) =>
   documentsHandlers.getDocumentContent(parseInt(params.id!, 10))
 );
 
-// PDF proxy - handled separately in server
+addRoute('GET', '/api/documents/:id/pdf', (params) =>
+  documentsHandlers.getDocumentPdf(parseInt(params.id!, 10))
+);
 
 // ===========================================================================
 // Processing API - /api/processing

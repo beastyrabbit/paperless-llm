@@ -15,6 +15,16 @@ import {
   SchemaCleanupJobServiceLive,
   BulkOcrJobServiceLive,
 } from '../jobs/index.js';
+import {
+  OCRAgentServiceLive,
+  TitleAgentServiceLive,
+  CorrespondentAgentServiceLive,
+  DocumentTypeAgentServiceLive,
+  TagsAgentServiceLive,
+  CustomFieldsAgentServiceLive,
+  SchemaAnalysisAgentServiceLive,
+  ProcessingPipelineServiceLive,
+} from '../agents/index.js';
 
 /**
  * Configuration layer - foundation for all other layers.
@@ -67,10 +77,32 @@ const JobsLayer = Layer.mergeAll(
 );
 
 /**
- * Full application layer with all services including jobs.
+ * Agents layer - all document processing agents.
+ */
+const AgentsLayer = Layer.mergeAll(
+  OCRAgentServiceLive,
+  TitleAgentServiceLive,
+  CorrespondentAgentServiceLive,
+  DocumentTypeAgentServiceLive,
+  TagsAgentServiceLive,
+  CustomFieldsAgentServiceLive,
+  SchemaAnalysisAgentServiceLive
+);
+
+/**
+ * Processing Pipeline layer - orchestrates all agents.
+ * Requires all agents to be provided first.
+ */
+const PipelineLayer = Layer.provideMerge(
+  ProcessingPipelineServiceLive,
+  AgentsLayer
+);
+
+/**
+ * Full application layer with all services including jobs and agents.
  */
 export const AppLayer = Layer.provideMerge(
-  JobsLayer,
+  Layer.mergeAll(JobsLayer, PipelineLayer),
   Layer.provideMerge(CoreServicesLayer, ConfigLayer)
 );
 

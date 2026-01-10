@@ -19,6 +19,70 @@ import type {
 } from '../models/index.js';
 
 // ===========================================================================
+// Persistence Configuration
+// ===========================================================================
+
+const DATA_DIR = path.join(process.cwd(), 'data');
+const PERSISTENCE_FILE = path.join(DATA_DIR, 'tinybase.json');
+
+/**
+ * Ensure the data directory exists.
+ */
+const ensureDataDir = (): void => {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    console.log(`[TinyBase] Created data directory: ${DATA_DIR}`);
+  }
+};
+
+/**
+ * Load persisted store data from disk.
+ */
+const loadPersistedData = (store: Store): boolean => {
+  if (!fs.existsSync(PERSISTENCE_FILE)) {
+    console.log('[TinyBase] No persisted data found, starting fresh');
+    return false;
+  }
+
+  try {
+    const json = fs.readFileSync(PERSISTENCE_FILE, 'utf-8');
+    store.setJson(json);
+    console.log(`[TinyBase] Loaded persisted data from ${PERSISTENCE_FILE}`);
+    return true;
+  } catch (error) {
+    console.error('[TinyBase] Failed to load persisted data:', error);
+    return false;
+  }
+};
+
+/**
+ * Save store data to disk.
+ */
+const persistStore = (store: Store): void => {
+  try {
+    ensureDataDir();
+    const json = store.getJson();
+    fs.writeFileSync(PERSISTENCE_FILE, json, 'utf-8');
+  } catch (error) {
+    console.error('[TinyBase] Failed to persist store:', error);
+  }
+};
+
+/**
+ * Debounced persistence to avoid excessive disk writes.
+ */
+let persistTimeout: ReturnType<typeof setTimeout> | null = null;
+const debouncedPersist = (store: Store): void => {
+  if (persistTimeout) {
+    clearTimeout(persistTimeout);
+  }
+  persistTimeout = setTimeout(() => {
+    persistStore(store);
+    persistTimeout = null;
+  }, 500); // Save after 500ms of no changes
+};
+
+// ===========================================================================
 // Store Schema Definition
 // ===========================================================================
 
@@ -277,8 +341,20 @@ export const TinyBaseServiceLive = Layer.effect(
     let nextTagMetaId = 1;
     let nextFieldMetaId = 1;
 
-    // Auto-import settings from config.yaml on startup
-    autoImportConfigYaml(store);
+    // Try to load persisted data first, fall back to config.yaml
+    const hadPersistedData = loadPersistedData(store);
+    if (!hadPersistedData) {
+      // Only import from config.yaml if we don't have persisted data
+      autoImportConfigYaml(store);
+      // Persist the initial config
+      persistStore(store);
+    }
+
+    // Set up auto-persistence on any store change
+    store.addTablesListener(() => {
+      debouncedPersist(store);
+    });
+    console.log('[TinyBase] Auto-persistence enabled');
 
     return {
       store,

@@ -58,6 +58,29 @@ function isOcrComplete(status: string): boolean {
   return !["pending", "unknown"].includes(status);
 }
 
+// Get the next processing step based on current status
+function getNextStep(status: string): { step: string; label: string } | null {
+  switch (status) {
+    case "pending":
+    case "unknown":
+      return { step: "ocr", label: "OCR" };
+    case "ocr_done":
+      return { step: "title", label: "Title" };
+    case "title_done":
+      return { step: "correspondent", label: "Correspondent" };
+    case "correspondent_done":
+      return { step: "document_type", label: "Document Type" };
+    case "document_type_done":
+      return { step: "tags", label: "Tags" };
+    case "tags_done":
+      return { step: "custom_fields", label: "Custom Fields" };
+    case "processed":
+      return null; // Already fully processed
+    default:
+      return { step: "title", label: "Title" };
+  }
+}
+
 export default function DocumentDetailPage({
   params,
 }: {
@@ -222,14 +245,28 @@ export default function DocumentDetailPage({
               </div>
             </div>
           </div>
-          <Button onClick={startProcessing} disabled={processing}>
-            {processing ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Play className="mr-2 h-4 w-4" />
-            )}
-            {processing ? "Processing..." : "Process Document"}
-          </Button>
+          {(() => {
+            const nextStep = getNextStep(processingStatus);
+            const isProcessed = processingStatus === "processed";
+            return (
+              <Button
+                onClick={startProcessing}
+                disabled={processing || isProcessed}
+                variant={isProcessed ? "secondary" : "default"}
+              >
+                {processing ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="mr-2 h-4 w-4" />
+                )}
+                {processing
+                  ? "Processing..."
+                  : isProcessed
+                    ? "Fully Processed"
+                    : `Run ${nextStep?.label ?? "Next"} Step`}
+              </Button>
+            );
+          })()}
         </div>
       </header>
 
@@ -246,7 +283,7 @@ export default function DocumentDetailPage({
             </CardHeader>
             <CardContent className="p-0">
               <iframe
-                src={`${pdfUrl}#navpanes=0&scrollbar=1&view=FitH`}
+                src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=1&view=FitH`}
                 className="h-[1000px] w-full rounded-b-lg border-t"
                 title={`Document ${docId} PDF`}
               />
@@ -263,8 +300,8 @@ export default function DocumentDetailPage({
                 onValueChange={setContentAccordionValue}
               >
                 <AccordionItem value="content" className="border-0">
-                  <CardHeader className="pb-0">
-                    <AccordionTrigger className="py-0 hover:no-underline">
+                  <CardHeader className="py-4">
+                    <AccordionTrigger className="hover:no-underline [&[data-state=open]>svg]:rotate-180">
                       <CardTitle className="flex items-center gap-2 text-base">
                         <FileText className="h-4 w-4" />
                         OCR Content
@@ -277,7 +314,7 @@ export default function DocumentDetailPage({
                     </AccordionTrigger>
                   </CardHeader>
                   <AccordionContent>
-                    <CardContent className="pt-4">
+                    <CardContent className="pt-0 pb-4">
                       <ScrollArea className="h-[200px] rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
                         <pre className="whitespace-pre-wrap font-mono text-sm">
                           {document.content || "No content available"}
@@ -365,8 +402,8 @@ export default function DocumentDetailPage({
             onValueChange={setStreamAccordionValue}
           >
             <AccordionItem value="stream" className="border-0">
-              <CardHeader className="pb-0">
-                <AccordionTrigger className="py-0 hover:no-underline">
+              <CardHeader className="py-4">
+                <AccordionTrigger className="hover:no-underline [&[data-state=open]>svg]:rotate-180">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Sparkles className="h-4 w-4 text-emerald-500" />
                     LLM Processing Stream
@@ -379,7 +416,7 @@ export default function DocumentDetailPage({
                 </AccordionTrigger>
               </CardHeader>
               <AccordionContent>
-                <CardContent className="pt-4">
+                <CardContent className="pt-0 pb-4">
                   {processing && (
                     <div className="mb-4">
                       <div className="mb-2 flex items-center justify-between text-sm">
