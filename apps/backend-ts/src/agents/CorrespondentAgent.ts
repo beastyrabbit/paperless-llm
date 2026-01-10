@@ -210,8 +210,9 @@ export const CorrespondentAgentServiceLive = Layer.effect(
                 correspondent: correspondentId,
               });
 
-              yield* paperless.removeTagFromDocument(input.docId, tagConfig.ocrDone);
-              yield* paperless.addTagToDocument(input.docId, tagConfig.correspondentDone);
+              // Atomic tag transition to avoid race conditions
+              // CorrespondentAgent runs after TitleAgent, so remove titleDone
+              yield* paperless.transitionDocumentTag(input.docId, tagConfig.titleDone, tagConfig.correspondentDone);
 
               return {
                 success: true,
@@ -339,8 +340,8 @@ export const CorrespondentAgentServiceLive = Layer.effect(
                   correspondent: correspondentId,
                 });
 
-                yield* paperless.removeTagFromDocument(input.docId, tagConfig.ocrDone);
-                yield* paperless.addTagToDocument(input.docId, tagConfig.correspondentDone);
+                // Atomic tag transition to avoid race conditions
+                yield* paperless.transitionDocumentTag(input.docId, tagConfig.titleDone, tagConfig.correspondentDone);
 
                 yield* Effect.sync(() =>
                   emit.single(

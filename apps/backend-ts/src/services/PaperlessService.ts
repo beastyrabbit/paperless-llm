@@ -39,6 +39,7 @@ export interface PaperlessService {
   readonly getOrCreateTag: (name: string) => Effect.Effect<number, PaperlessErrorType>;
   readonly addTagToDocument: (docId: number, tagName: string) => Effect.Effect<void, PaperlessErrorType>;
   readonly removeTagFromDocument: (docId: number, tagName: string) => Effect.Effect<void, PaperlessErrorType>;
+  readonly transitionDocumentTag: (docId: number, fromTagName: string, toTagName: string) => Effect.Effect<void, PaperlessErrorType>;
   readonly deleteTag: (id: number) => Effect.Effect<void, PaperlessErrorType>;
   readonly mergeTags: (sourceId: number, targetId: number) => Effect.Effect<void, PaperlessErrorType>;
 
@@ -352,6 +353,35 @@ export const PaperlessServiceLive = Layer.effect(
           const doc = yield* request<Document>('GET', `/documents/${docId}/`);
           const newTags = doc.tags.filter((id) => id !== tagId);
           if (newTags.length !== doc.tags.length) {
+            yield* request<Document>('PATCH', `/documents/${docId}/`, { tags: newTags });
+          }
+        }),
+
+      transitionDocumentTag: (docId, fromTagName, toTagName) =>
+        Effect.gen(function* () {
+          // Get both tag IDs first
+          const fromTagId = yield* getTagId(fromTagName);
+          const toTagId = yield* Effect.flatMap(
+            getTagId(toTagName),
+            (id) => id !== null ? Effect.succeed(id) : request<Tag>('POST', '/tags/', { name: toTagName }).pipe(Effect.map((t) => t.id))
+          );
+
+          // Fetch document once, modify tags atomically, save once
+          const doc = yield* request<Document>('GET', `/documents/${docId}/`);
+          let newTags = doc.tags;
+
+          // Remove from tag if present
+          if (fromTagId !== null) {
+            newTags = newTags.filter((id) => id !== fromTagId);
+          }
+
+          // Add to tag if not present
+          if (!newTags.includes(toTagId)) {
+            newTags = [...newTags, toTagId];
+          }
+
+          // Only update if tags changed
+          if (newTags.length !== doc.tags.length || !newTags.every((id) => doc.tags.includes(id))) {
             yield* request<Document>('PATCH', `/documents/${docId}/`, { tags: newTags });
           }
         }),

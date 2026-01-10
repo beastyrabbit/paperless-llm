@@ -127,9 +127,8 @@ export const BulkOcrJobServiceLive = Layer.effect(
                     skipped: p.skipped + 1,
                   }));
 
-                  // Move to next stage
-                  yield* paperless.removeTagFromDocument(doc.id, tagConfig.pending);
-                  yield* paperless.addTagToDocument(doc.id, tagConfig.ocrDone);
+                  // Move to next stage - atomic tag transition
+                  yield* paperless.transitionDocumentTag(doc.id, tagConfig.pending, tagConfig.ocrDone);
                   continue;
                 }
 
@@ -146,9 +145,8 @@ export const BulkOcrJobServiceLive = Layer.effect(
                   // The OCR content would typically be stored elsewhere or used for analysis
                   // For now, we just move the document to the next stage
 
-                  // Move to next stage
-                  yield* paperless.removeTagFromDocument(doc.id, tagConfig.pending);
-                  yield* paperless.addTagToDocument(doc.id, tagConfig.ocrDone);
+                  // Move to next stage - atomic tag transition
+                  yield* paperless.transitionDocumentTag(doc.id, tagConfig.pending, tagConfig.ocrDone);
 
                   yield* Ref.update(progressRef, (p) => ({
                     ...p,

@@ -174,8 +174,8 @@ export const TitleAgentServiceLive = Layer.effect(
                 title: analysis.suggestedTitle,
               });
 
-              yield* paperless.removeTagFromDocument(input.docId, tagConfig.ocrDone);
-              yield* paperless.addTagToDocument(input.docId, tagConfig.titleDone);
+              // Atomic tag transition to avoid race conditions
+              yield* paperless.transitionDocumentTag(input.docId, tagConfig.ocrDone, tagConfig.titleDone);
 
               return {
                 success: true,
@@ -293,8 +293,8 @@ export const TitleAgentServiceLive = Layer.effect(
                   title: analysis.suggestedTitle,
                 });
 
-                yield* paperless.removeTagFromDocument(input.docId, tagConfig.ocrDone);
-                yield* paperless.addTagToDocument(input.docId, tagConfig.titleDone);
+                // Atomic tag transition to avoid race conditions
+                yield* paperless.transitionDocumentTag(input.docId, tagConfig.ocrDone, tagConfig.titleDone);
 
                 yield* Effect.sync(() =>
                   emit.single(
