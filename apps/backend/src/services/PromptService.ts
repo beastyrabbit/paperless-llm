@@ -173,10 +173,14 @@ export const PromptServiceLive = Layer.effect(
       getPromptGroups: (lang) =>
         Effect.sync(() => {
           const targetLang = lang ?? language;
-          const mainPrompts = ['title', 'correspondent', 'document_type', 'tags', 'ocr'];
+          // Prompts that have main + confirmation pairs
+          const pairedPrompts = ['title', 'correspondent', 'document_type', 'tags'];
+          // Standalone prompts without confirmation
+          const standalonePrompts = ['schema_analysis', 'schema_cleanup', 'custom_fields', 'metadata_description', 'confirmation'];
           const groups: PromptGroup[] = [];
 
-          for (const name of mainPrompts) {
+          // Add paired prompts (main + confirmation)
+          for (const name of pairedPrompts) {
             const main = loadPrompt(name, targetLang) ?? loadPrompt(name, 'en');
             if (!main) continue;
 
@@ -185,6 +189,14 @@ export const PromptServiceLive = Layer.effect(
               loadPrompt(confirmationName, targetLang) ?? loadPrompt(confirmationName, 'en');
 
             groups.push({ name, main, confirmation });
+          }
+
+          // Add standalone prompts (no confirmation)
+          for (const name of standalonePrompts) {
+            const main = loadPrompt(name, targetLang) ?? loadPrompt(name, 'en');
+            if (!main) continue;
+
+            groups.push({ name, main, confirmation: null });
           }
 
           return groups;
