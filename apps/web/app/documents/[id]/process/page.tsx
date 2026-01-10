@@ -134,6 +134,7 @@ function toToonValue(value: unknown, indent = 0): string {
     }
     // Array of objects - check if uniform structure for tabular
     if (value.every(v => typeof v === "object" && v !== null && !Array.isArray(v))) {
+      if (value.length === 0) return "[]";
       const keys = Object.keys(value[0] as Record<string, unknown>);
       const isUniform = value.every(v => {
         const vKeys = Object.keys(v as Record<string, unknown>);
@@ -208,9 +209,15 @@ function buildLogTree(logs: ProcessingLogEntry[]): LogNode[] {
 
   // Build parent-child relationships
   for (const log of logs) {
-    const node = nodeMap.get(log.id)!;
-    if (log.parentId && nodeMap.has(log.parentId)) {
-      nodeMap.get(log.parentId)!.children.push(node);
+    const node = nodeMap.get(log.id);
+    if (!node) continue;
+    if (log.parentId) {
+      const parent = nodeMap.get(log.parentId);
+      if (parent) {
+        parent.children.push(node);
+      } else {
+        roots.push(node);
+      }
     } else {
       roots.push(node);
     }
@@ -318,29 +325,31 @@ export default function ProcessingPage({
   const [copied, setCopied] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const [copyError, setCopyError] = useState(false);
+
   const copyRawLog = async () => {
     try {
       const toonLog = logsToToon(logs);
       await navigator.clipboard.writeText(toonLog);
       setCopied(true);
+      setCopyError(false);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error("Failed to copy logs:", err);
+      setCopyError(true);
+      setTimeout(() => setCopyError(false), 2000);
     }
   };
 
-  // Fetch document title and logs
-  useEffect(() => {
-    documentsApi.get(docId).then(({ data }) => {
-      if (data) setDocTitle(data.title);
-    });
-
-    fetchLogs();
-  }, [docId]);
-
+  // Fetch logs function
   const fetchLogs = async () => {
     setLogsLoading(true);
-    const { data } = await processingApi.getLogs(docId);
+    const { data, error } = await processingApi.getLogs(docId);
+    if (error) {
+      console.error("Failed to fetch logs:", error);
+      setLogsLoading(false);
+      return;
+    }
     if (data?.logs) {
       setLogs(data.logs);
       // Auto-expand the first step if there are logs
@@ -351,6 +360,15 @@ export default function ProcessingPage({
     }
     setLogsLoading(false);
   };
+
+  // Fetch document title and logs on mount
+  useEffect(() => {
+    documentsApi.get(docId).then(({ data }) => {
+      if (data) setDocTitle(data.title);
+    });
+
+    fetchLogs();
+  }, [docId]);
 
   // Group logs by step
   const logsByStep = useMemo(() => {
@@ -369,7 +387,11 @@ export default function ProcessingPage({
   }, [logsByStep]);
 
   const clearLogs = async () => {
-    await processingApi.clearLogs(docId);
+    const { error } = await processingApi.clearLogs(docId);
+    if (error) {
+      console.error("Failed to clear logs:", error);
+      return;
+    }
     setLogs([]);
     setExpandedStep(null);
   };
@@ -410,10 +432,12 @@ export default function ProcessingPage({
               >
                 {copied ? (
                   <Check className="h-4 w-4 mr-2 text-green-500" />
+                ) : copyError ? (
+                  <XCircle className="h-4 w-4 mr-2 text-red-500" />
                 ) : (
                   <Copy className="h-4 w-4 mr-2" />
                 )}
-                {copied ? "Copied!" : "Copy TOON"}
+                {copied ? "Copied!" : copyError ? "Failed" : "Copy TOON"}
               </Button>
               <Button
                 variant="outline"
