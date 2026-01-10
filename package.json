@@ -12,9 +12,12 @@
     "test": "turbo run test",
     "format": "turbo run format",
     "clean": "turbo run clean && rm -rf node_modules .turbo",
-    "precommit": "pre-commit run --all-files"
+    "precommit": "pre-commit run --all-files",
+    "demo:record": "bunx tsx scripts/record-demo.ts"
   },
   "devDependencies": {
+    "playwright": "^1.57.0",
+    "tsx": "^4.21.0",
     "turbo": "^2.5.0"
   },
   "packageManager": "bun@1.2.0",

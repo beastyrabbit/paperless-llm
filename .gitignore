@@ -64,6 +64,9 @@ apps/backend/.venv
 .DS_Store
 *.pem
 
+# Demo videos (generated)
+demo-videos/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
