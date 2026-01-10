@@ -179,29 +179,6 @@ export function useSettings(initialTab: SettingsTab = "connections") {
     }
   };
 
-  const testConnectionSilent = async (service: string) => {
-    setConnectionStatus((prev) => ({ ...prev, [service]: "testing" }));
-    try {
-      const response = await fetch(`${API_BASE}/api/settings/test-connection/${service}`, {
-        method: "POST",
-      });
-      const data = await response.json();
-      setConnectionStatus((prev) => ({
-        ...prev,
-        [service]: data.status === "connected" ? "success" : "error",
-      }));
-
-      if (data.status === "connected" && service === "ollama") {
-        fetchOllamaModels();
-      }
-      if (data.status === "connected" && service === "mistral") {
-        fetchMistralModels();
-      }
-    } catch {
-      setConnectionStatus((prev) => ({ ...prev, [service]: "error" }));
-    }
-  };
-
   const testConnection = async (service: string) => {
     setConnectionStatus((prev) => ({ ...prev, [service]: "testing" }));
     try {
@@ -211,13 +188,13 @@ export function useSettings(initialTab: SettingsTab = "connections") {
       const data = await response.json();
       setConnectionStatus((prev) => ({
         ...prev,
-        [service]: data.status === "connected" ? "success" : "error",
+        [service]: data.status === "success" ? "success" : "error",
       }));
 
-      if (data.status === "connected" && service === "ollama") {
+      if (data.status === "success" && service === "ollama") {
         fetchOllamaModels();
       }
-      if (data.status === "connected" && service === "mistral") {
+      if (data.status === "success" && service === "mistral") {
         fetchMistralModels();
       }
     } catch {
@@ -225,32 +202,59 @@ export function useSettings(initialTab: SettingsTab = "connections") {
     }
   };
 
-  const autoTestConnections = async (loadedSettings: Partial<Settings>) => {
-    const tests: Promise<void>[] = [];
-
-    if (loadedSettings.paperless_url && loadedSettings.paperless_token) {
-      tests.push(testConnectionSilent("paperless"));
-    }
-    if (loadedSettings.ollama_url) {
-      tests.push(testConnectionSilent("ollama"));
-    }
-    if (loadedSettings.qdrant_url) {
-      tests.push(testConnectionSilent("qdrant"));
-    }
-    if (loadedSettings.mistral_api_key) {
-      tests.push(testConnectionSilent("mistral"));
-    }
-
-    await Promise.all(tests);
-  };
-
   const loadSettings = useCallback(async () => {
+    // Helper to test a connection silently (local to avoid dependency issues)
+    const testSilent = async (service: string) => {
+      setConnectionStatus((prev) => ({ ...prev, [service]: "testing" }));
+      try {
+        const response = await fetch(`${API_BASE}/api/settings/test-connection/${service}`, {
+          method: "POST",
+        });
+        const data = await response.json();
+        setConnectionStatus((prev) => ({
+          ...prev,
+          [service]: data.status === "success" ? "success" : "error",
+        }));
+        return data.status === "success";
+      } catch {
+        setConnectionStatus((prev) => ({ ...prev, [service]: "error" }));
+        return false;
+      }
+    };
+
     try {
       const response = await fetch(`${API_BASE}/api/settings`);
       if (response.ok) {
         const data = await response.json();
         setSettings((prev) => ({ ...prev, ...data }));
-        autoTestConnections(data);
+
+        // Auto-test connections based on loaded settings
+        const tests: Promise<boolean>[] = [];
+
+        if (data.paperless_url && data.paperless_token) {
+          tests.push(testSilent("paperless"));
+        }
+        if (data.ollama_url) {
+          tests.push(testSilent("ollama").then(async (connected) => {
+            if (connected) {
+              fetchOllamaModels();
+            }
+            return connected;
+          }));
+        }
+        if (data.qdrant_url) {
+          tests.push(testSilent("qdrant"));
+        }
+        if (data.mistral_api_key) {
+          tests.push(testSilent("mistral").then(async (connected) => {
+            if (connected) {
+              fetchMistralModels();
+            }
+            return connected;
+          }));
+        }
+
+        await Promise.all(tests);
       }
     } catch (error) {
       console.error("Failed to load settings:", error);
