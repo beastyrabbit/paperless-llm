@@ -22,6 +22,7 @@ export type TagsConfig = Schema.Schema.Type<typeof TagsConfigSchema>;
 export const SettingsSchema = Schema.Struct({
   paperless_url: Schema.NullOr(Schema.String),
   paperless_token: Schema.NullOr(Schema.String),
+  paperless_external_url: Schema.NullOr(Schema.String),
   ollama_url: Schema.NullOr(Schema.String),
   ollama_model_large: Schema.NullOr(Schema.String),
   ollama_model_small: Schema.NullOr(Schema.String),
@@ -44,6 +45,7 @@ export type Settings = Schema.Schema.Type<typeof SettingsSchema>;
 export const SettingsUpdateSchema = Schema.Struct({
   paperless_url: Schema.String.pipe(Schema.optional),
   paperless_token: Schema.String.pipe(Schema.optional),
+  paperless_external_url: Schema.String.pipe(Schema.optional),
   ollama_url: Schema.String.pipe(Schema.optional),
   ollama_model_large: Schema.String.pipe(Schema.optional),
   ollama_model_small: Schema.String.pipe(Schema.optional),

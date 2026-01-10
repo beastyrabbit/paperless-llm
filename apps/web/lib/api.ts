@@ -308,6 +308,7 @@ export const translationApi = {
 // Types
 export interface Settings {
   paperless_url: string;
+  paperless_external_url: string;
   paperless_connected: boolean;
   ollama_url: string;
   ollama_model_large: string;

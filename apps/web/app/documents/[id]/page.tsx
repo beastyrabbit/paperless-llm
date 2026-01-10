@@ -96,10 +96,12 @@ export default function DocumentDetailPage({
   // Content accordion - open if OCR not complete
   const [contentAccordionValue, setContentAccordionValue] = useState<string[]>([]);
 
-  // Fetch Paperless URL from settings
+  // Fetch Paperless URL from settings (prefer external URL if set)
   useEffect(() => {
     settingsApi.get().then(({ data }) => {
-      if (data?.paperless_url) {
+      if (data?.paperless_external_url) {
+        setPaperlessUrl(data.paperless_external_url);
+      } else if (data?.paperless_url) {
         setPaperlessUrl(data.paperless_url);
       }
     });

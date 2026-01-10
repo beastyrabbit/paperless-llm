@@ -266,7 +266,9 @@
       "title": "Paperless-ngx",
       "description": "Connect to your Paperless-ngx instance",
       "serverUrl": "Server URL",
-      "apiToken": "API Token"
+      "apiToken": "API Token",
+      "externalUrl": "External URL (Optional)",
+      "externalUrlDescription": "Public URL for opening documents in browser. Uses Server URL if not set."
     },
     "ollama": {
       "title": "Ollama Server",

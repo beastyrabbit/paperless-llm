@@ -38,6 +38,7 @@ export const getSettings = Effect.gen(function* () {
   // Merge DB settings with config defaults
   const paperlessUrl = get('paperless.url', paperless.url || '');
   const paperlessToken = get('paperless.token', paperless.token || '');
+  const paperlessExternalUrl = get('paperless.external_url', '');
   const ollamaUrl = get('ollama.url', ollama.url || '');
   const ollamaModelLarge = get('ollama.model_large', ollama.modelLarge || '');
   const ollamaModelSmall = get('ollama.model_small', ollama.modelSmall || '');
@@ -51,6 +52,7 @@ export const getSettings = Effect.gen(function* () {
   const settings: Settings = {
     paperless_url: paperlessUrl,
     paperless_token: paperlessToken,
+    paperless_external_url: paperlessExternalUrl,
     ollama_url: ollamaUrl,
     ollama_model_large: ollamaModelLarge,
     ollama_model_small: ollamaModelSmall,
@@ -88,6 +90,7 @@ export const getSettings = Effect.gen(function* () {
 const SETTINGS_KEY_MAP: Record<string, string> = {
   paperless_url: 'paperless.url',
   paperless_token: 'paperless.token',
+  paperless_external_url: 'paperless.external_url',
   ollama_url: 'ollama.url',
   ollama_model_large: 'ollama.model_large',
   ollama_model_small: 'ollama.model_small',

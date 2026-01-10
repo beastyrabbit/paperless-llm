@@ -121,6 +121,7 @@ interface Settings {
   // External Services
   paperless_url: string;
   paperless_token: string;
+  paperless_external_url: string;
   mistral_api_key: string;
   mistral_model: string;
   ollama_url: string;
@@ -233,6 +234,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings>({
     paperless_url: "",
     paperless_token: "",
+    paperless_external_url: "",
     mistral_api_key: "",
     mistral_model: "mistral-ocr-latest",
     ollama_url: "",
@@ -1317,6 +1319,18 @@ export default function SettingsPage() {
                         )}
                       </Button>
                     </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="paperless_external_url">{t("paperless.externalUrl")}</Label>
+                    <Input
+                      id="paperless_external_url"
+                      placeholder="https://paperless.example.com"
+                      value={settings.paperless_external_url}
+                      onChange={(e) => updateSetting("paperless_external_url", e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {t("paperless.externalUrlDescription")}
+                    </p>
                   </div>
                   <Button
                     variant="outline"
