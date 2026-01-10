@@ -31,7 +31,9 @@ import {
   streamConfirmationLoop,
   createAgentTools,
   type ConfirmationLoopConfig,
+  type ConfirmationLoopLogEvent,
 } from './graph/index.js';
+import type { ProcessingLogEventType } from '../services/TinyBaseService.js';
 
 // ===========================================================================
 // Types
@@ -216,8 +218,6 @@ Review the tag suggestions and provide your confirmation decision.`;
       },
     };
 
-    const graph = createConfirmationLoopGraph(graphConfig);
-
     return {
       name: 'tags' as const,
 
@@ -242,6 +242,33 @@ Review the tag suggestions and provide your confirmation decision.`;
             .map((id) => allTags.find((t) => t.id === id)?.name)
             .filter((n): n is string => !!n && !n.startsWith('llm-'));
 
+          // Create logger to collect all events
+          const logEntries: ConfirmationLoopLogEvent[] = [];
+          const logger = (event: ConfirmationLoopLogEvent) => {
+            logEntries.push(event);
+          };
+
+          // Log document context at start
+          logger({
+            eventType: 'prompt', // Use 'prompt' as context event
+            data: {
+              type: 'context',
+              docId: input.docId,
+              docTitle: input.docTitle,
+              documentType: input.documentType,
+              existingTags: filteredExistingTags,
+              currentTags: currentTagNames,
+            },
+            timestamp: new Date().toISOString(),
+          });
+
+          // Create graph with logger
+          const graphConfigWithLogger: ConfirmationLoopConfig<TagsAnalysis> = {
+            ...graphConfig,
+            logger,
+          };
+          const graph = createConfirmationLoopGraph(graphConfigWithLogger);
+
           // Run the graph
           const result = yield* Effect.tryPromise({
             try: () =>
@@ -261,6 +288,19 @@ Review the tag suggestions and provide your confirmation decision.`;
             catch: (e) => new AgentError({ message: `Tags graph failed: ${e}`, agent: 'tags', cause: e }),
           });
 
+          // Store all log entries (use captured timestamps and IDs)
+          for (const entry of logEntries) {
+            yield* tinybase.addProcessingLog({
+              id: entry.id,
+              docId: input.docId,
+              timestamp: entry.timestamp,
+              step: 'tags',
+              eventType: entry.eventType as ProcessingLogEventType,
+              data: entry.data,
+              parentId: entry.parentId,
+            });
+          }
+
           const analysis = result.analysis as TagsAnalysis | null;
 
           if (!result.success || !analysis) {
@@ -279,6 +319,20 @@ Review the tag suggestions and provide your confirmation decision.`;
             });
 
             yield* paperless.addTagToDocument(input.docId, tagConfig.manualReview);
+
+            // Log result
+            yield* tinybase.addProcessingLog({
+              docId: input.docId,
+              timestamp: new Date().toISOString(),
+              step: 'tags',
+              eventType: 'result',
+              data: {
+                success: false,
+                needsReview: true,
+                reasoning: result.error ?? 'Confirmation failed',
+                attempts: result.attempts,
+              },
+            });
 
             return {
               success: false,
@@ -350,6 +404,23 @@ Review the tag suggestions and provide your confirmation decision.`;
             tagConfig.tagsDone
           );
 
+          // Log result
+          yield* tinybase.addProcessingLog({
+            docId: input.docId,
+            timestamp: new Date().toISOString(),
+            step: 'tags',
+            eventType: 'result',
+            data: {
+              success: true,
+              appliedTags,
+              removedTags,
+              newTagsQueued,
+              reasoning: analysis.reasoning,
+              confidence: analysis.confidence,
+              attempts: result.attempts,
+            },
+          });
+
           return {
             success: true,
             value: appliedTags.join(', '),
@@ -389,6 +460,33 @@ Review the tag suggestions and provide your confirmation decision.`;
             const currentTagNames = input.currentTagIds
               .map((id) => allTags.find((t) => t.id === id)?.name)
               .filter((n): n is string => !!n && !n.startsWith('llm-'));
+
+            // Create logger to collect all events
+            const logEntries: ConfirmationLoopLogEvent[] = [];
+            const logger = (event: ConfirmationLoopLogEvent) => {
+              logEntries.push(event);
+            };
+
+            // Log document context at start
+            logger({
+              eventType: 'prompt',
+              data: {
+                type: 'context',
+                docId: input.docId,
+                docTitle: input.docTitle,
+                documentType: input.documentType,
+                existingTags: filteredExistingTags,
+                currentTags: currentTagNames,
+              },
+              timestamp: new Date().toISOString(),
+            });
+
+            // Create graph with logger
+            const graphConfigWithLogger: ConfirmationLoopConfig<TagsAnalysis> = {
+              ...graphConfig,
+              logger,
+            };
+            const graph = createConfirmationLoopGraph(graphConfigWithLogger);
 
             // Run graph and process results
             const result = yield* Effect.tryPromise({
@@ -502,6 +600,22 @@ Review the tag suggestions and provide your confirmation decision.`;
                     removedTags,
                   }))
                 );
+
+                // Log result
+                yield* tinybase.addProcessingLog({
+                  docId: input.docId,
+                  timestamp: new Date().toISOString(),
+                  step: 'tags',
+                  eventType: 'result',
+                  data: {
+                    success: true,
+                    appliedTags,
+                    removedTags,
+                    newTagsQueued,
+                    reasoning: lastAnalysis.reasoning,
+                    confidence: lastAnalysis.confidence,
+                  },
+                });
               }
 
               if (node === 'queue_review' && lastAnalysis) {
@@ -529,7 +643,33 @@ Review the tag suggestions and provide your confirmation decision.`;
                     removedTags: [],
                   }))
                 );
+
+                // Log result
+                yield* tinybase.addProcessingLog({
+                  docId: input.docId,
+                  timestamp: new Date().toISOString(),
+                  step: 'tags',
+                  eventType: 'result',
+                  data: {
+                    success: false,
+                    needsReview: true,
+                    reasoning: 'Max retries exceeded',
+                  },
+                });
               }
+            }
+
+            // Store all log entries (use captured timestamps and IDs)
+            for (const entry of logEntries) {
+              yield* tinybase.addProcessingLog({
+                id: entry.id,
+                docId: input.docId,
+                timestamp: entry.timestamp,
+                step: 'tags',
+                eventType: entry.eventType as ProcessingLogEventType,
+                data: entry.data,
+                parentId: entry.parentId,
+              });
             }
 
             yield* Effect.sync(() => emit.single(emitComplete('tags')));

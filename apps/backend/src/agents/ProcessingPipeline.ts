@@ -504,6 +504,20 @@ export const ProcessingPipelineServiceLive = Layer.effect(
 
             yield* paperless.transitionDocumentTag(docId, finalTag, tagConfig.processed);
 
+            // Log state transition
+            yield* tinybase.addProcessingLog({
+              docId,
+              timestamp: new Date().toISOString(),
+              step: 'pipeline',
+              eventType: 'state_transition',
+              data: {
+                fromTag: finalTag,
+                toTag: tagConfig.processed,
+                fromState: 'custom_fields_done',
+                toState: 'processed',
+              },
+            });
+
             results['complete'] = {
               step: 'complete',
               success: true,
@@ -868,6 +882,20 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             if (currentState === 'custom_fields_done') {
               const finalTag = tagConfig.tagsDone;
               yield* paperless.transitionDocumentTag(docId, finalTag, tagConfig.processed);
+
+              // Log state transition
+              yield* tinybase.addProcessingLog({
+                docId,
+                timestamp: new Date().toISOString(),
+                step: 'pipeline',
+                eventType: 'state_transition',
+                data: {
+                  fromTag: finalTag,
+                  toTag: tagConfig.processed,
+                  fromState: 'custom_fields_done',
+                  toState: 'processed',
+                },
+              });
             }
 
             yield* Effect.sync(() =>

@@ -28,7 +28,9 @@ import {
   streamConfirmationLoop,
   createAgentTools,
   type ConfirmationLoopConfig,
+  type ConfirmationLoopLogEvent,
 } from './graph/index.js';
+import type { ProcessingLogEventType } from '../services/TinyBaseService.js';
 
 // ===========================================================================
 // Types
@@ -168,13 +170,36 @@ Review this document type classification and provide your confirmation decision.
       },
     };
 
-    const graph = createConfirmationLoopGraph(graphConfig);
-
     return {
       name: 'document_type' as const,
 
       process: (input: DocumentTypeInput) =>
         Effect.gen(function* () {
+          // Create logger to collect all events
+          const logEntries: ConfirmationLoopLogEvent[] = [];
+          const logger = (event: ConfirmationLoopLogEvent) => {
+            logEntries.push(event);
+          };
+
+          // Log document context at start
+          logger({
+            eventType: 'prompt',
+            data: {
+              type: 'context',
+              docId: input.docId,
+              docTitle: input.docTitle,
+              existingDocumentTypes: input.existingDocumentTypes,
+            },
+            timestamp: new Date().toISOString(),
+          });
+
+          // Create graph with logger
+          const graphConfigWithLogger: ConfirmationLoopConfig<DocumentTypeAnalysis> = {
+            ...graphConfig,
+            logger,
+          };
+          const graph = createConfirmationLoopGraph(graphConfigWithLogger);
+
           const result = yield* Effect.tryPromise({
             try: () =>
               runConfirmationLoop(graph, {
@@ -186,6 +211,19 @@ Review this document type classification and provide your confirmation decision.
               }, `doctype-${input.docId}-${Date.now()}`),
             catch: (e) => new AgentError({ message: `DocumentType graph failed: ${e}`, agent: 'document_type', cause: e }),
           });
+
+          // Store all log entries (use captured timestamps and IDs)
+          for (const entry of logEntries) {
+            yield* tinybase.addProcessingLog({
+              id: entry.id,
+              docId: input.docId,
+              timestamp: entry.timestamp,
+              step: 'document_type',
+              eventType: entry.eventType as ProcessingLogEventType,
+              data: entry.data,
+              parentId: entry.parentId,
+            });
+          }
 
           const analysis = result.analysis as DocumentTypeAnalysis | null;
 
@@ -205,6 +243,20 @@ Review this document type classification and provide your confirmation decision.
 
             yield* paperless.addTagToDocument(input.docId, tagConfig.manualReview);
 
+            // Log result
+            yield* tinybase.addProcessingLog({
+              docId: input.docId,
+              timestamp: new Date().toISOString(),
+              step: 'document_type',
+              eventType: 'result',
+              data: {
+                success: false,
+                needsReview: true,
+                reasoning: result.error ?? 'Confirmation failed',
+                attempts: result.attempts,
+              },
+            });
+
             return {
               success: false,
               value: analysis?.suggested_document_type ?? null,
@@ -219,6 +271,20 @@ Review this document type classification and provide your confirmation decision.
           // Check if blocked
           const isBlocked = yield* tinybase.isBlocked(analysis.suggested_document_type, 'document_type');
           if (isBlocked) {
+            // Log blocked result
+            yield* tinybase.addProcessingLog({
+              docId: input.docId,
+              timestamp: new Date().toISOString(),
+              step: 'document_type',
+              eventType: 'result',
+              data: {
+                success: false,
+                blocked: true,
+                value: analysis.suggested_document_type,
+                reasoning: `Document type "${analysis.suggested_document_type}" is blocked`,
+              },
+            });
+
             return {
               success: false,
               value: null,
@@ -234,6 +300,22 @@ Review this document type classification and provide your confirmation decision.
           const docTypeId = yield* paperless.getOrCreateDocumentType(analysis.suggested_document_type);
           yield* paperless.updateDocument(input.docId, { document_type: docTypeId });
           yield* paperless.transitionDocumentTag(input.docId, tagConfig.correspondentDone, tagConfig.documentTypeDone);
+
+          // Log result
+          yield* tinybase.addProcessingLog({
+            docId: input.docId,
+            timestamp: new Date().toISOString(),
+            step: 'document_type',
+            eventType: 'result',
+            data: {
+              success: true,
+              value: analysis.suggested_document_type,
+              isNew: analysis.is_new,
+              reasoning: analysis.reasoning,
+              confidence: analysis.confidence,
+              attempts: result.attempts,
+            },
+          });
 
           return {
             success: true,
@@ -254,6 +336,31 @@ Review this document type classification and provide your confirmation decision.
         Stream.asyncEffect<StreamEvent, AgentError>((emit) =>
           Effect.gen(function* () {
             yield* Effect.sync(() => emit.single(emitStart('document_type')));
+
+            // Create logger to collect all events
+            const logEntries: ConfirmationLoopLogEvent[] = [];
+            const logger = (event: ConfirmationLoopLogEvent) => {
+              logEntries.push(event);
+            };
+
+            // Log document context at start
+            logger({
+              eventType: 'prompt',
+              data: {
+                type: 'context',
+                docId: input.docId,
+                docTitle: input.docTitle,
+                existingDocumentTypes: input.existingDocumentTypes,
+              },
+              timestamp: new Date().toISOString(),
+            });
+
+            // Create graph with logger
+            const graphConfigWithLogger: ConfirmationLoopConfig<DocumentTypeAnalysis> = {
+              ...graphConfig,
+              logger,
+            };
+            const graph = createConfirmationLoopGraph(graphConfigWithLogger);
 
             const result = yield* Effect.tryPromise({
               try: async () => {
@@ -301,6 +408,21 @@ Review this document type classification and provide your confirmation decision.
                   value: lastAnalysis!.suggested_document_type,
                   isNew: lastAnalysis!.is_new,
                 })));
+
+                // Log result
+                yield* tinybase.addProcessingLog({
+                  docId: input.docId,
+                  timestamp: new Date().toISOString(),
+                  step: 'document_type',
+                  eventType: 'result',
+                  data: {
+                    success: true,
+                    value: lastAnalysis.suggested_document_type,
+                    isNew: lastAnalysis.is_new,
+                    reasoning: lastAnalysis.reasoning,
+                    confidence: lastAnalysis.confidence,
+                  },
+                });
               }
 
               if (node === 'queue_review') {
@@ -318,7 +440,33 @@ Review this document type classification and provide your confirmation decision.
                 });
                 yield* paperless.addTagToDocument(input.docId, tagConfig.manualReview);
                 yield* Effect.sync(() => emit.single(emitResult('document_type', { success: false, needsReview: true })));
+
+                // Log result
+                yield* tinybase.addProcessingLog({
+                  docId: input.docId,
+                  timestamp: new Date().toISOString(),
+                  step: 'document_type',
+                  eventType: 'result',
+                  data: {
+                    success: false,
+                    needsReview: true,
+                    reasoning: 'Max retries exceeded',
+                  },
+                });
               }
+            }
+
+            // Store all log entries (use captured timestamps and IDs)
+            for (const entry of logEntries) {
+              yield* tinybase.addProcessingLog({
+                id: entry.id,
+                docId: input.docId,
+                timestamp: entry.timestamp,
+                step: 'document_type',
+                eventType: entry.eventType as ProcessingLogEventType,
+                data: entry.data,
+                parentId: entry.parentId,
+              });
             }
 
             yield* Effect.sync(() => emit.single(emitComplete('document_type')));

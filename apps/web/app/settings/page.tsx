@@ -38,6 +38,7 @@ import {
   User,
   Calendar,
   SkipForward,
+  Trash2,
 } from "lucide-react";
 import {
   Card,
@@ -67,11 +68,13 @@ import {
 } from "@repo/ui";
 import {
   jobsApi,
+  settingsApi,
   BootstrapProgress,
   BootstrapAnalysisType,
   JobScheduleStatus,
   ScheduleType,
   BulkOCRProgress,
+  ProcessingLogStats,
 } from "@/lib/api";
 import { ModelCombobox } from "@/components/model-combobox";
 import { ArrowRight } from "lucide-react";
@@ -376,6 +379,10 @@ export default function SettingsPage() {
   const [bulkOCRStarting, setBulkOCRStarting] = useState(false);
   const [bulkOCRDocsPerSecond, setBulkOCRDocsPerSecond] = useState(1.0);
   const [bulkOCRSkipExisting, setBulkOCRSkipExisting] = useState(true);
+
+  // Processing Logs state
+  const [processingLogStats, setProcessingLogStats] = useState<ProcessingLogStats | null>(null);
+  const [clearingLogs, setClearingLogs] = useState(false);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -1133,6 +1140,28 @@ export default function SettingsPage() {
     }
   };
 
+  // Processing Logs handlers
+  const loadProcessingLogStats = useCallback(async () => {
+    const { data } = await settingsApi.getProcessingLogStats();
+    if (data) {
+      setProcessingLogStats(data);
+    }
+  }, []);
+
+  const handleClearProcessingLogs = async () => {
+    setClearingLogs(true);
+    const { error } = await settingsApi.clearAllProcessingLogs();
+    if (!error) {
+      setProcessingLogStats({ totalLogs: 0, oldestLog: null, newestLog: null });
+    }
+    setClearingLogs(false);
+  };
+
+  // Load processing log stats on mount
+  useEffect(() => {
+    loadProcessingLogStats();
+  }, [loadProcessingLogStats]);
+
   const bulkOCRProgressPercent = bulkOCRProgress?.total
     ? Math.round((bulkOCRProgress.processed / bulkOCRProgress.total) * 100)
     : 0;
@@ -1239,9 +1268,9 @@ export default function SettingsPage() {
             </TabsTrigger>
           </TabsList>
 
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           {/* CONNECTIONS TAB */}
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           <TabsContent value="connections" className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-2">
               {/* Paperless-ngx */}
@@ -1617,9 +1646,9 @@ export default function SettingsPage() {
             </div>
           </TabsContent>
 
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           {/* PROCESSING TAB */}
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           <TabsContent value="processing" className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-2">
               {/* Auto-Processing */}
@@ -1738,9 +1767,9 @@ export default function SettingsPage() {
             </div>
           </TabsContent>
 
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           {/* PIPELINE TAB */}
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           <TabsContent value="pipeline" className="space-y-6">
             <Card>
               <CardHeader>
@@ -1774,9 +1803,9 @@ export default function SettingsPage() {
             </Card>
           </TabsContent>
 
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           {/* CUSTOM FIELDS TAB */}
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           <TabsContent value="custom-fields" className="space-y-6">
             {/* Header Card */}
             <Card>
@@ -1926,9 +1955,9 @@ export default function SettingsPage() {
             )}
           </TabsContent>
 
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           {/* AI TAGS TAB */}
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           <TabsContent value="ai-tags" className="space-y-6">
             {/* Header Card */}
             <Card>
@@ -2190,9 +2219,9 @@ export default function SettingsPage() {
             )}
           </TabsContent>
 
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           {/* AI DOCUMENT TYPES TAB */}
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           <TabsContent value="ai-document-types" className="space-y-6">
             {/* Header Card */}
             <Card>
@@ -2337,9 +2366,9 @@ export default function SettingsPage() {
             )}
           </TabsContent>
 
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           {/* WORKFLOW TAGS TAB */}
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           <TabsContent value="workflow-tags" className="space-y-6">
             {/* Tags Status Card */}
             <Card>
@@ -2503,9 +2532,9 @@ export default function SettingsPage() {
             </Card>
           </TabsContent>
 
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           {/* LANGUAGE TAB */}
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           <TabsContent value="language" className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-2">
               {/* Prompt Language */}
@@ -2764,9 +2793,9 @@ export default function SettingsPage() {
             </Card>
           </TabsContent>
 
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           {/* ADVANCED TAB */}
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           <TabsContent value="advanced" className="space-y-6">
             <Card>
               <CardHeader>
@@ -2818,9 +2847,9 @@ export default function SettingsPage() {
             </Card>
           </TabsContent>
 
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           {/* MAINTENANCE TAB */}
-          {/* ============================================================= */}
+          {/* ------------------------------------------------------------- */}
           <TabsContent value="maintenance" className="space-y-6">
             {/* Error Alert */}
             {maintenanceError && (
@@ -3233,6 +3262,42 @@ export default function SettingsPage() {
                     />
                   </>
                 ) : null}
+              </CardContent>
+            </Card>
+
+            {/* Processing Logs Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>{tMaint("processingLogs.title")}</CardTitle>
+                <CardDescription>{tMaint("processingLogs.description")}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-50 dark:bg-zinc-900">
+                  <div className="space-y-1">
+                    <div className="text-sm font-medium">{tMaint("processingLogs.totalLogs")}</div>
+                    <div className="text-2xl font-bold">{processingLogStats?.totalLogs ?? 0}</div>
+                    {processingLogStats?.oldestLog && processingLogStats?.newestLog && (
+                      <div className="text-xs text-zinc-500">
+                        {tMaint("processingLogs.dateRange", {
+                          from: new Date(processingLogStats.oldestLog).toLocaleDateString(),
+                          to: new Date(processingLogStats.newestLog).toLocaleDateString(),
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <Button
+                    variant="destructive"
+                    onClick={handleClearProcessingLogs}
+                    disabled={clearingLogs || (processingLogStats?.totalLogs ?? 0) === 0}
+                  >
+                    {clearingLogs ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4 mr-2" />
+                    )}
+                    {tMaint("processingLogs.clearAll")}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

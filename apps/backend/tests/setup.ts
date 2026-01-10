@@ -13,6 +13,9 @@ import { Effect, Layer, Context } from 'effect';
 // Global Setup
 // ===========================================================================
 
+// Save the original fetch before mocking (for integration tests)
+export const originalFetch = globalThis.fetch;
+
 // Mock fetch globally for tests
 global.fetch = vi.fn();
 

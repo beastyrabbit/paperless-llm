@@ -54,6 +54,13 @@ export const settingsApi = {
       method: "PATCH",
       body: JSON.stringify({ selected_type_ids: selectedTypeIds }),
     }),
+  // Processing Logs
+  getProcessingLogStats: () =>
+    fetchApi<ProcessingLogStats>("/api/settings/processing-logs/stats"),
+  clearAllProcessingLogs: () =>
+    fetchApi<{ success: boolean; message: string }>("/api/settings/processing-logs", {
+      method: "DELETE",
+    }),
 };
 
 // Documents API
@@ -90,6 +97,12 @@ export const processingApi = {
       method: "POST",
     }),
   getStatus: () => fetchApi<ProcessingStatus>("/api/processing/status"),
+  getLogs: (docId: number) =>
+    fetchApi<{ logs: ProcessingLogEntry[] }>(`/api/processing/${docId}/logs`),
+  clearLogs: (docId: number) =>
+    fetchApi<{ success: boolean }>(`/api/processing/${docId}/logs`, {
+      method: "DELETE",
+    }),
 };
 
 // Prompts API
@@ -779,4 +792,34 @@ export interface BulkOCRStartResponse {
   docs_per_second: number;
   skip_existing: boolean;
   status: string;
+}
+
+// Processing Logs Types
+export type ProcessingLogEventType =
+  | "context"
+  | "prompt"
+  | "response"
+  | "thinking"
+  | "tool_call"
+  | "tool_result"
+  | "confirming"
+  | "retry"
+  | "result"
+  | "error"
+  | "state_transition";
+
+export interface ProcessingLogEntry {
+  id: string;
+  docId: number;
+  timestamp: string;
+  step: string;
+  eventType: ProcessingLogEventType;
+  data: Record<string, unknown>;
+  parentId?: string;
+}
+
+export interface ProcessingLogStats {
+  totalLogs: number;
+  oldestLog: string | null;
+  newestLog: string | null;
 }

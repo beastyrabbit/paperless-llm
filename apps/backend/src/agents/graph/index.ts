@@ -52,6 +52,8 @@ export {
   type ConfirmationLoopConfig,
   type ConfirmationLoopInput,
   type ConfirmationLoopResult,
+  type ConfirmationLoopLogEvent,
+  type ConfirmationLoopLogEventType,
   createConfirmationLoopGraph,
   runConfirmationLoop,
   streamConfirmationLoop,

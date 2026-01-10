@@ -1,19 +1,43 @@
 /**
  * Processing API handlers.
  *
- * Stub implementations for document processing endpoints.
+ * Document processing endpoints that invoke the processing pipeline.
  */
 import { Effect } from 'effect';
+import { TinyBaseService } from '../../services/index.js';
+import { ProcessingPipelineService } from '../../agents/ProcessingPipeline.js';
 
 // ===========================================================================
 // Processing Control
 // ===========================================================================
 
 export const startProcessing = (docId: number, step?: string) =>
-  Effect.succeed({
-    status: 'started',
-    doc_id: docId,
-    step: step ?? 'all',
+  Effect.gen(function* () {
+    const pipeline = yield* ProcessingPipelineService;
+
+    if (step && step !== 'all') {
+      // Process a specific step
+      const result = yield* pipeline.processStep(docId, step);
+      return {
+        status: result.success ? 'completed' : 'failed',
+        doc_id: docId,
+        step,
+        data: result.data,
+        error: result.error,
+      };
+    } else {
+      // Process all steps
+      const result = yield* pipeline.processDocument({ docId });
+      return {
+        status: result.success ? 'completed' : (result.needsReview ? 'needs_review' : 'failed'),
+        doc_id: docId,
+        step: 'all',
+        data: result.steps,
+        needsReview: result.needsReview,
+        schemaReviewNeeded: result.schemaReviewNeeded,
+        error: result.error,
+      };
+    }
   });
 
 export const confirmProcessing = (docId: number, confirmed: boolean) =>
@@ -35,3 +59,21 @@ export const getProcessingStatus = Effect.succeed({
   processed_today: 0,
   errors_today: 0,
 });
+
+// ===========================================================================
+// Processing Logs
+// ===========================================================================
+
+export const getProcessingLogs = (docId: number) =>
+  Effect.gen(function* () {
+    const tinybase = yield* TinyBaseService;
+    const logs = yield* tinybase.getProcessingLogs(docId);
+    return { logs };
+  });
+
+export const clearProcessingLogs = (docId: number) =>
+  Effect.gen(function* () {
+    const tinybase = yield* TinyBaseService;
+    yield* tinybase.clearProcessingLogs(docId);
+    return { success: true };
+  });

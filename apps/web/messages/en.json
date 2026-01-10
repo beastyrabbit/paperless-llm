@@ -84,8 +84,15 @@
     "processing": "Processing...",
     "loadingDocuments": "Loading documents...",
     "search": "Search documents...",
+    "searchingAll": "Searching all documents...",
+    "searchIgnoresFilter": "Search ignores filter",
     "filterByStatus": "Filter by status",
     "allStatus": "All Status",
+    "columnId": "ID",
+    "columnTitle": "Title",
+    "columnDate": "Date",
+    "columnStatus": "Status",
+    "columnLogs": "Logs",
     "correspondent": "Correspondent",
     "documentType": "Document Type",
     "created": "Created",
@@ -507,6 +514,13 @@
       "weekly": "Weekly",
       "monthly": "Monthly",
       "customCron": "Custom"
+    },
+    "processingLogs": {
+      "title": "Processing Logs",
+      "description": "Clear stored LLM processing logs to free up space.",
+      "totalLogs": "Total log entries",
+      "dateRange": "From {from} to {to}",
+      "clearAll": "Clear All Logs"
     }
   }
 }

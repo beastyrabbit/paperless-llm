@@ -84,8 +84,15 @@
     "processing": "Verarbeitung...",
     "loadingDocuments": "Dokumente werden geladen...",
     "search": "Dokumente suchen...",
+    "searchingAll": "Alle Dokumente durchsuchen...",
+    "searchIgnoresFilter": "Suche ignoriert Filter",
     "filterByStatus": "Nach Status filtern",
     "allStatus": "Alle Status",
+    "columnId": "ID",
+    "columnTitle": "Titel",
+    "columnDate": "Datum",
+    "columnStatus": "Status",
+    "columnLogs": "Logs",
     "correspondent": "Korrespondent",
     "documentType": "Dokumenttyp",
     "created": "Erstellt",
@@ -507,6 +514,13 @@
       "weekly": "Wöchentlich",
       "monthly": "Monatlich",
       "customCron": "Benutzerdefiniert"
+    },
+    "processingLogs": {
+      "title": "Verarbeitungsprotokolle",
+      "description": "Löschen Sie gespeicherte LLM-Verarbeitungsprotokolle, um Speicherplatz freizugeben.",
+      "totalLogs": "Gesamte Protokolleinträge",
+      "dateRange": "Von {from} bis {to}",
+      "clearAll": "Alle Logs löschen"
     }
   }
 }

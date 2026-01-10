@@ -617,3 +617,25 @@ export const clearDatabase = Effect.gen(function* () {
     deleted_count: count,
   } as ClearDatabaseResult;
 });
+
+// ===========================================================================
+// Processing Logs
+// ===========================================================================
+
+/**
+ * Get processing log statistics.
+ */
+export const getProcessingLogStats = Effect.gen(function* () {
+  const tinybase = yield* TinyBaseService;
+  const stats = yield* tinybase.getProcessingLogStats();
+  return stats;
+});
+
+/**
+ * Clear all processing logs.
+ */
+export const clearAllProcessingLogs = Effect.gen(function* () {
+  const tinybase = yield* TinyBaseService;
+  yield* tinybase.clearAllProcessingLogs();
+  return { success: true, message: 'All processing logs cleared' };
+});
