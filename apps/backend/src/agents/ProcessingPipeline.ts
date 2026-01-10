@@ -271,6 +271,9 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             }
 
             currentState = 'title_done';
+          } else if (isState(currentState, 'ocr_done', 'schema_analysis_done')) {
+            // Skip disabled step but advance state
+            currentState = 'title_done';
           }
 
           // Step 4: Correspondent
@@ -315,6 +318,9 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             }
 
             currentState = 'correspondent_done';
+          } else if (currentState === 'title_done') {
+            // Skip disabled step but advance state
+            currentState = 'correspondent_done';
           }
 
           // Step 5: Document Type
@@ -358,6 +364,9 @@ export const ProcessingPipelineServiceLive = Layer.effect(
               };
             }
 
+            currentState = 'document_type_done';
+          } else if (currentState === 'correspondent_done') {
+            // Skip disabled step but advance state
             currentState = 'document_type_done';
           }
 
@@ -418,6 +427,9 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             }
 
             currentState = 'tags_done';
+          } else if (currentState === 'document_type_done') {
+            // Skip disabled step but advance state
+            currentState = 'tags_done';
           }
 
           // Step 7: Custom Fields (optional)
@@ -465,10 +477,13 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             };
 
             currentState = 'custom_fields_done';
+          } else if (currentState === 'tags_done') {
+            // Skip disabled step but advance state
+            currentState = 'custom_fields_done';
           }
 
           // Complete pipeline
-          if (currentState === 'tags_done' || currentState === 'custom_fields_done') {
+          if (currentState === 'custom_fields_done') {
             // Transition to processed
             const finalTag = pipelineConfig.enableCustomFields
               ? tagConfig.tagsDone // Custom fields doesn't have its own tag in config
@@ -622,10 +637,218 @@ export const ProcessingPipelineServiceLive = Layer.effect(
               }
 
               currentState = 'title_done';
+            } else if (isState(currentState, 'ocr_done', 'schema_analysis_done')) {
+              // Skip disabled step but advance state
+              currentState = 'title_done';
             }
 
-            // Continue with remaining steps...
-            // (Correspondent, Document Type, Tags, Custom Fields follow same pattern)
+            // Correspondent
+            if (currentState === 'title_done' && pipelineConfig.enableCorrespondent) {
+              yield* Effect.sync(() =>
+                emit.single({ type: 'step_start', docId, step: 'correspondent' })
+              );
+
+              const correspondents = yield* paperless.getCorrespondents();
+              const corrResult = yield* correspondentAgent
+                .process({
+                  docId,
+                  content,
+                  docTitle: doc.title ?? `Document ${docId}`,
+                  existingCorrespondents: correspondents.map((c) => c.name),
+                })
+                .pipe(
+                  Effect.catchAll((e) =>
+                    Effect.succeed({
+                      success: false,
+                      value: null,
+                      reasoning: String(e),
+                      confidence: 0,
+                      alternatives: [],
+                      attempts: 0,
+                      needsReview: true,
+                    })
+                  )
+                );
+
+              yield* Effect.sync(() =>
+                emit.single({ type: 'step_complete', docId, step: 'correspondent', data: corrResult })
+              );
+
+              if (corrResult.needsReview) {
+                yield* Effect.sync(() =>
+                  emit.single({ type: 'needs_review', docId, step: 'correspondent', data: corrResult })
+                );
+                yield* Effect.sync(() => emit.end());
+                return;
+              }
+
+              currentState = 'correspondent_done';
+            } else if (currentState === 'title_done') {
+              currentState = 'correspondent_done';
+            }
+
+            // Document Type
+            if (currentState === 'correspondent_done' && pipelineConfig.enableDocumentType) {
+              yield* Effect.sync(() =>
+                emit.single({ type: 'step_start', docId, step: 'document_type' })
+              );
+
+              const docTypes = yield* paperless.getDocumentTypes();
+              const dtResult = yield* documentTypeAgent
+                .process({
+                  docId,
+                  content,
+                  docTitle: doc.title ?? `Document ${docId}`,
+                  existingDocumentTypes: docTypes.map((dt) => dt.name),
+                })
+                .pipe(
+                  Effect.catchAll((e) =>
+                    Effect.succeed({
+                      success: false,
+                      value: null,
+                      reasoning: String(e),
+                      confidence: 0,
+                      alternatives: [],
+                      attempts: 0,
+                      needsReview: true,
+                    })
+                  )
+                );
+
+              yield* Effect.sync(() =>
+                emit.single({ type: 'step_complete', docId, step: 'document_type', data: dtResult })
+              );
+
+              if (dtResult.needsReview) {
+                yield* Effect.sync(() =>
+                  emit.single({ type: 'needs_review', docId, step: 'document_type', data: dtResult })
+                );
+                yield* Effect.sync(() => emit.end());
+                return;
+              }
+
+              currentState = 'document_type_done';
+            } else if (currentState === 'correspondent_done') {
+              currentState = 'document_type_done';
+            }
+
+            // Tags
+            if (currentState === 'document_type_done' && pipelineConfig.enableTags) {
+              yield* Effect.sync(() =>
+                emit.single({ type: 'step_start', docId, step: 'tags' })
+              );
+
+              const existingTags = yield* paperless.getTags();
+              const updatedDoc = yield* paperless.getDocument(docId);
+              const docType = updatedDoc.document_type;
+              let documentTypeName: string | undefined;
+
+              if (docType) {
+                const allDocTypes = yield* paperless.getDocumentTypes();
+                const foundType = allDocTypes.find((dt) => dt.id === docType);
+                documentTypeName = foundType?.name;
+              }
+
+              const tagsResult = yield* tagsAgent
+                .process({
+                  docId,
+                  content,
+                  docTitle: updatedDoc.title ?? `Document ${docId}`,
+                  documentType: documentTypeName,
+                  existingTags: existingTags.map((t) => t.name),
+                  currentTagIds: [...(updatedDoc.tags ?? [])],
+                })
+                .pipe(
+                  Effect.catchAll((e) =>
+                    Effect.succeed({
+                      success: false,
+                      value: null,
+                      reasoning: String(e),
+                      confidence: 0,
+                      alternatives: [],
+                      attempts: 0,
+                      needsReview: true,
+                      tags: [],
+                      newTags: [],
+                      removedTags: [],
+                      newTagsQueued: [],
+                    })
+                  )
+                );
+
+              yield* Effect.sync(() =>
+                emit.single({ type: 'step_complete', docId, step: 'tags', data: tagsResult })
+              );
+
+              if (tagsResult.needsReview && !tagsResult.success) {
+                yield* Effect.sync(() =>
+                  emit.single({ type: 'needs_review', docId, step: 'tags', data: tagsResult })
+                );
+                yield* Effect.sync(() => emit.end());
+                return;
+              }
+
+              currentState = 'tags_done';
+            } else if (currentState === 'document_type_done') {
+              currentState = 'tags_done';
+            }
+
+            // Custom Fields (optional)
+            if (currentState === 'tags_done' && pipelineConfig.enableCustomFields) {
+              yield* Effect.sync(() =>
+                emit.single({ type: 'step_start', docId, step: 'custom_fields' })
+              );
+
+              const customFields = yield* paperless.getCustomFields();
+              const updatedDoc = yield* paperless.getDocument(docId);
+              const docType = updatedDoc.document_type;
+              let documentTypeName: string | undefined;
+
+              if (docType) {
+                const allDocTypes = yield* paperless.getDocumentTypes();
+                const foundType = allDocTypes.find((dt) => dt.id === docType);
+                documentTypeName = foundType?.name;
+              }
+
+              const cfResult = yield* customFieldsAgent
+                .process({
+                  docId,
+                  content,
+                  documentType: documentTypeName,
+                  customFields,
+                })
+                .pipe(
+                  Effect.catchAll((e) =>
+                    Effect.succeed({
+                      success: true,
+                      value: null,
+                      reasoning: String(e),
+                      confidence: 0,
+                      alternatives: [],
+                      attempts: 0,
+                      needsReview: false,
+                      fields: [],
+                      updatedFields: [],
+                      skipped: true,
+                      skipReason: String(e),
+                    })
+                  )
+                );
+
+              yield* Effect.sync(() =>
+                emit.single({ type: 'step_complete', docId, step: 'custom_fields', data: cfResult })
+              );
+
+              currentState = 'custom_fields_done';
+            } else if (currentState === 'tags_done') {
+              currentState = 'custom_fields_done';
+            }
+
+            // Complete pipeline
+            if (currentState === 'custom_fields_done') {
+              const finalTag = tagConfig.tagsDone;
+              yield* paperless.transitionDocumentTag(docId, finalTag, tagConfig.processed);
+            }
 
             yield* Effect.sync(() =>
               emit.single({ type: 'pipeline_complete', docId })

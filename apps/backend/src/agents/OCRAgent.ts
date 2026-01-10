@@ -209,64 +209,65 @@ export const OCRAgentServiceLive = Layer.effect(
 
             yield* Effect.sync(() => emit.single(emitStart('ocr')));
 
-            try {
-              if (mockMode) {
-                yield* Effect.sync(() =>
-                  emit.single(emitAnalyzing('ocr', 'Using existing content (mock mode)'))
-                );
-
-                const doc = yield* paperless.getDocument(docId);
-                const existingContent = doc.content ?? '';
-
-                yield* paperless.transitionDocumentTag(docId, tagConfig.pending, tagConfig.ocrDone);
-
-                yield* Effect.sync(() =>
-                  emit.single(
-                    emitResult('ocr', {
-                      success: true,
-                      docId,
-                      textLength: existingContent.length,
-                      pages: 1,
-                      mock: true,
-                    })
-                  )
-                );
-              } else {
-                yield* Effect.sync(() =>
-                  emit.single(emitAnalyzing('ocr', 'Downloading PDF from Paperless'))
-                );
-
-                const pdfBytes = yield* paperless.downloadPdf(docId);
-
-                yield* Effect.sync(() =>
-                  emit.single(emitAnalyzing('ocr', 'Running Mistral OCR'))
-                );
-
-                const ocrResult = yield* runMistralOCR(pdfBytes);
-
-                yield* paperless.transitionDocumentTag(docId, tagConfig.pending, tagConfig.ocrDone);
-
-                yield* Effect.sync(() =>
-                  emit.single(
-                    emitResult('ocr', {
-                      success: true,
-                      docId,
-                      textLength: ocrResult.text.length,
-                      pages: ocrResult.pages,
-                    })
-                  )
-                );
-              }
-
-              yield* Effect.sync(() => emit.single(emitComplete('ocr')));
-              yield* Effect.sync(() => emit.end());
-            } catch (error) {
+            if (mockMode) {
               yield* Effect.sync(() =>
-                emit.single(emitError('ocr', String(error)))
+                emit.single(emitAnalyzing('ocr', 'Using existing content (mock mode)'))
               );
-              yield* Effect.sync(() => emit.end());
+
+              const doc = yield* paperless.getDocument(docId);
+              const existingContent = doc.content ?? '';
+
+              yield* paperless.transitionDocumentTag(docId, tagConfig.pending, tagConfig.ocrDone);
+
+              yield* Effect.sync(() =>
+                emit.single(
+                  emitResult('ocr', {
+                    success: true,
+                    docId,
+                    textLength: existingContent.length,
+                    pages: 1,
+                    mock: true,
+                  })
+                )
+              );
+            } else {
+              yield* Effect.sync(() =>
+                emit.single(emitAnalyzing('ocr', 'Downloading PDF from Paperless'))
+              );
+
+              const pdfBytes = yield* paperless.downloadPdf(docId);
+
+              yield* Effect.sync(() =>
+                emit.single(emitAnalyzing('ocr', 'Running Mistral OCR'))
+              );
+
+              const ocrResult = yield* runMistralOCR(pdfBytes);
+
+              yield* paperless.transitionDocumentTag(docId, tagConfig.pending, tagConfig.ocrDone);
+
+              yield* Effect.sync(() =>
+                emit.single(
+                  emitResult('ocr', {
+                    success: true,
+                    docId,
+                    textLength: ocrResult.text.length,
+                    pages: ocrResult.pages,
+                  })
+                )
+              );
             }
+
+            yield* Effect.sync(() => emit.single(emitComplete('ocr')));
+            yield* Effect.sync(() => emit.end());
           }).pipe(
+            Effect.catchAll((error) =>
+              Effect.gen(function* () {
+                yield* Effect.sync(() =>
+                  emit.single(emitError('ocr', String(error)))
+                );
+                yield* Effect.sync(() => emit.end());
+              })
+            ),
             Effect.mapError((e) =>
               new AgentError({
                 message: `OCR stream failed: ${e}`,

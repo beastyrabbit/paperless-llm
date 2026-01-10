@@ -276,10 +276,10 @@ export const TagsAgentServiceLive = Layer.effect(
                 yield* paperless.updateDocument(input.docId, { tags: updatedTagIds });
               }
 
-              // TagsAgent runs after TitleAgent in current pipeline
+              // TagsAgent runs after DocumentTypeAgent in pipeline
               yield* paperless.transitionDocumentTag(
                 input.docId,
-                tagConfig.titleDone,
+                tagConfig.documentTypeDone,
                 tagConfig.tagsDone
               );
 
@@ -387,7 +387,7 @@ export const TagsAgentServiceLive = Layer.effect(
                 // No tags to suggest - this is valid
                 yield* paperless.transitionDocumentTag(
                   input.docId,
-                  tagConfig.titleDone,
+                  tagConfig.documentTypeDone,
                   tagConfig.tagsDone
                 );
 
@@ -482,7 +482,7 @@ export const TagsAgentServiceLive = Layer.effect(
 
                 yield* paperless.transitionDocumentTag(
                   input.docId,
-                  tagConfig.titleDone,
+                  tagConfig.documentTypeDone,
                   tagConfig.tagsDone
                 );
 
