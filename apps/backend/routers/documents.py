@@ -52,18 +52,33 @@ class QueueStats(BaseModel):
     total_documents: int
 
 
+class PaperlessNotConfiguredError(Exception):
+    """Raised when Paperless is not properly configured."""
+
+    pass
+
+
 def get_paperless_client(settings: Settings = Depends(get_settings)) -> PaperlessClient:
     """Get Paperless client dependency."""
+    if not settings.paperless_url or not settings.paperless_token:
+        raise PaperlessNotConfiguredError("Paperless URL or token not configured")
     return PaperlessClient(settings.paperless_url, settings.paperless_token)
 
 
 @router.get("/queue", response_model=QueueStats)
 async def get_queue_stats(
-    client: PaperlessClient = Depends(get_paperless_client),
     settings: Settings = Depends(get_settings),
 ):
     """Get document processing queue statistics."""
+    # Check if Paperless is configured
+    if not settings.paperless_url or not settings.paperless_token:
+        raise HTTPException(
+            status_code=503,
+            detail="Paperless not configured. Please set paperless_url and paperless_token in settings.",
+        )
+
     try:
+        client = PaperlessClient(settings.paperless_url, settings.paperless_token)
         stats = await client.get_queue_stats(
             tag_pending=settings.tag_pending,
             tag_ocr_done=settings.tag_ocr_done,
@@ -84,11 +99,18 @@ async def get_pending_documents(
         default=None, description="Filter by specific tag, or 'all' for all pipeline docs"
     ),
     limit: int = Query(default=50, le=100),
-    client: PaperlessClient = Depends(get_paperless_client),
     settings: Settings = Depends(get_settings),
 ):
     """Get documents pending processing."""
+    # Check if Paperless is configured
+    if not settings.paperless_url or not settings.paperless_token:
+        raise HTTPException(
+            status_code=503,
+            detail="Paperless not configured. Please set paperless_url and paperless_token in settings.",
+        )
+
     try:
+        client = PaperlessClient(settings.paperless_url, settings.paperless_token)
         # If no tag or "all", fetch documents with any pipeline tag
         if not tag or tag == "all":
             pipeline_tags = [

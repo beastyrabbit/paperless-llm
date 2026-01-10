@@ -118,6 +118,11 @@ class BackgroundWorker:
 
     async def _process_queue(self):
         """Process all pending documents in queue."""
+        # Check if Paperless is configured
+        if not self.settings.paperless_url or not self.settings.paperless_token:
+            logger.debug("Paperless not configured, skipping queue processing")
+            return
+
         try:
             # Get pending documents
             pending_docs = await self.paperless.get_documents_by_tag(
@@ -156,7 +161,7 @@ class BackgroundWorker:
                     self._current_doc_id = None
 
         except Exception as e:
-            print(f"Error getting pending documents: {e}")
+            logger.warning(f"Error getting pending documents: {e}")
 
     async def process_single(self, doc_id: int) -> dict[str, Any]:
         """Process a single document immediately (for manual processing)."""
