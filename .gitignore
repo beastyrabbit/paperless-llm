@@ -12,6 +12,7 @@ apps/backend/.env
 # Tool-specific
 .serena/
 .playwright-mcp/
+.claude/
 
 # Python
 __pycache__/
@@ -49,6 +50,9 @@ apps/backend/.venv
 
 # testing
 /coverage
+**/coverage/
+playwright-report/
+test-results/
 
 # turbo
 .turbo
@@ -59,6 +63,7 @@ apps/backend/.venv
 
 # production
 /build
+dist/
 
 # misc
 .DS_Store
