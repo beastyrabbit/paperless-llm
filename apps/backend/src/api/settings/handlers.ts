@@ -556,13 +556,17 @@ export const updateCustomFields = (selectedFieldIds: number[]) =>
 
 export const getAiDocumentTypes = Effect.gen(function* () {
   const paperless = yield* PaperlessService;
+  const tinybase = yield* TinyBaseService;
 
   const docTypes = yield* pipe(
     paperless.getDocumentTypes(),
     Effect.catchAll(() => Effect.succeed([]))
   );
 
-  // For now, return all document types as available
+  // Get selected document type IDs from TinyBase
+  const selectedJson = yield* tinybase.getSetting('ai_document_type_ids');
+  const selectedTypeIds = selectedJson ? JSON.parse(selectedJson) as number[] : [];
+
   return {
     document_types: docTypes.map((dt) => ({
       id: dt.id,
@@ -570,7 +574,7 @@ export const getAiDocumentTypes = Effect.gen(function* () {
       slug: dt.slug ?? '',
       document_count: dt.document_count ?? 0,
     })),
-    selected_type_ids: [] as number[],
+    selected_type_ids: selectedTypeIds,
   };
 });
 
