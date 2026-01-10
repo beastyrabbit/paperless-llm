@@ -44,6 +44,7 @@ export function usePending() {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const isInitialLoad = useRef(true);
+  const isMounted = useRef(true);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -88,6 +89,9 @@ export function usePending() {
         pendingApi.list(),
       ]);
 
+      // Check if component is still mounted before updating state
+      if (!isMounted.current) return;
+
       if (countsResponse.error) { setError(countsResponse.error); return; }
       if (itemsResponse.error) { setError(itemsResponse.error); return; }
       if (!countsResponse.data || !itemsResponse.data) {
@@ -109,8 +113,10 @@ export function usePending() {
         return updated;
       });
     } catch (err) {
+      if (!isMounted.current) return;
       setError(String(err));
     } finally {
+      if (!isMounted.current) return;
       if (showLoading) setLoading(false);
       isInitialLoad.current = false;
     }
@@ -119,6 +125,7 @@ export function usePending() {
   const loadEntities = useCallback(async () => {
     try {
       const response = await pendingApi.searchEntities();
+      if (!isMounted.current) return;
       if (!response.error && response.data) setExistingEntities(response.data);
     } catch { /* Silently fail */ }
   }, []);
@@ -126,6 +133,7 @@ export function usePending() {
   const loadBlockedItems = useCallback(async () => {
     try {
       const response = await pendingApi.getBlocked();
+      if (!isMounted.current) return;
       if (!response.error && response.data) setBlockedItems(response.data);
     } catch { /* Silently fail */ }
   }, []);
@@ -134,11 +142,20 @@ export function usePending() {
     setUnblockingId(blockId);
     try {
       const response = await pendingApi.unblock(blockId);
+      if (!isMounted.current) return;
       if (!response.error) await loadBlockedItems();
     } finally {
-      setUnblockingId(null);
+      if (isMounted.current) setUnblockingId(null);
     }
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     loadData(true);
