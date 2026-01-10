@@ -7,20 +7,26 @@
     "dev": "turbo run dev",
     "dev:web": "turbo run dev --filter=@repo/web",
     "dev:backend": "turbo run dev --filter=@repo/backend",
+    "dev:backend-py": "cd apps/backend && uv run uvicorn main:app --reload --port 8000",
+    "dev:backend-ts": "turbo run dev --filter=@repo/backend-ts",
+    "dev:parallel": "concurrently \"pnpm dev:backend-py\" \"pnpm dev:backend-ts\" \"pnpm dev:web\"",
+    "migrate": "pnpm exec tsx scripts/migrate-to-tinybase.ts",
+    "migrate:dry-run": "pnpm exec tsx scripts/migrate-to-tinybase.ts --dry-run",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "test:unit": "turbo run test:unit",
+    "test:e2e": "turbo run test:e2e",
     "format": "turbo run format",
     "clean": "turbo run clean && rm -rf node_modules .turbo",
-    "precommit": "pre-commit run --all-files"
+    "precommit": "turbo run precommit --filter='...[HEAD^]'"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "better-sqlite3": "^12.5.0",
+    "concurrently": "^9.2.1",
+    "tsx": "^4.19.2",
     "turbo": "^2.5.0"
   },
-  "packageManager": "bun@1.2.0",
-  "workspaces": ["apps/*", "packages/*"],
-  "trustedDependencies": [
-    "sharp",
-    "unrs-resolver"
-  ]
+  "packageManager": "pnpm@9.15.0"
 }

@@ -40,34 +40,14 @@ repos:
         files: ^apps/backend/
 
   # =============================================================================
-  # Python: Type checking with mypy (optional - disabled by default due to
-  # third-party library issues, enable with: pre-commit run mypy --all-files)
-  # =============================================================================
-  # - repo: local
-  #   hooks:
-  #     - id: mypy
-  #       name: mypy (Python type check)
-  #       entry: bash -c 'cd backend && uv run mypy . --ignore-missing-imports --no-error-summary'
-  #       language: system
-  #       types: [python]
-  #       files: ^apps/backend/
-  #       pass_filenames: false
-
-  # =============================================================================
-  # TypeScript/JavaScript: Type checking and linting
+  # Turbo: Unified TypeScript linting and type checking
   # =============================================================================
   - repo: local
     hooks:
-      - id: typescript
-        name: TypeScript type check
-        entry: bash -c 'bun run typecheck'
-        language: system
-        files: \.(ts|tsx)$
-        pass_filenames: false
-
-      - id: eslint
-        name: ESLint
-        entry: bash -c 'bun run lint'
+      - id: turbo-precommit
+        name: Turbo Pre-commit Checks
+        entry: pnpm turbo run precommit --filter='...[HEAD^]'
         language: system
         files: \.(ts|tsx|js|jsx|mjs)$
         pass_filenames: false
+        always_run: true

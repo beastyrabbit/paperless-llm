@@ -1,0 +1,462 @@
+/**
+ * Settings API handlers tests.
+ *
+ * Tests for settings CRUD and connection testing endpoints.
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Effect, Layer } from 'effect';
+import * as settingsHandlers from '../../src/api/settings/handlers.js';
+import { ConfigService } from '../../src/config/index.js';
+import { PaperlessService } from '../../src/services/PaperlessService.js';
+import { OllamaService } from '../../src/services/OllamaService.js';
+import { MistralService } from '../../src/services/MistralService.js';
+import { TinyBaseService, TinyBaseServiceLive } from '../../src/services/TinyBaseService.js';
+import { sampleSettings, mockFetchResponse, mockFetchError } from '../setup.js';
+
+// ===========================================================================
+// Mock Services
+// ===========================================================================
+
+const createMockConfig = (overrides = {}) =>
+  Layer.succeed(ConfigService, {
+    config: {
+      paperless: {
+        url: 'http://localhost:8000',
+        token: 'test-token',
+      },
+      ollama: {
+        url: 'http://localhost:11434',
+        modelLarge: 'llama3:latest',
+        modelSmall: 'llama3:8b',
+      },
+      mistral: {
+        apiKey: 'test-mistral-key',
+        model: 'mistral-large-latest',
+      },
+      qdrant: {
+        url: 'http://localhost:6333',
+        collection: 'paperless',
+      },
+      autoProcessing: {
+        enabled: false,
+        intervalMinutes: 10,
+        confirmationEnabled: true,
+        confirmationMaxRetries: 3,
+      },
+      language: 'en',
+      debug: false,
+      ...overrides,
+    },
+  } as unknown as ConfigService);
+
+const createMockPaperless = (connected = true) =>
+  Layer.succeed(PaperlessService, {
+    testConnection: vi.fn(() => Effect.succeed(connected)),
+  } as unknown as PaperlessService);
+
+const createMockOllama = (connected = true, models: any[] = []) =>
+  Layer.succeed(OllamaService, {
+    testConnection: vi.fn(() => Effect.succeed(connected)),
+    listModels: vi.fn(() => Effect.succeed(models)),
+  } as unknown as OllamaService);
+
+const createMockMistral = (connected = true, models: any[] = []) =>
+  Layer.succeed(MistralService, {
+    testConnection: vi.fn(() => Effect.succeed(connected)),
+    listModels: vi.fn(() => Effect.succeed(models)),
+  } as unknown as MistralService);
+
+// ===========================================================================
+// Test Suites
+// ===========================================================================
+
+describe('Settings Handlers', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('getSettings', () => {
+    it('should return settings from config', async () => {
+      const TestLayer = createMockConfig();
+
+      const result = await Effect.runPromise(
+        settingsHandlers.getSettings.pipe(Effect.provide(TestLayer))
+      );
+
+      expect(result).toMatchObject({
+        paperless_url: 'http://localhost:8000',
+        paperless_token: '********', // Should be masked
+        ollama_url: 'http://localhost:11434',
+        ollama_model_large: 'llama3:latest',
+        ollama_model_small: 'llama3:8b',
+        mistral_api_key: '********', // Should be masked
+        auto_processing_enabled: false,
+        auto_processing_interval_minutes: 10,
+        confirmation_enabled: true,
+        confirmation_max_retries: 3,
+        language: 'en',
+        debug: false,
+      });
+    });
+
+    it('should mask sensitive tokens', async () => {
+      const TestLayer = createMockConfig();
+
+      const result = await Effect.runPromise(
+        settingsHandlers.getSettings.pipe(Effect.provide(TestLayer))
+      );
+
+      expect(result.paperless_token).toBe('********');
+      expect(result.mistral_api_key).toBe('********');
+    });
+
+    it('should return null for unset values', async () => {
+      const TestLayer = Layer.succeed(ConfigService, {
+        config: {
+          paperless: { url: '', token: '' },
+          ollama: { url: '', modelLarge: '', modelSmall: '' },
+          mistral: { apiKey: '', model: '' },
+          qdrant: { url: '' },
+          autoProcessing: {
+            enabled: false,
+            intervalMinutes: 10,
+            confirmationEnabled: true,
+            confirmationMaxRetries: 3,
+          },
+          language: 'en',
+          debug: false,
+        },
+      } as unknown as ConfigService);
+
+      const result = await Effect.runPromise(
+        settingsHandlers.getSettings.pipe(Effect.provide(TestLayer))
+      );
+
+      expect(result.paperless_token).toBeNull();
+      expect(result.mistral_api_key).toBeNull();
+    });
+  });
+
+  describe('updateSettings', () => {
+    it('should store settings in TinyBase', async () => {
+      const mockSetSetting = vi.fn(() => Effect.succeed(undefined));
+      const mockTinyBase = Layer.succeed(TinyBaseService, {
+        setSetting: mockSetSetting,
+      } as unknown as TinyBaseService);
+
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
+
+      await Effect.runPromise(
+        settingsHandlers.updateSettings({ auto_processing_enabled: true }).pipe(
+          Effect.provide(TestLayer)
+        )
+      );
+
+      expect(mockSetSetting).toHaveBeenCalledWith(
+        'auto_processing_enabled',
+        'true'
+      );
+    });
+
+    it('should ignore undefined values', async () => {
+      const mockSetSetting = vi.fn(() => Effect.succeed(undefined));
+      const mockTinyBase = Layer.succeed(TinyBaseService, {
+        setSetting: mockSetSetting,
+      } as unknown as TinyBaseService);
+
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
+
+      await Effect.runPromise(
+        settingsHandlers.updateSettings({
+          auto_processing_enabled: true,
+          paperless_url: undefined,
+        } as any).pipe(Effect.provide(TestLayer))
+      );
+
+      expect(mockSetSetting).toHaveBeenCalledTimes(1);
+      expect(mockSetSetting).toHaveBeenCalledWith(
+        'auto_processing_enabled',
+        'true'
+      );
+    });
+
+    it('should return updated settings', async () => {
+      const mockTinyBase = Layer.succeed(TinyBaseService, {
+        setSetting: vi.fn(() => Effect.succeed(undefined)),
+      } as unknown as TinyBaseService);
+
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
+
+      const result = await Effect.runPromise(
+        settingsHandlers.updateSettings({ language: 'de' }).pipe(
+          Effect.provide(TestLayer)
+        )
+      );
+
+      // Should return the full settings object
+      expect(result).toHaveProperty('paperless_url');
+      expect(result).toHaveProperty('language');
+    });
+  });
+
+  describe('testPaperlessConnection', () => {
+    it('should return success when connected', async () => {
+      const TestLayer = Layer.mergeAll(
+        createMockConfig(),
+        createMockPaperless(true)
+      );
+
+      const result = await Effect.runPromise(
+        settingsHandlers.testPaperlessConnection.pipe(Effect.provide(TestLayer))
+      );
+
+      expect(result).toEqual({
+        status: 'success',
+        message: 'Connected to Paperless-ngx',
+        details: null,
+      });
+    });
+
+    it('should return error when not connected', async () => {
+      const TestLayer = Layer.mergeAll(
+        createMockConfig(),
+        createMockPaperless(false)
+      );
+
+      const result = await Effect.runPromise(
+        settingsHandlers.testPaperlessConnection.pipe(Effect.provide(TestLayer))
+      );
+
+      expect(result).toEqual({
+        status: 'error',
+        message: 'Failed to connect to Paperless-ngx',
+        details: null,
+      });
+    });
+  });
+
+  describe('testOllamaConnection', () => {
+    it('should return success when connected', async () => {
+      const TestLayer = Layer.mergeAll(
+        createMockConfig(),
+        createMockOllama(true)
+      );
+
+      const result = await Effect.runPromise(
+        settingsHandlers.testOllamaConnection.pipe(Effect.provide(TestLayer))
+      );
+
+      expect(result).toEqual({
+        status: 'success',
+        message: 'Connected to Ollama',
+        details: null,
+      });
+    });
+
+    it('should return error when not connected', async () => {
+      const TestLayer = Layer.mergeAll(
+        createMockConfig(),
+        createMockOllama(false)
+      );
+
+      const result = await Effect.runPromise(
+        settingsHandlers.testOllamaConnection.pipe(Effect.provide(TestLayer))
+      );
+
+      expect(result).toEqual({
+        status: 'error',
+        message: 'Failed to connect to Ollama',
+        details: null,
+      });
+    });
+  });
+
+  describe('testMistralConnection', () => {
+    it('should return success when connected', async () => {
+      const TestLayer = Layer.mergeAll(
+        createMockConfig(),
+        createMockMistral(true)
+      );
+
+      const result = await Effect.runPromise(
+        settingsHandlers.testMistralConnection.pipe(Effect.provide(TestLayer))
+      );
+
+      expect(result).toEqual({
+        status: 'success',
+        message: 'Connected to Mistral AI',
+        details: null,
+      });
+    });
+
+    it('should return error when not connected', async () => {
+      const TestLayer = Layer.mergeAll(
+        createMockConfig(),
+        createMockMistral(false)
+      );
+
+      const result = await Effect.runPromise(
+        settingsHandlers.testMistralConnection.pipe(Effect.provide(TestLayer))
+      );
+
+      expect(result).toEqual({
+        status: 'error',
+        message: 'Failed to connect to Mistral AI',
+        details: null,
+      });
+    });
+  });
+
+  describe('testQdrantConnection', () => {
+    beforeEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('should return success when connected', async () => {
+      vi.spyOn(global, 'fetch').mockImplementation(() =>
+        mockFetchResponse({ collections: [] })
+      );
+
+      const TestLayer = createMockConfig();
+
+      const result = await Effect.runPromise(
+        settingsHandlers.testQdrantConnection.pipe(Effect.provide(TestLayer))
+      );
+
+      expect(result).toEqual({
+        status: 'success',
+        message: 'Connected to Qdrant',
+        details: null,
+      });
+    });
+
+    it('should return error when connection fails', async () => {
+      vi.spyOn(global, 'fetch').mockImplementation(() =>
+        mockFetchError(500, 'Server Error')
+      );
+
+      const TestLayer = createMockConfig();
+
+      const result = await Effect.runPromise(
+        settingsHandlers.testQdrantConnection.pipe(Effect.provide(TestLayer))
+      );
+
+      expect(result).toEqual({
+        status: 'error',
+        message: 'Failed to connect to Qdrant',
+        details: null,
+      });
+    });
+
+    it('should return error when fetch throws', async () => {
+      vi.spyOn(global, 'fetch').mockImplementation(() =>
+        Promise.reject(new Error('Network error'))
+      );
+
+      const TestLayer = createMockConfig();
+
+      // The handler's catch returns an error result as the failure value
+      const result = await Effect.runPromise(
+        settingsHandlers.testQdrantConnection.pipe(
+          Effect.provide(TestLayer),
+          Effect.catchAll((err) => Effect.succeed(err))
+        )
+      );
+
+      // The catch handler returns this error object
+      expect(result).toMatchObject({
+        status: 'error',
+        message: 'Failed to connect to Qdrant',
+      });
+    });
+  });
+
+  describe('getOllamaModels', () => {
+    it('should return list of models', async () => {
+      const models = [
+        { name: 'llama3:latest', size: 1000, modified_at: '2024-01-01' },
+        { name: 'mistral:latest', size: 2000, modified_at: '2024-01-02' },
+      ];
+
+      const TestLayer = Layer.mergeAll(
+        createMockConfig(),
+        createMockOllama(true, models)
+      );
+
+      const result = await Effect.runPromise(
+        settingsHandlers.getOllamaModels.pipe(Effect.provide(TestLayer))
+      );
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        name: 'llama3:latest',
+        size: 1000,
+        modified_at: '2024-01-01',
+      });
+    });
+
+    it('should return empty array on error', async () => {
+      const mockOllama = Layer.succeed(OllamaService, {
+        listModels: vi.fn(() => Effect.fail(new Error('Connection failed'))),
+      } as unknown as OllamaService);
+
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockOllama);
+
+      const result = await Effect.runPromise(
+        settingsHandlers.getOllamaModels.pipe(Effect.provide(TestLayer))
+      );
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('getMistralModels', () => {
+    it('should return list of models', async () => {
+      const models = [
+        {
+          id: 'mistral-large-latest',
+          object: 'model',
+          created: 1704067200,
+          owned_by: 'mistralai',
+        },
+        {
+          id: 'mistral-small-latest',
+          object: 'model',
+          created: 1704067200,
+          owned_by: 'mistralai',
+        },
+      ];
+
+      const TestLayer = Layer.mergeAll(
+        createMockConfig(),
+        createMockMistral(true, models)
+      );
+
+      const result = await Effect.runPromise(
+        settingsHandlers.getMistralModels.pipe(Effect.provide(TestLayer))
+      );
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        id: 'mistral-large-latest',
+        object: 'model',
+        created: 1704067200,
+        owned_by: 'mistralai',
+      });
+    });
+
+    it('should return empty array on error', async () => {
+      const mockMistral = Layer.succeed(MistralService, {
+        listModels: vi.fn(() => Effect.fail(new Error('API key invalid'))),
+      } as unknown as MistralService);
+
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockMistral);
+
+      const result = await Effect.runPromise(
+        settingsHandlers.getMistralModels.pipe(Effect.provide(TestLayer))
+      );
+
+      expect(result).toEqual([]);
+    });
+  });
+});
