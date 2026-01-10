@@ -13,6 +13,7 @@ import {
   ScrollText,
   CheckCircle2,
   XCircle,
+  ExternalLink,
 } from "lucide-react";
 import {
   Card,
@@ -29,7 +30,7 @@ import {
   AccordionTrigger,
 } from "@repo/ui";
 import Link from "next/link";
-import { documentsApi, processingApi, type DocumentDetail } from "@/lib/api";
+import { documentsApi, processingApi, settingsApi, type DocumentDetail } from "@/lib/api";
 
 // Helper to determine processing status from tags
 function getProcessingStatus(tags: Array<{ id: number; name: string }>): string {
@@ -84,6 +85,7 @@ export default function DocumentDetailPage({
   const [document, setDocument] = useState<DocumentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [paperlessUrl, setPaperlessUrl] = useState<string | null>(null);
 
   // Processing state
   const [processing, setProcessing] = useState(false);
@@ -93,6 +95,15 @@ export default function DocumentDetailPage({
 
   // Content accordion - open if OCR not complete
   const [contentAccordionValue, setContentAccordionValue] = useState<string[]>([]);
+
+  // Fetch Paperless URL from settings
+  useEffect(() => {
+    settingsApi.get().then(({ data }) => {
+      if (data?.paperless_url) {
+        setPaperlessUrl(data.paperless_url);
+      }
+    });
+  }, []);
 
   // Fetch document on mount and when tab regains focus (in case processing happened in another tab)
   useEffect(() => {
@@ -250,6 +261,20 @@ export default function DocumentDetailPage({
                 <XCircle className="h-3 w-3" />
                 Error
               </Badge>
+            )}
+
+            {/* Open in Paperless button */}
+            {paperlessUrl && (
+              <Button variant="outline" size="sm" asChild>
+                <a
+                  href={`${paperlessUrl}/documents/${docId}/details`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Open in Paperless
+                </a>
+              </Button>
             )}
 
             {/* View Logs button */}
