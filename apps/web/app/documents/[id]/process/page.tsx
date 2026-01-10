@@ -24,7 +24,6 @@ import {
   Progress,
 } from "@repo/ui";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { processingApi, documentsApi } from "@/lib/api";
 
 interface StreamEvent {
@@ -36,23 +35,28 @@ interface StreamEvent {
   reason?: string;
 }
 
-// Format event data for display
+// Format event data for display - show full details
 function formatEventData(data: unknown): string | null {
   if (!data) return null;
   if (typeof data === "string") return data;
   if (typeof data === "object") {
     const obj = data as Record<string, unknown>;
-    // Extract useful fields
+
+    // For step results, show full JSON for transparency
+    if (obj.success !== undefined || obj.value !== undefined || obj.reasoning !== undefined) {
+      try {
+        return JSON.stringify(obj, null, 2);
+      } catch {
+        return String(data);
+      }
+    }
+
+    // Extract specific fields for simple events
     if (obj.thought) return String(obj.thought);
     if (obj.progress) return String(obj.progress);
     if (obj.suggestion) return String(obj.suggestion);
-    if (obj.reasoning) return String(obj.reasoning);
-    if (obj.value) return `Result: ${obj.value}`;
-    if (obj.tags) return `Tags: ${(obj.tags as string[]).join(", ")}`;
-    if (obj.success !== undefined) {
-      return obj.success ? "Success" : `Failed: ${obj.error || "Unknown error"}`;
-    }
-    // For complex objects, show JSON
+
+    // Default: show full JSON
     try {
       return JSON.stringify(obj, null, 2);
     } catch {
@@ -146,7 +150,6 @@ export default function ProcessingPage({
 }) {
   const resolvedParams = use(params);
   const docId = parseInt(resolvedParams.id);
-  const router = useRouter();
 
   const [docTitle, setDocTitle] = useState<string>("");
   const [processing, setProcessing] = useState(false);
@@ -246,15 +249,10 @@ export default function ProcessingPage({
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Processing...
               </>
-            ) : started ? (
-              <>
-                <Play className="mr-2 h-4 w-4" />
-                Run Again
-              </>
             ) : (
               <>
                 <Play className="mr-2 h-4 w-4" />
-                Start Processing
+                {started ? "Run Next Step" : "Start Processing"}
               </>
             )}
           </Button>

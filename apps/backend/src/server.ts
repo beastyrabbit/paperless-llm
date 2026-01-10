@@ -174,9 +174,8 @@ export const createHttpServer = (port: number) =>
             return;
           }
 
-          sendEvent({ type: 'step_start', docId, step: nextStep });
-
           // Run the next step with streaming for detailed LLM info
+          // Note: step_start event is emitted by the agent stream
           yield* pipe(
             pipeline.processStepStream(docId, nextStep),
             Stream.tap((event) => Effect.sync(() => sendEvent(event))),
