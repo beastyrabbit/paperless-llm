@@ -76,7 +76,8 @@ export const createGetDocumentTool = (deps: ToolDependencies) =>
           const tags = yield* deps.paperless.getTags();
           const docTagNames = doc.tags.map((id: number) => tags.find((t) => t.id === id)?.name ?? `unknown-${id}`);
 
-          if (!docTagNames.some((t: string) => t.toLowerCase().includes('processed'))) {
+          // Use exact match against configured processed tag name
+          if (!docTagNames.includes(deps.processedTagName)) {
             return { error: 'Document is not fully processed and cannot be used as reference.' };
           }
 

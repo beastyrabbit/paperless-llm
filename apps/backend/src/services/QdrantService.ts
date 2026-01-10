@@ -100,17 +100,19 @@ export const QdrantServiceLive = Layer.effect(
     const { qdrant: configQdrant } = configService.config;
 
     // Get config from TinyBase with fallback
-    const getConfig = (): Effect.Effect<{ url: string; collectionName: string }, never> =>
+    const getConfig = (): Effect.Effect<{ url: string; collectionName: string; embeddingDimension: number }, never> =>
       pipe(
         tinybaseService.getAllSettings(),
         Effect.map((settings) => ({
           url: settings['qdrant.url'] ?? configQdrant.url,
           collectionName: settings['qdrant.collection_name'] ?? configQdrant.collectionName,
+          embeddingDimension: configQdrant.embeddingDimension ?? 768,
         })),
         Effect.catchAll(() =>
           Effect.succeed({
             url: configQdrant.url,
             collectionName: configQdrant.collectionName,
+            embeddingDimension: configQdrant.embeddingDimension ?? 768,
           })
         )
       );
@@ -240,7 +242,7 @@ export const QdrantServiceLive = Layer.effect(
 
       ensureCollection: () =>
         Effect.gen(function* () {
-          const { collectionName } = yield* getConfig();
+          const { collectionName, embeddingDimension } = yield* getConfig();
           const client = yield* getClient();
 
           yield* Effect.tryPromise({
@@ -249,10 +251,10 @@ export const QdrantServiceLive = Layer.effect(
               const exists = collections.collections.some((c) => c.name === collectionName);
 
               if (!exists) {
-                // Create collection with vector size for nomic-embed-text (768 dimensions)
+                // Create collection with vector size matching configured embedding model
                 await client.createCollection(collectionName, {
                   vectors: {
-                    size: 768, // nomic-embed-text default
+                    size: embeddingDimension,
                     distance: 'Cosine',
                   },
                 });

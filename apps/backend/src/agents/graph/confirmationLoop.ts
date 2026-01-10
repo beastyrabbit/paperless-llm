@@ -120,17 +120,23 @@ const createAnalyzeNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>)
         );
       }
 
-      // Combine with any existing messages (tool results from previous iterations)
-      const allMessages = [...baseMessages, ...state.messages.filter(m => m instanceof ToolMessage)];
+      // Combine with any existing messages (tool calls and results from previous iterations)
+      // Include both AIMessages with tool_calls and ToolMessages for proper message flow
+      const toolRelatedMessages = state.messages.filter(
+        m => m instanceof ToolMessage || (m instanceof AIMessage && (m as AIMessage).tool_calls?.length)
+      );
+      const allMessages = [...baseMessages, ...toolRelatedMessages];
 
       // Check if we have tools and should allow tool calls
-      if (config.tools?.length && !state.analysis) {
+      // Allow tools on first attempt OR when retrying with feedback (analysis was rejected)
+      const shouldAllowTools = config.tools && config.tools.length > 0 && (!state.analysis || state.feedback);
+      if (shouldAllowTools) {
         // First phase: Allow model to call tools
         const toolModel = new ChatOllama({
           baseUrl: config.largeModelUrl,
           model: config.largeModelName,
           temperature: 0.1,
-        }).bindTools(config.tools);
+        }).bindTools(config.tools!); // Non-null assertion safe due to shouldAllowTools check
 
         const response = await toolModel.invoke(allMessages);
 
@@ -156,7 +162,7 @@ const createAnalyzeNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>)
       return {
         analysis,
         attempt: state.attempt + 1,
-        messages: [], // Clear tool messages after successful analysis
+        // Keep messages for observability and debugging (tool call history)
       };
     } catch (error) {
       return {
