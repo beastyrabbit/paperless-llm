@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use, useCallback } from "react";
+import { useState, useEffect, use } from "react";
 import {
   ArrowLeft,
   Play,
@@ -10,6 +10,7 @@ import {
   Sparkles,
   Calendar,
   Tag,
+  ExternalLink,
 } from "lucide-react";
 import {
   Card,
@@ -20,34 +21,22 @@ import {
   Badge,
   ScrollArea,
   Separator,
-  Progress,
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@repo/ui";
 import Link from "next/link";
-import { documentsApi, processingApi, type DocumentDetail } from "@/lib/api";
-
-interface StreamEvent {
-  type: string;
-  content?: string;
-  model?: string;
-  step?: string;
-  title?: string;
-  confirmed?: boolean;
-  feedback?: string;
-  error?: string;
-}
+import { documentsApi, type DocumentDetail } from "@/lib/api";
 
 // Helper to determine processing status from tags
 function getProcessingStatus(tags: Array<{ id: number; name: string }>): string {
   const tagNames = tags.map((t) => t.name);
   if (tagNames.some((t) => t.includes("processed"))) return "processed";
   if (tagNames.some((t) => t.includes("tags-done"))) return "tags_done";
-  if (tagNames.some((t) => t.includes("title-done"))) return "title_done";
   if (tagNames.some((t) => t.includes("document-type-done"))) return "document_type_done";
   if (tagNames.some((t) => t.includes("correspondent-done"))) return "correspondent_done";
+  if (tagNames.some((t) => t.includes("title-done"))) return "title_done";
   if (tagNames.some((t) => t.includes("ocr-done"))) return "ocr_done";
   if (tagNames.some((t) => t.includes("pending"))) return "pending";
   return "unknown";
@@ -94,21 +83,6 @@ export default function DocumentDetailPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Processing state
-  const [processing, setProcessing] = useState(false);
-  const [streamOutput, setStreamOutput] = useState<StreamEvent[]>([]);
-  const [currentStep, setCurrentStep] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
-
-  // Accordion state with session persistence for processing stream
-  const [streamAccordionValue, setStreamAccordionValue] = useState<string[]>(() => {
-    if (typeof window !== "undefined") {
-      const stored = sessionStorage.getItem("processing-stream-open");
-      return stored === "true" ? ["stream"] : [];
-    }
-    return [];
-  });
-
   // Content accordion - open if OCR not complete
   const [contentAccordionValue, setContentAccordionValue] = useState<string[]>([]);
 
@@ -132,72 +106,9 @@ export default function DocumentDetailPage({
     fetchDocument();
   }, [docId]);
 
-  // Persist stream accordion state
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem(
-        "processing-stream-open",
-        streamAccordionValue.includes("stream") ? "true" : "false"
-      );
-    }
-  }, [streamAccordionValue]);
-
-  // Start processing with real SSE stream
-  const startProcessing = useCallback(() => {
-    setProcessing(true);
-    setStreamOutput([]);
-    setProgress(0);
-    // Open the stream accordion when processing starts
-    setStreamAccordionValue(["stream"]);
-
-    const eventSource = processingApi.stream(docId);
-
-    let eventCount = 0;
-    const estimatedEvents = 20; // Rough estimate for progress
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data: StreamEvent = JSON.parse(event.data);
-        setStreamOutput((prev) => [...prev, data]);
-        eventCount++;
-        setProgress(Math.min((eventCount / estimatedEvents) * 100, 95));
-
-        if (data.step) {
-          setCurrentStep(data.step);
-        }
-
-        // Handle completion
-        if (data.type === "pipeline_complete" || data.type === "complete") {
-          setProcessing(false);
-          setProgress(100);
-          eventSource.close();
-          // Refresh document to get updated data
-          documentsApi.get(docId).then(({ data }) => {
-            if (data) setDocument(data);
-          });
-        }
-
-        // Handle errors
-        if (data.type === "error") {
-          setProcessing(false);
-          eventSource.close();
-        }
-      } catch {
-        // Ignore parse errors
-      }
-    };
-
-    eventSource.onerror = () => {
-      setProcessing(false);
-      eventSource.close();
-      setStreamOutput((prev) => [
-        ...prev,
-        { type: "error", content: "Connection lost" },
-      ]);
-    };
-  }, [docId]);
-
   const processingStatus = document ? getProcessingStatus(document.tags) : "unknown";
+  const nextStep = getNextStep(processingStatus);
+  const isProcessed = processingStatus === "processed";
   const pdfUrl = documentsApi.getPdfUrl(docId);
 
   if (loading) {
@@ -238,35 +149,33 @@ export default function DocumentDetailPage({
                 Document #{docId}
               </h1>
               <div className="flex items-center gap-2">
-                <p className="text-sm text-zinc-500">{document.title}</p>
+                <p className="text-sm text-zinc-500 truncate max-w-md">{document.title}</p>
                 <Badge variant="outline" className="text-xs">
                   {processingStatus.replace(/_/g, " ")}
                 </Badge>
               </div>
             </div>
           </div>
-          {(() => {
-            const nextStep = getNextStep(processingStatus);
-            const isProcessed = processingStatus === "processed";
-            return (
-              <Button
-                onClick={startProcessing}
-                disabled={processing || isProcessed}
-                variant={isProcessed ? "secondary" : "default"}
-              >
-                {processing ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
+          <Button
+            asChild
+            variant={isProcessed ? "secondary" : "default"}
+            disabled={isProcessed}
+          >
+            <Link href={`/documents/${docId}/process`}>
+              {isProcessed ? (
+                <>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Fully Processed
+                </>
+              ) : (
+                <>
                   <Play className="mr-2 h-4 w-4" />
-                )}
-                {processing
-                  ? "Processing..."
-                  : isProcessed
-                    ? "Fully Processed"
-                    : `Run ${nextStep?.label ?? "Next"} Step`}
-              </Button>
-            );
-          })()}
+                  Run {nextStep?.label ?? "Next"} Step
+                  <ExternalLink className="ml-2 h-3 w-3" />
+                </>
+              )}
+            </Link>
+          </Button>
         </div>
       </header>
 
@@ -353,6 +262,19 @@ export default function DocumentDetailPage({
 
                 <Separator />
 
+                {/* Document Type */}
+                <div className="flex items-center gap-3">
+                  <FileText className="h-4 w-4 text-zinc-400" />
+                  <div>
+                    <p className="text-sm text-zinc-500">Document Type</p>
+                    <p className="font-medium">
+                      {document.document_type || "Not assigned"}
+                    </p>
+                  </div>
+                </div>
+
+                <Separator />
+
                 {/* Created Date */}
                 <div className="flex items-center gap-3">
                   <Calendar className="h-4 w-4 text-zinc-400" />
@@ -393,129 +315,6 @@ export default function DocumentDetailPage({
             </Card>
           </div>
         </div>
-
-        {/* Processing Stream - Full Width Bottom */}
-        <Card>
-          <Accordion
-            type="multiple"
-            value={streamAccordionValue}
-            onValueChange={setStreamAccordionValue}
-          >
-            <AccordionItem value="stream" className="border-0">
-              <CardHeader className="py-4">
-                <AccordionTrigger className="hover:no-underline [&[data-state=open]>svg]:rotate-180">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Sparkles className="h-4 w-4 text-emerald-500" />
-                    LLM Processing Stream
-                    {processing && (
-                      <Badge variant="default" className="ml-2 animate-pulse">
-                        Processing
-                      </Badge>
-                    )}
-                  </CardTitle>
-                </AccordionTrigger>
-              </CardHeader>
-              <AccordionContent>
-                <CardContent className="pt-0 pb-4">
-                  {processing && (
-                    <div className="mb-4">
-                      <div className="mb-2 flex items-center justify-between text-sm">
-                        <span className="text-zinc-500">
-                          Processing: {currentStep || "Starting..."}
-                        </span>
-                        <span className="font-mono">{Math.round(progress)}%</span>
-                      </div>
-                      <Progress value={progress} />
-                    </div>
-                  )}
-
-                  <ScrollArea className="h-[250px] rounded-lg border border-zinc-200 bg-zinc-950 p-4 dark:border-zinc-800">
-                    <div className="space-y-1 font-mono text-sm text-emerald-400">
-                      {streamOutput.length === 0 && !processing && (
-                        <p className="text-zinc-500">
-                          Click &quot;Process Document&quot; to start...
-                        </p>
-                      )}
-                      {streamOutput.map((event, i) => (
-                        <div key={i} className="animate-fade-in">
-                          {event.type === "start" && (
-                            <p className="text-blue-400">
-                              ▶ Starting {event.step} with {event.model}
-                            </p>
-                          )}
-                          {event.type === "step_start" && (
-                            <p className="text-blue-400">
-                              ▶ Starting step: {event.step}
-                            </p>
-                          )}
-                          {event.type === "pipeline_start" && (
-                            <p className="text-blue-400">▶ Pipeline started</p>
-                          )}
-                          {event.type === "thinking" && (
-                            <p className="italic text-zinc-400">
-                              💭 {event.content}
-                            </p>
-                          )}
-                          {event.type === "token" && (
-                            <span className="text-emerald-300">
-                              {event.content}
-                            </span>
-                          )}
-                          {event.type === "analysis_complete" && (
-                            <p className="mt-2 text-yellow-400">
-                              ✓ Suggested: &quot;{event.title}&quot;
-                            </p>
-                          )}
-                          {event.type === "step_complete" && (
-                            <p className="mt-2 font-bold text-emerald-500">
-                              ✓ Step {event.step} complete!
-                            </p>
-                          )}
-                          {event.type === "confirmation_start" && (
-                            <p className="mt-2 text-purple-400">
-                              🔍 Confirming with {event.model}...
-                            </p>
-                          )}
-                          {event.type === "confirmation_result" && (
-                            <p
-                              className={
-                                event.confirmed
-                                  ? "text-emerald-400"
-                                  : "text-red-400"
-                              }
-                            >
-                              {event.confirmed ? "✓" : "✗"} {event.feedback}
-                            </p>
-                          )}
-                          {event.type === "needs_review" && (
-                            <p className="text-orange-400">
-                              ⚠ Needs manual review
-                            </p>
-                          )}
-                          {event.type === "pipeline_complete" && (
-                            <p className="mt-2 font-bold text-emerald-500">
-                              ✓ Pipeline complete!
-                            </p>
-                          )}
-                          {event.type === "complete" && (
-                            <p className="mt-2 font-bold text-emerald-500">
-                              ✓ {event.step} complete!
-                            </p>
-                          )}
-                          {event.type === "error" && (
-                            <p className="text-red-400">
-                              ✗ Error: {event.content || event.error}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </Card>
       </div>
     </div>
   );

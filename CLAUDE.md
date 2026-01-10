@@ -34,22 +34,21 @@ docker compose down            # Stop services
 ```
 
 ### Pre-Commit Hooks
+
+Git hooks are automatically active (located in `.git/hooks/pre-commit`).
+
 ```bash
-# Install hooks
-pnpm exec pre-commit install
-
-# Run manually
-pnpm exec pre-commit run --all-files
-
-# Or via pnpm
+# Run checks manually
 pnpm run precommit
 ```
 
 **Active Checks:**
 - **gitleaks**: Detects accidentally committed secrets/API keys
-- **TypeScript**: `tsc --noEmit` Type Checking
-- **ESLint**: JavaScript/TypeScript Linting
-- **Turbo**: Unified pre-commit checks
+- **TypeScript**: `tsc --noEmit` type checking
+- **ESLint**: JavaScript/TypeScript linting
+- **Large files**: Blocks files >1MB
+- **Merge conflicts**: Detects conflict markers
+- **Private keys**: Detects private key content
 
 On errors, the commit is aborted.
 

@@ -15,6 +15,7 @@ import { DocumentTypeAgentService } from './DocumentTypeAgent.js';
 import { TagsAgentService } from './TagsAgent.js';
 import { CustomFieldsAgentService } from './CustomFieldsAgent.js';
 import { SchemaAnalysisAgentService } from './SchemaAnalysisAgent.js';
+import type { StreamEvent } from './base.js';
 
 // ===========================================================================
 // Types
@@ -54,7 +55,7 @@ export interface PipelineResult {
 }
 
 export interface PipelineStreamEvent {
-  type: 'pipeline_start' | 'step_start' | 'step_complete' | 'step_error' | 'needs_review' | 'schema_review_needed' | 'pipeline_paused' | 'pipeline_complete' | 'warning' | 'error';
+  type: 'pipeline_start' | 'step_start' | 'step_complete' | 'step_error' | 'needs_review' | 'schema_review_needed' | 'pipeline_paused' | 'pipeline_complete' | 'warning' | 'error' | 'analyzing' | 'thinking' | 'confirming';
   docId: number;
   step?: string;
   data?: unknown;
@@ -70,6 +71,7 @@ export interface ProcessingPipelineService {
   readonly processDocument: (input: PipelineInput) => Effect.Effect<PipelineResult, AgentError>;
   readonly processDocumentStream: (input: PipelineInput) => Stream.Stream<PipelineStreamEvent, AgentError>;
   readonly processStep: (docId: number, step: string) => Effect.Effect<PipelineStepResult, AgentError>;
+  readonly processStepStream: (docId: number, step: string) => Stream.Stream<PipelineStreamEvent, AgentError>;
   readonly getCurrentState: (doc: Document) => ProcessingState;
 }
 
@@ -966,6 +968,161 @@ export const ProcessingPipelineServiceLive = Layer.effect(
               step,
               cause: e,
             })
+          )
+        ),
+
+      processStepStream: (docId: number, step: string) =>
+        Stream.asyncEffect<PipelineStreamEvent, AgentError>((emit) =>
+          Effect.gen(function* () {
+            const doc = yield* paperless.getDocument(docId);
+            const content = doc.content ?? '';
+
+            // Helper to convert agent StreamEvent to PipelineStreamEvent
+            const mapEvent = (event: StreamEvent): PipelineStreamEvent => {
+              switch (event.type) {
+                case 'start':
+                  return { type: 'step_start', docId, step: event.step, data: event.data };
+                case 'thinking':
+                  return { type: 'thinking', docId, step: event.step, data: event.data };
+                case 'analyzing':
+                  return { type: 'analyzing', docId, step: event.step, data: event.data };
+                case 'confirming':
+                  return { type: 'confirming', docId, step: event.step, data: event.data };
+                case 'result':
+                  return { type: 'step_complete', docId, step: event.step, data: event.data };
+                case 'error':
+                  return { type: 'step_error', docId, step: event.step, message: String(event.data) };
+                case 'complete':
+                  return { type: 'step_complete', docId, step: event.step };
+                default:
+                  return { type: 'step_complete', docId, step: event.step, data: event.data };
+              }
+            };
+
+            // Helper to run agent stream and forward events
+            const runAgentStream = <T>(agentStream: Stream.Stream<StreamEvent, AgentError>) =>
+              pipe(
+                agentStream,
+                Stream.tap((event) => Effect.sync(() => emit.single(mapEvent(event)))),
+                Stream.runDrain
+              );
+
+            switch (step) {
+              case 'title':
+                if (titleAgent.processStream) {
+                  yield* runAgentStream(titleAgent.processStream({ docId, content }));
+                } else {
+                  const result = yield* titleAgent.process({ docId, content });
+                  yield* Effect.sync(() => emit.single({ type: 'step_complete', docId, step, data: result }));
+                }
+                break;
+
+              case 'correspondent':
+                const correspondents = yield* paperless.getCorrespondents();
+                if (correspondentAgent.processStream) {
+                  yield* runAgentStream(correspondentAgent.processStream({
+                    docId,
+                    content,
+                    docTitle: doc.title ?? `Document ${docId}`,
+                    existingCorrespondents: correspondents.map((c) => c.name),
+                  }));
+                } else {
+                  const result = yield* correspondentAgent.process({
+                    docId,
+                    content,
+                    docTitle: doc.title ?? `Document ${docId}`,
+                    existingCorrespondents: correspondents.map((c) => c.name),
+                  });
+                  yield* Effect.sync(() => emit.single({ type: 'step_complete', docId, step, data: result }));
+                }
+                break;
+
+              case 'document_type':
+                const docTypes = yield* paperless.getDocumentTypes();
+                if (documentTypeAgent.processStream) {
+                  yield* runAgentStream(documentTypeAgent.processStream({
+                    docId,
+                    content,
+                    docTitle: doc.title ?? `Document ${docId}`,
+                    existingDocumentTypes: docTypes.map((dt) => dt.name),
+                  }));
+                } else {
+                  const result = yield* documentTypeAgent.process({
+                    docId,
+                    content,
+                    docTitle: doc.title ?? `Document ${docId}`,
+                    existingDocumentTypes: docTypes.map((dt) => dt.name),
+                  });
+                  yield* Effect.sync(() => emit.single({ type: 'step_complete', docId, step, data: result }));
+                }
+                break;
+
+              case 'tags':
+                const existingTags = yield* paperless.getTags();
+                if (tagsAgent.processStream) {
+                  yield* runAgentStream(tagsAgent.processStream({
+                    docId,
+                    content,
+                    docTitle: doc.title ?? `Document ${docId}`,
+                    existingTags: existingTags.map((t) => t.name),
+                    currentTagIds: [...(doc.tags ?? [])],
+                  }));
+                } else {
+                  const result = yield* tagsAgent.process({
+                    docId,
+                    content,
+                    docTitle: doc.title ?? `Document ${docId}`,
+                    existingTags: existingTags.map((t) => t.name),
+                    currentTagIds: [...(doc.tags ?? [])],
+                  });
+                  yield* Effect.sync(() => emit.single({ type: 'step_complete', docId, step, data: result }));
+                }
+                break;
+
+              case 'custom_fields':
+                const customFields = yield* paperless.getCustomFields();
+                if (customFieldsAgent.processStream) {
+                  yield* runAgentStream(customFieldsAgent.processStream({
+                    docId,
+                    content,
+                    customFields,
+                  }));
+                } else {
+                  const result = yield* customFieldsAgent.process({
+                    docId,
+                    content,
+                    customFields,
+                  });
+                  yield* Effect.sync(() => emit.single({ type: 'step_complete', docId, step, data: result }));
+                }
+                break;
+
+              case 'ocr':
+                // OCR doesn't have a stream mode
+                const ocrResult = yield* ocrAgent.process({ docId });
+                yield* Effect.sync(() => emit.single({ type: 'step_complete', docId, step, data: ocrResult }));
+                break;
+
+              case 'schema_analysis':
+                // Schema analysis doesn't have a stream mode
+                const schemaResult = yield* schemaAnalysisAgent.process({ docId, content });
+                yield* Effect.sync(() => emit.single({ type: 'step_complete', docId, step, data: schemaResult }));
+                break;
+
+              default:
+                yield* Effect.sync(() => emit.single({ type: 'step_error', docId, step, message: `Unknown step: ${step}` }));
+            }
+
+            yield* Effect.sync(() => emit.end());
+          }).pipe(
+            Effect.mapError((e) =>
+              new AgentError({
+                message: `Step stream failed: ${e}`,
+                agent: 'pipeline',
+                step,
+                cause: e,
+              })
+            )
           )
         ),
     };

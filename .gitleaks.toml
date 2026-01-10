@@ -1,0 +1,14 @@
+# Gitleaks configuration
+# https://github.com/gitleaks/gitleaks
+
+title = "Paperless Local LLM Gitleaks Config"
+
+[allowlist]
+description = "Global allowlist"
+
+# Paths to ignore
+paths = [
+    '''config\.example\.yaml''',
+    '''bun\.lock''',
+    '''pnpm-lock\.yaml''',
+]

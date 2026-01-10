@@ -176,27 +176,16 @@ export const createHttpServer = (port: number) =>
 
           sendEvent({ type: 'step_start', docId, step: nextStep });
 
-          // Run the next step
-          const result = yield* pipeline.processStep(docId, nextStep).pipe(
-            Effect.catchAll((e) =>
-              Effect.succeed({
-                step: nextStep!,
-                success: false,
-                error: String(e),
-                data: undefined as unknown,
-              })
-            )
+          // Run the next step with streaming for detailed LLM info
+          yield* pipe(
+            pipeline.processStepStream(docId, nextStep),
+            Stream.tap((event) => Effect.sync(() => sendEvent(event))),
+            Stream.runDrain,
+            Effect.catchAll((e) => {
+              sendEvent({ type: 'step_error', docId, step: nextStep, message: String(e) });
+              return Effect.void;
+            })
           );
-
-          if (result.success) {
-            sendEvent({ type: 'step_complete', docId, step: nextStep, data: result.data });
-          } else {
-            const errorMsg = 'error' in result ? result.error : 'Unknown error';
-            sendEvent({ type: 'step_error', docId, step: nextStep, message: errorMsg });
-            if (result.data && typeof result.data === 'object' && 'needsReview' in result.data) {
-              sendEvent({ type: 'needs_review', docId, step: nextStep, data: result.data });
-            }
-          }
 
           sendEvent({ type: 'pipeline_complete', docId });
         });
