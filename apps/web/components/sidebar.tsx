@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
   LayoutDashboard,
@@ -9,6 +9,7 @@ import {
   Settings,
   Clock,
   Code2,
+  Cog,
   Zap,
 } from "lucide-react";
 import { cn } from "@repo/ui";
@@ -17,14 +18,21 @@ const navigation = [
   { key: "dashboard", href: "/", icon: LayoutDashboard },
   { key: "documents", href: "/documents", icon: FileText },
   { key: "pending", href: "/pending", icon: Clock },
-  { key: "prompts", href: "/prompts", icon: Code2 },
+  { key: "documentPrompts", href: "/prompts?category=document", icon: Code2 },
+  { key: "systemPrompts", href: "/prompts?category=system", icon: Cog },
   { key: "settings", href: "/settings", icon: Settings },
 ] as const;
 
 export function Sidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const t = useTranslations("navigation");
   const tCommon = useTranslations("common");
+
+  // Build current full path with query params
+  const currentPath = searchParams.toString()
+    ? `${pathname}?${searchParams.toString()}`
+    : pathname;
 
   return (
     <aside className="flex w-64 flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
@@ -42,7 +50,9 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 space-y-1 p-4">
         {navigation.map((item) => {
-          const isActive = pathname === item.href;
+          const isActive = item.href.includes('?')
+            ? currentPath === item.href
+            : pathname === item.href;
           return (
             <Link
               key={item.key}

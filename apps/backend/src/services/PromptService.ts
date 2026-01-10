@@ -174,10 +174,10 @@ export const PromptServiceLive = Layer.effect(
       getPromptGroups: (lang) =>
         Effect.sync(() => {
           const targetLang = lang ?? language;
-          // Prompts that have main + confirmation pairs
-          const pairedPrompts = ['title', 'correspondent', 'document_type', 'tags'];
-          // Standalone prompts without confirmation
-          const standalonePrompts = ['schema_analysis', 'schema_cleanup', 'custom_fields', 'metadata_description', 'confirmation'];
+          // Prompts that have main + confirmation pairs (document prompts)
+          const pairedPrompts = ['title', 'correspondent', 'document_type', 'tags', 'custom_fields'];
+          // Standalone prompts without confirmation (system prompts)
+          const standalonePrompts = ['schema_analysis', 'schema_cleanup', 'metadata_description', 'confirmation'];
           const groups: PromptGroup[] = [];
 
           // Add paired prompts (main + confirmation) - Document prompts
