@@ -221,6 +221,11 @@ export const createHttpServer = (port: number) =>
       const sseMatch = url.pathname.match(SSE_STREAM_PATTERN);
       if (sseMatch && req.method === 'GET') {
         const docId = parseInt(sseMatch[1]!, 10);
+        if (isNaN(docId)) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: 'Invalid document ID' }));
+          return;
+        }
         await handleSSEStream(res, docId);
         return;
       }
