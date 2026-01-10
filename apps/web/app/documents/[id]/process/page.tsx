@@ -1,17 +1,27 @@
 "use client";
 
-import { useState, useEffect, use, useRef } from "react";
+import { useState, useEffect, use, useRef, useMemo } from "react";
 import {
   ArrowLeft,
-  Play,
   Loader2,
-  CheckCircle2,
-  XCircle,
   Brain,
   Search,
   MessageSquare,
   Sparkles,
-  AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  Tag,
+  User,
+  FileType,
+  RefreshCw,
+  Trash2,
+  Wrench,
+  ArrowRight,
+  CheckCircle2,
+  XCircle,
+  Copy,
+  Check,
 } from "lucide-react";
 import {
   Card,
@@ -21,127 +31,276 @@ import {
   Button,
   Badge,
   ScrollArea,
-  Progress,
 } from "@repo/ui";
 import Link from "next/link";
-import { processingApi, documentsApi } from "@/lib/api";
+import { processingApi, documentsApi, type ProcessingLogEntry } from "@/lib/api";
+import { cn } from "@repo/ui";
 
-interface StreamEvent {
-  type: string;
-  docId?: number;
-  step?: string;
-  data?: unknown;
-  message?: string;
-  reason?: string;
-  timestamp?: string;
+// Step configuration for icons and labels
+const stepConfig: Record<string, { icon: typeof FileText; label: string; color: string }> = {
+  ocr: { icon: FileText, label: "OCR", color: "text-blue-500" },
+  title: { icon: Sparkles, label: "Title", color: "text-purple-500" },
+  correspondent: { icon: User, label: "Correspondent", color: "text-pink-500" },
+  document_type: { icon: FileType, label: "Document Type", color: "text-indigo-500" },
+  tags: { icon: Tag, label: "Tags", color: "text-orange-500" },
+  custom_fields: { icon: Wrench, label: "Custom Fields", color: "text-teal-500" },
+  pipeline: { icon: ArrowRight, label: "Pipeline", color: "text-emerald-500" },
+};
+
+// Get icon for log event type
+function getLogIcon(eventType: string) {
+  switch (eventType) {
+    case "context":
+      return <FileText className="h-3.5 w-3.5 text-blue-500" />;
+    case "prompt":
+      return <MessageSquare className="h-3.5 w-3.5 text-cyan-500" />;
+    case "response":
+      return <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />;
+    case "thinking":
+      return <Brain className="h-3.5 w-3.5 text-purple-500" />;
+    case "tool_call":
+      return <Search className="h-3.5 w-3.5 text-yellow-500" />;
+    case "tool_result":
+      return <Sparkles className="h-3.5 w-3.5 text-amber-500" />;
+    case "confirming":
+      return <MessageSquare className="h-3.5 w-3.5 text-cyan-500" />;
+    case "retry":
+      return <RefreshCw className="h-3.5 w-3.5 text-orange-500" />;
+    case "result":
+      return <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />;
+    case "error":
+      return <XCircle className="h-3.5 w-3.5 text-red-500" />;
+    case "state_transition":
+      return <ArrowRight className="h-3.5 w-3.5 text-emerald-500" />;
+    default:
+      return <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />;
+  }
 }
 
-// Format event data for display - show full details
-function formatEventData(data: unknown): string | null {
-  if (!data) return null;
-  if (typeof data === "string") return data;
-  if (typeof data === "object") {
-    const obj = data as Record<string, unknown>;
+// Get background color for log event type
+function getLogBgClass(eventType: string): string {
+  switch (eventType) {
+    case "thinking":
+      return "bg-purple-500/5 border-purple-500/20";
+    case "prompt":
+      return "bg-cyan-500/5 border-cyan-500/20";
+    case "response":
+    case "result":
+      return "bg-green-500/5 border-green-500/20";
+    case "tool_call":
+    case "tool_result":
+      return "bg-yellow-500/5 border-yellow-500/20";
+    case "confirming":
+      return "bg-cyan-500/5 border-cyan-500/20";
+    case "error":
+      return "bg-red-500/5 border-red-500/20";
+    case "state_transition":
+      return "bg-emerald-500/5 border-emerald-500/20";
+    default:
+      return "bg-muted/30 border-border";
+  }
+}
 
-    // For step results, show full JSON for transparency
-    if (obj.success !== undefined || obj.value !== undefined || obj.reasoning !== undefined) {
-      try {
-        return JSON.stringify(obj, null, 2);
-      } catch {
-        return String(data);
+// Format log data for display
+function formatLogData(data: Record<string, unknown>): string {
+  try {
+    return JSON.stringify(data, null, 2);
+  } catch {
+    return String(data);
+  }
+}
+
+// Convert value to TOON format
+function toToonValue(value: unknown, indent = 0): string {
+  const prefix = "  ".repeat(indent);
+
+  if (value === null) return "null";
+  if (value === undefined) return "";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "string") {
+    // Escape special characters and wrap in quotes if contains special chars
+    if (value.includes(",") || value.includes("\n") || value.includes(":") || value.includes("{") || value.includes("[")) {
+      return `"${value.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+    }
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+    // Check if array of primitives
+    if (value.every(v => typeof v !== "object" || v === null)) {
+      return `[${value.map(v => toToonValue(v)).join(",")}]`;
+    }
+    // Array of objects - check if uniform structure for tabular
+    if (value.every(v => typeof v === "object" && v !== null && !Array.isArray(v))) {
+      const keys = Object.keys(value[0] as Record<string, unknown>);
+      const isUniform = value.every(v => {
+        const vKeys = Object.keys(v as Record<string, unknown>);
+        return vKeys.length === keys.length && keys.every(k => vKeys.includes(k));
+      });
+
+      if (isUniform && keys.length > 0) {
+        // Tabular TOON format
+        const rows = value.map(v =>
+          keys.map(k => toToonValue((v as Record<string, unknown>)[k])).join(",")
+        );
+        return `[${value.length}]{${keys.join(",")}}:\n${prefix}  ${rows.join(`\n${prefix}  `)}`;
       }
     }
+    // Fall back to array of TOON objects
+    return `[\n${value.map(v => `${prefix}  ${toToonValue(v, indent + 1)}`).join(",\n")}\n${prefix}]`;
+  }
 
-    // Extract specific fields for simple events
-    if (obj.thought) return String(obj.thought);
-    if (obj.progress) return String(obj.progress);
-    if (obj.suggestion) return String(obj.suggestion);
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const entries = Object.entries(obj);
+    if (entries.length === 0) return "{}";
+    return `{\n${entries.map(([k, v]) => `${prefix}  ${k}:${toToonValue(v, indent + 1)}`).join("\n")}\n${prefix}}`;
+  }
 
-    // Default: show full JSON
-    try {
-      return JSON.stringify(obj, null, 2);
-    } catch {
-      return String(data);
+  return String(value);
+}
+
+// Convert logs to TOON format
+function logsToToon(logs: ProcessingLogEntry[]): string {
+  if (logs.length === 0) return "logs[0]{}:";
+
+  // Group by step for better organization
+  const steps = [...new Set(logs.map(l => l.step))];
+
+  let toon = `# Processing Logs (${logs.length} entries)\n`;
+  toon += `# Steps: ${steps.join(", ")}\n\n`;
+
+  for (const step of steps) {
+    const stepLogs = logs.filter(l => l.step === step);
+    toon += `## ${step} (${stepLogs.length} events)\n`;
+
+    for (const log of stepLogs) {
+      toon += `\n${log.eventType}:\n`;
+      toon += `  id:${log.id}\n`;
+      toon += `  time:${new Date(log.timestamp).toLocaleTimeString()}\n`;
+      if (log.parentId) {
+        toon += `  parent:${log.parentId}\n`;
+      }
+      toon += `  data:${toToonValue(log.data, 1)}\n`;
+    }
+    toon += "\n";
+  }
+
+  return toon;
+}
+
+// Log tree node interface
+interface LogNode extends ProcessingLogEntry {
+  children: LogNode[];
+}
+
+// Build tree from flat logs based on parentId relationships
+function buildLogTree(logs: ProcessingLogEntry[]): LogNode[] {
+  const nodeMap = new Map<string, LogNode>();
+  const roots: LogNode[] = [];
+
+  // Create nodes with empty children arrays
+  for (const log of logs) {
+    nodeMap.set(log.id, { ...log, children: [] });
+  }
+
+  // Build parent-child relationships
+  for (const log of logs) {
+    const node = nodeMap.get(log.id)!;
+    if (log.parentId && nodeMap.has(log.parentId)) {
+      nodeMap.get(log.parentId)!.children.push(node);
+    } else {
+      roots.push(node);
     }
   }
-  return String(data);
+
+  return roots;
 }
 
-// Get icon for event type
-function getEventIcon(type: string) {
-  switch (type) {
-    case "pipeline_start":
-      return <Play className="h-4 w-4 text-blue-500" />;
-    case "step_start":
-      return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
-    case "analyzing":
-      return <Search className="h-4 w-4 text-yellow-500" />;
-    case "thinking":
-      return <Brain className="h-4 w-4 text-purple-500" />;
-    case "confirming":
-      return <MessageSquare className="h-4 w-4 text-cyan-500" />;
-    case "step_complete":
-      return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-    case "pipeline_complete":
-      return <Sparkles className="h-4 w-4 text-green-500" />;
-    case "step_error":
-    case "error":
-      return <XCircle className="h-4 w-4 text-red-500" />;
-    case "needs_review":
-      return <AlertCircle className="h-4 w-4 text-orange-500" />;
-    default:
-      return <Sparkles className="h-4 w-4 text-muted-foreground" />;
-  }
-}
+// Recursive tree node component
+function LogTreeNode({ node, depth = 0 }: { node: LogNode; depth?: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const [dataExpanded, setDataExpanded] = useState(false);
+  const hasChildren = node.children.length > 0;
+  const dataStr = formatLogData(node.data);
+  const isLongData = dataStr.length > 200;
 
-// Get label for event type
-function getEventLabel(event: StreamEvent): string {
-  switch (event.type) {
-    case "pipeline_start":
-      return "Pipeline Started";
-    case "step_start":
-      return `Starting: ${event.step}`;
-    case "analyzing":
-      return `Analyzing (${event.step})`;
-    case "thinking":
-      return `LLM Reasoning (${event.step})`;
-    case "confirming":
-      return `Confirming (${event.step})`;
-    case "step_complete":
-      return `Completed: ${event.step}`;
-    case "pipeline_complete":
-      return event.message || "Pipeline Complete";
-    case "step_error":
-      return `Error in ${event.step}: ${event.message}`;
-    case "error":
-      return `Error: ${event.message}`;
-    case "needs_review":
-      return `Needs Review: ${event.step}`;
-    default:
-      return event.type;
-  }
-}
+  return (
+    <div className={cn(depth > 0 && "ml-6 border-l-2 border-muted pl-3")}>
+      <div
+        className={cn(
+          "rounded-lg border p-2.5",
+          getLogBgClass(node.eventType),
+          hasChildren && "cursor-pointer"
+        )}
+        onClick={() => hasChildren && setExpanded(!expanded)}
+      >
+        <div className="flex items-start gap-2">
+          {hasChildren ? (
+            <ChevronRight
+              className={cn(
+                "h-4 w-4 mt-0.5 transition-transform shrink-0",
+                expanded && "rotate-90"
+              )}
+            />
+          ) : (
+            <div className="w-4 shrink-0" />
+          )}
+          <div className="mt-0.5">{getLogIcon(node.eventType)}</div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium text-xs uppercase tracking-wide">
+                {node.eventType.replace("_", " ")}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {new Date(node.timestamp).toLocaleTimeString()}
+              </span>
+              {hasChildren && (
+                <Badge variant="outline" className="text-xs">
+                  {node.children.length}
+                </Badge>
+              )}
+            </div>
+            <div className="mt-1.5">
+              <pre
+                className={cn(
+                  "text-xs whitespace-pre-wrap font-mono bg-background/50 rounded p-2 overflow-x-auto",
+                  !dataExpanded && isLongData && "max-h-24 overflow-hidden"
+                )}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {dataStr}
+              </pre>
+              {isLongData && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-1 h-6 text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDataExpanded(!dataExpanded);
+                  }}
+                >
+                  {dataExpanded ? "Show less" : "Show more"}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
 
-// Get background color for event type
-function getEventBgClass(type: string): string {
-  switch (type) {
-    case "thinking":
-      return "bg-purple-500/10 border-purple-500/20";
-    case "analyzing":
-      return "bg-yellow-500/10 border-yellow-500/20";
-    case "confirming":
-      return "bg-cyan-500/10 border-cyan-500/20";
-    case "step_complete":
-    case "pipeline_complete":
-      return "bg-green-500/10 border-green-500/20";
-    case "step_error":
-    case "error":
-      return "bg-red-500/10 border-red-500/20";
-    case "needs_review":
-      return "bg-orange-500/10 border-orange-500/20";
-    default:
-      return "bg-muted/50 border-border";
-  }
+      {/* Render children when expanded */}
+      {expanded && hasChildren && (
+        <div className="mt-2 space-y-2">
+          {node.children.map((child) => (
+            <LogTreeNode key={child.id} node={child} depth={depth + 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ProcessingPage({
@@ -153,120 +312,72 @@ export default function ProcessingPage({
   const docId = parseInt(resolvedParams.id);
 
   const [docTitle, setDocTitle] = useState<string>("");
-  const [processing, setProcessing] = useState(false);
-  const [started, setStarted] = useState(false);
-  const [events, setEvents] = useState<StreamEvent[]>([]);
-  const [progress, setProgress] = useState(0);
-  const [hadErrors, setHadErrors] = useState(false);
+  const [logs, setLogs] = useState<ProcessingLogEntry[]>([]);
+  const [logsLoading, setLogsLoading] = useState(true);
+  const [expandedStep, setExpandedStep] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Fetch document title
+  const copyRawLog = async () => {
+    try {
+      const toonLog = logsToToon(logs);
+      await navigator.clipboard.writeText(toonLog);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy logs:", err);
+    }
+  };
+
+  // Fetch document title and logs
   useEffect(() => {
     documentsApi.get(docId).then(({ data }) => {
       if (data) setDocTitle(data.title);
     });
+
+    fetchLogs();
   }, [docId]);
 
-  // Auto-scroll to bottom
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [events]);
-
-  // Cleanup EventSource on unmount
-  useEffect(() => {
-    return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
+  const fetchLogs = async () => {
+    setLogsLoading(true);
+    const { data } = await processingApi.getLogs(docId);
+    if (data?.logs) {
+      setLogs(data.logs);
+      // Auto-expand the first step if there are logs
+      if (data.logs.length > 0) {
+        const firstStep = data.logs[0].step;
+        setExpandedStep(firstStep);
       }
-    };
-  }, []);
-
-  // Start processing
-  const startProcessing = () => {
-    // Close any existing connection and clear handlers to prevent race condition
-    if (eventSourceRef.current) {
-      const oldEventSource = eventSourceRef.current;
-      oldEventSource.onmessage = null;
-      oldEventSource.onerror = null;
-      oldEventSource.close();
-      eventSourceRef.current = null;
     }
+    setLogsLoading(false);
+  };
 
-    setProcessing(true);
-    setStarted(true);
-    setEvents([]);
-    setProgress(0);
-    setHadErrors(false);
+  // Group logs by step
+  const logsByStep = useMemo(() => {
+    const grouped: Record<string, ProcessingLogEntry[]> = {};
+    for (const log of logs) {
+      if (!grouped[log.step]) grouped[log.step] = [];
+      grouped[log.step].push(log);
+    }
+    return grouped;
+  }, [logs]);
 
-    const eventSource = processingApi.stream(docId);
-    eventSourceRef.current = eventSource;
-    let eventCount = 0;
-    const estimatedEvents = 15;
+  // Get steps in order
+  const steps = useMemo(() => {
+    const orderedSteps = ["ocr", "title", "correspondent", "document_type", "tags", "custom_fields", "pipeline"];
+    return orderedSteps.filter(step => logsByStep[step]?.length > 0);
+  }, [logsByStep]);
 
-    eventSource.onmessage = (event) => {
-      try {
-        const data: StreamEvent = JSON.parse(event.data);
-        // Warn if timestamp is missing (server should always provide it)
-        if (!data.timestamp) {
-          console.warn("[SSE] Event missing timestamp:", data);
-          data.timestamp = new Date().toISOString();
-        }
-        setEvents((prev) => [...prev, data]);
-        eventCount++;
-        setProgress(Math.min((eventCount / estimatedEvents) * 100, 95));
-
-        if (data.type === "pipeline_complete" || data.type === "complete") {
-          setProcessing(false);
-          // Check for errors in accumulated events and set final progress
-          setEvents((prevEvents) => {
-            const hasErrors = prevEvents.some(e => e.type === "error" || e.type === "step_error");
-            setHadErrors(hasErrors);
-            // On success, complete to 100%. On error, keep progress where it stopped (don't fake a percentage)
-            if (!hasErrors) {
-              setProgress(100);
-            }
-            return prevEvents;
-          });
-          eventSource.close();
-          eventSourceRef.current = null;
-        }
-
-        if (data.type === "error" || data.type === "step_error") {
-          setHadErrors(true);
-          setProcessing(false);
-          eventSource.close();
-          eventSourceRef.current = null;
-        }
-      } catch (parseError) {
-        console.error("Failed to parse SSE event:", parseError, "Raw data:", event.data);
-        setEvents((prev) => [
-          ...prev,
-          { type: "error", message: `Failed to parse event: ${parseError}`, timestamp: new Date().toISOString() },
-        ]);
-      }
-    };
-
-    eventSource.onerror = (error) => {
-      console.error("SSE connection error:", error);
-      setProcessing(false);
-      setHadErrors(true);
-      eventSource.close();
-      eventSourceRef.current = null;
-      setEvents((prev) => [
-        ...prev,
-        { type: "error", message: "Connection lost. Check console for details.", timestamp: new Date().toISOString() },
-      ]);
-    };
+  const clearLogs = async () => {
+    await processingApi.clearLogs(docId);
+    setLogs([]);
+    setExpandedStep(null);
   };
 
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header */}
-      <header className="border-b px-6 py-4 flex items-center justify-between bg-card">
+      <header className="border-b px-6 py-3 flex items-center justify-between bg-card">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" asChild>
             <Link href={`/documents/${docId}`}>
@@ -274,67 +385,75 @@ export default function ProcessingPage({
             </Link>
           </Button>
           <div>
-            <h1 className="text-lg font-semibold">LLM Processing</h1>
+            <h1 className="text-lg font-semibold">Processing Logs</h1>
             <p className="text-sm text-muted-foreground truncate max-w-md">
-              {docTitle || `Document ${docId}`}
+              #{docId} - {docTitle || "Loading..."}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          {!processing && started && progress === 100 && !hadErrors && (
-            <Badge variant="outline" className="gap-2 text-green-600 border-green-600">
-              <CheckCircle2 className="h-3 w-3" />
-              Complete
-            </Badge>
-          )}
-          {!processing && started && hadErrors && (
-            <Badge variant="outline" className="gap-2 text-red-600 border-red-600">
-              <XCircle className="h-3 w-3" />
-              Completed with Errors
-            </Badge>
-          )}
+        <div className="flex items-center gap-3">
           <Button
-            onClick={startProcessing}
-            disabled={processing}
+            variant="outline"
             size="sm"
+            onClick={fetchLogs}
+            disabled={logsLoading}
           >
-            {processing ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Processing...
-              </>
-            ) : (
-              <>
-                <Play className="mr-2 h-4 w-4" />
-                {started ? "Run Next Step" : "Start Processing"}
-              </>
-            )}
+            <RefreshCw className={cn("h-4 w-4 mr-2", logsLoading && "animate-spin")} />
+            Refresh
           </Button>
+          {logs.length > 0 && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={copyRawLog}
+              >
+                {copied ? (
+                  <Check className="h-4 w-4 mr-2 text-green-500" />
+                ) : (
+                  <Copy className="h-4 w-4 mr-2" />
+                )}
+                {copied ? "Copied!" : "Copy TOON"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearLogs}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Clear
+              </Button>
+            </>
+          )}
         </div>
       </header>
 
-      {/* Progress bar */}
-      {started && (
-        <div className="px-6 py-2 border-b">
-          <Progress value={progress} className="h-2" />
-        </div>
-      )}
-
       {/* Main content */}
       <div className="flex-1 overflow-hidden p-6">
-        {!started ? (
+        {logsLoading ? (
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center text-muted-foreground">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3" />
+              <p>Loading processing logs...</p>
+            </div>
+          </div>
+        ) : logs.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <Card className="max-w-md">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Sparkles className="h-5 w-5" />
-                  Ready to Process
+                  No Processing Logs
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-muted-foreground">
-                  Click the button above to start LLM processing. You&apos;ll see
-                  detailed logs of the AI analysis including:
+                  This document hasn&apos;t been processed yet, or logs have been cleared.
+                  Go to the{" "}
+                  <Link href={`/documents/${docId}`} className="text-primary underline hover:no-underline">
+                    document page
+                  </Link>{" "}
+                  to start processing.
                 </p>
                 <ul className="text-sm space-y-2 text-muted-foreground">
                   <li className="flex items-center gap-2">
@@ -343,7 +462,7 @@ export default function ProcessingPage({
                   </li>
                   <li className="flex items-center gap-2">
                     <Search className="h-4 w-4 text-yellow-500" />
-                    Analysis progress
+                    Tool calls and results
                   </li>
                   <li className="flex items-center gap-2">
                     <MessageSquare className="h-4 w-4 text-cyan-500" />
@@ -358,49 +477,78 @@ export default function ProcessingPage({
             </Card>
           </div>
         ) : (
-          <Card className="h-full flex flex-col">
-            <CardHeader className="py-3 border-b">
-              <CardTitle className="text-base">Processing Log</CardTitle>
-            </CardHeader>
-            <ScrollArea className="flex-1" ref={scrollRef}>
-              <div className="p-4 space-y-3">
-                {events.map((event, idx) => {
-                  const eventData = formatEventData(event.data);
-                  return (
-                    <div
-                      key={idx}
-                      className={`rounded-lg border p-3 ${getEventBgClass(event.type)}`}
+          <ScrollArea className="h-full" ref={scrollRef}>
+            <div className="space-y-2 max-w-4xl mx-auto">
+              {/* Accordion for each step */}
+              {steps.map((step) => {
+                const stepLogs = logsByStep[step] || [];
+                const isExpanded = expandedStep === step;
+                const latestLog = stepLogs[stepLogs.length - 1];
+                const config = stepConfig[step] || { icon: Sparkles, label: step, color: "text-muted-foreground" };
+                const StepIcon = config.icon;
+
+                // Check if step had errors
+                const hasError = stepLogs.some(l => l.eventType === "error");
+                const hasResult = stepLogs.some(l => l.eventType === "result");
+                const resultLog = stepLogs.find(l => l.eventType === "result");
+                const resultSuccess = Boolean(resultLog?.data?.success);
+
+                return (
+                  <div key={step} className="border rounded-lg overflow-hidden bg-card">
+                    {/* Accordion Header */}
+                    <button
+                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/50 transition-colors"
+                      onClick={() => setExpandedStep(isExpanded ? null : step)}
                     >
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5">{getEventIcon(event.type)}</div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm">
-                            {getEventLabel(event)}
-                          </div>
-                          {eventData && (
-                            <pre className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap font-mono bg-background/50 rounded p-2 overflow-x-auto">
-                              {eventData}
-                            </pre>
-                          )}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {event.timestamp
-                            ? new Date(event.timestamp).toLocaleTimeString()
-                            : new Date().toLocaleTimeString()}
-                        </div>
+                      <div className="flex items-center gap-3">
+                        <StepIcon className={cn("h-4 w-4", config.color)} />
+                        <span className="font-medium">{config.label}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {stepLogs.length} events
+                        </Badge>
+                        {hasError && (
+                          <Badge variant="destructive" className="text-xs">
+                            Error
+                          </Badge>
+                        )}
+                        {hasResult && !hasError && (
+                          <Badge
+                            variant={resultSuccess ? "default" : "secondary"}
+                            className={cn("text-xs", resultSuccess && "bg-green-500")}
+                          >
+                            {resultSuccess ? "Success" : "Needs Review"}
+                          </Badge>
+                        )}
                       </div>
-                    </div>
-                  );
-                })}
-                {events.length === 0 && processing && (
-                  <div className="text-center text-muted-foreground py-8">
-                    <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
-                    Waiting for events...
+                      <div className="flex items-center gap-2">
+                        {latestLog && (
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(latestLog.timestamp).toLocaleTimeString()}
+                          </span>
+                        )}
+                        <ChevronDown
+                          className={cn(
+                            "h-4 w-4 transition-transform duration-200",
+                            isExpanded && "rotate-180"
+                          )}
+                        />
+                      </div>
+                    </button>
+
+                    {/* Accordion Content */}
+                    {isExpanded && (
+                      <div className="border-t px-4 py-3 space-y-2 bg-muted/20">
+                        {buildLogTree(stepLogs).map((node) => (
+                          <LogTreeNode key={node.id} node={node} />
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </ScrollArea>
-          </Card>
+                );
+              })}
+
+            </div>
+          </ScrollArea>
         )}
       </div>
     </div>
