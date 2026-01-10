@@ -209,6 +209,35 @@ export const PaperlessServiceLive = Layer.effect(
         Effect.map((response) => response.results[0]?.id ?? null)
       );
 
+    // Fetch all documents matching query params, handling pagination
+    const fetchAllDocuments = (params: Record<string, unknown>): Effect.Effect<Document[], PaperlessError> =>
+      Effect.gen(function* () {
+        const allDocs: Document[] = [];
+        let page = 1;
+        const pageSize = 100; // Use smaller batches for memory efficiency
+
+        while (true) {
+          const response = yield* mapNotFound(
+            request<PaginatedResponse<Document>>(
+              'GET',
+              '/documents/',
+              undefined,
+              { ...params, page_size: pageSize, page }
+            )
+          );
+
+          allDocs.push(...response.results);
+
+          // Check if we have all documents
+          if (!response.next || allDocs.length >= response.count) {
+            break;
+          }
+          page++;
+        }
+
+        return allDocs;
+      });
+
     return {
       // =====================================================================
       // Document operations
@@ -390,16 +419,11 @@ export const PaperlessServiceLive = Layer.effect(
 
       mergeTags: (sourceId, targetId) =>
         Effect.gen(function* () {
-          // Get all documents with source tag
-          const docs = yield* request<PaginatedResponse<Document>>(
-            'GET',
-            '/documents/',
-            undefined,
-            { tags__id: sourceId, page_size: 1000 }
-          );
+          // Get ALL documents with source tag (handles pagination)
+          const docs = yield* fetchAllDocuments({ tags__id: sourceId });
 
           // Add target tag and remove source tag from each document
-          for (const doc of docs.results) {
+          for (const doc of docs) {
             const newTags = doc.tags.filter((id) => id !== sourceId);
             if (!newTags.includes(targetId)) {
               newTags.push(targetId);
@@ -446,14 +470,10 @@ export const PaperlessServiceLive = Layer.effect(
 
       mergeCorrespondents: (sourceId, targetId) =>
         Effect.gen(function* () {
-          const docs = yield* request<PaginatedResponse<Document>>(
-            'GET',
-            '/documents/',
-            undefined,
-            { correspondent: sourceId, page_size: 1000 }
-          );
+          // Get ALL documents with source correspondent (handles pagination)
+          const docs = yield* fetchAllDocuments({ correspondent: sourceId });
 
-          for (const doc of docs.results) {
+          for (const doc of docs) {
             yield* request<Document>('PATCH', `/documents/${doc.id}/`, { correspondent: targetId });
           }
 
@@ -495,14 +515,10 @@ export const PaperlessServiceLive = Layer.effect(
 
       mergeDocumentTypes: (sourceId, targetId) =>
         Effect.gen(function* () {
-          const docs = yield* request<PaginatedResponse<Document>>(
-            'GET',
-            '/documents/',
-            undefined,
-            { document_type: sourceId, page_size: 1000 }
-          );
+          // Get ALL documents with source document type (handles pagination)
+          const docs = yield* fetchAllDocuments({ document_type: sourceId });
 
-          for (const doc of docs.results) {
+          for (const doc of docs) {
             yield* request<Document>('PATCH', `/documents/${doc.id}/`, { document_type: targetId });
           }
 

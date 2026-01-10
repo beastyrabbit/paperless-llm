@@ -2,7 +2,7 @@
  * Base agent patterns and shared utilities.
  */
 import { Effect, Stream } from 'effect';
-import type { AgentError } from '../errors/index.js';
+import { AgentError } from '../errors/index.js';
 
 // ===========================================================================
 // Agent Types
@@ -86,13 +86,19 @@ export const runConfirmationLoop = <TAnalysis, TResult>(
       }
     }
 
-    // Max retries reached
-    if (options.onMaxRetries && lastAnalysis) {
+    // Max retries reached - ensure we have an analysis to work with
+    if (lastAnalysis === null) {
+      return yield* Effect.fail(new AgentError({
+        message: 'Confirmation loop completed with no analysis (maxRetries may be 0)'
+      }));
+    }
+
+    if (options.onMaxRetries) {
       return yield* options.onMaxRetries(lastAnalysis);
     }
 
     // Default: return the last analysis result
-    return yield* options.apply(lastAnalysis!);
+    return yield* options.apply(lastAnalysis);
   });
 
 // ===========================================================================
