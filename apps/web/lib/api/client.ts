@@ -38,7 +38,18 @@ export async function fetchApi<T>(
       return { error: error || `HTTP ${response.status}` };
     }
 
-    const data = await response.json();
+    // Handle empty responses (e.g., 204 No Content)
+    const contentLength = response.headers.get("Content-Length");
+    if (response.status === 204 || contentLength === "0") {
+      return { data: undefined };
+    }
+
+    const text = await response.text();
+    if (!text) {
+      return { data: undefined };
+    }
+
+    const data = JSON.parse(text) as T;
     return { data };
   } catch (error) {
     clearTimeout(timeoutId);

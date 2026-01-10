@@ -90,13 +90,20 @@ export function usePending() {
 
       if (countsResponse.error) { setError(countsResponse.error); return; }
       if (itemsResponse.error) { setError(itemsResponse.error); return; }
+      if (!countsResponse.data || !itemsResponse.data) {
+        setError("Failed to load pending reviews");
+        return;
+      }
 
-      setCounts(countsResponse.data!);
-      setItems(itemsResponse.data!);
+      const newCounts = countsResponse.data;
+      const newItems = itemsResponse.data;
+
+      setCounts(newCounts);
+      setItems(newItems);
 
       setSelectedValues((prev) => {
         const updated = { ...prev };
-        for (const item of itemsResponse.data!) {
+        for (const item of newItems) {
           if (!(item.id in updated)) updated[item.id] = item.suggestion;
         }
         return updated;

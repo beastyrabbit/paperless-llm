@@ -57,16 +57,12 @@ export function RejectionDialog({
                 <Label htmlFor="none">{t("reject.noBlock")}</Label>
               </div>
               <div className="flex items-center space-x-2">
-                <RadioGroupItem value="document" id="document" />
-                <Label htmlFor="document">{t("reject.blockDocument")}</Label>
+                <RadioGroupItem value="per_type" id="per_type" />
+                <Label htmlFor="per_type">{t("reject.blockPerType")}</Label>
               </div>
               <div className="flex items-center space-x-2">
-                <RadioGroupItem value="suggestion" id="suggestion" />
-                <Label htmlFor="suggestion">{t("reject.blockSuggestion")}</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="both" id="both" />
-                <Label htmlFor="both">{t("reject.blockBoth")}</Label>
+                <RadioGroupItem value="global" id="global" />
+                <Label htmlFor="global">{t("reject.blockGlobal")}</Label>
               </div>
             </RadioGroup>
           </div>

@@ -86,18 +86,17 @@ export default function DocumentsPage() {
     loadSettings();
   }, []);
 
-  const fetchDocuments = useCallback(async (filter?: string, tags?: Record<string, string>) => {
+  const fetchDocuments = useCallback(async (filter: string, tags: Record<string, string>) => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
-      const currentTagMap = tags || tagMap;
 
       // Handle "in_progress" filter - all statuses except processed
       if (filter === "in_progress") {
         // Don't set any tag param - backend will fetch all pipeline documents except processed
-      } else if (filter && filter !== "all" && currentTagMap[filter]) {
-        params.set("tag", currentTagMap[filter]);
+      } else if (filter !== "all" && tags[filter]) {
+        params.set("tag", tags[filter]);
       }
 
       const response = await fetch(`/api/documents/pending?${params.toString()}`);
@@ -113,11 +112,15 @@ export default function DocumentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [t, tagMap]);
+  }, [t]);
 
+  // Fetch documents when filter changes or when tagMap is initially loaded
   useEffect(() => {
-    fetchDocuments(statusFilter);
-  }, [fetchDocuments, statusFilter]);
+    // Wait until tagMap is loaded to avoid double fetch
+    if (Object.keys(tagMap).length > 0 || statusFilter === "all" || statusFilter === "in_progress") {
+      fetchDocuments(statusFilter, tagMap);
+    }
+  }, [statusFilter, tagMap, fetchDocuments]);
 
   const filteredDocs = documents.filter((doc) => {
     const matchesSearch =
@@ -127,7 +130,7 @@ export default function DocumentsPage() {
   });
 
   const handleRefresh = () => {
-    fetchDocuments(statusFilter);
+    fetchDocuments(statusFilter, tagMap);
   };
 
   return (
