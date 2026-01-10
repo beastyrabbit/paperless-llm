@@ -33,8 +33,14 @@ import {
   ScrollArea,
 } from "@repo/ui";
 import Link from "next/link";
-import { processingApi, documentsApi, type ProcessingLogEntry } from "@/lib/api";
+import { documentsApi, type ProcessingLogEntry } from "@/lib/api";
 import { cn } from "@repo/ui";
+import {
+  useProcessingLogs,
+  useProcessingLogsByStep,
+  useLogOperations,
+} from "@/lib/tinybase/hooks/useProcessingLogs";
+import { useTinyBase } from "@/lib/tinybase";
 
 // Step configuration for icons and labels
 const stepConfig: Record<string, { icon: typeof FileText; label: string; color: string }> = {
@@ -133,7 +139,6 @@ function toToonValue(value: unknown, indent = 0): string {
       return `[${value.map(v => toToonValue(v)).join(",")}]`;
     }
     // Array of objects - check if uniform structure for tabular
-    if (value.length === 0) return "[]";
     if (value.every(v => typeof v === "object" && v !== null && !Array.isArray(v))) {
       const keys = Object.keys(value[0] as Record<string, unknown>);
       const isUniform = value.every(v => {
@@ -318,14 +323,50 @@ export default function ProcessingPage({
   const resolvedParams = use(params);
   const docId = parseInt(resolvedParams.id);
 
+  // TinyBase integration for logs
+  const { isSyncing } = useTinyBase();
+  const logs = useProcessingLogs(docId);
+  const logsByStep = useProcessingLogsByStep(docId);
+  const { refresh: refreshLogs, clear: clearLogs } = useLogOperations(docId);
+
+  // Local UI state
   const [docTitle, setDocTitle] = useState<string>("");
-  const [logs, setLogs] = useState<ProcessingLogEntry[]>([]);
-  const [logsLoading, setLogsLoading] = useState(true);
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const [copyError, setCopyError] = useState(false);
+  // Fetch document title on mount
+  useEffect(() => {
+    documentsApi.get(docId).then(({ data }) => {
+      if (data) setDocTitle(data.title);
+    });
+  }, [docId]);
+
+  // Auto-expand first step when logs arrive
+  useEffect(() => {
+    if (logs.length > 0 && expandedStep === null) {
+      setExpandedStep(logs[0].step);
+    }
+  }, [logs, expandedStep]);
+
+  // Get steps in order
+  const steps = useMemo(() => {
+    const orderedSteps = ["ocr", "title", "correspondent", "document_type", "tags", "custom_fields", "pipeline"];
+    return orderedSteps.filter(step => logsByStep[step]?.length > 0);
+  }, [logsByStep]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshLogs();
+    setIsRefreshing(false);
+  };
+
+  const handleClear = async () => {
+    await clearLogs();
+    setExpandedStep(null);
+  };
 
   const copyRawLog = async () => {
     try {
@@ -341,60 +382,7 @@ export default function ProcessingPage({
     }
   };
 
-  // Fetch logs function
-  const fetchLogs = async () => {
-    setLogsLoading(true);
-    const { data, error } = await processingApi.getLogs(docId);
-    if (error) {
-      console.error("Failed to fetch logs:", error);
-      setLogsLoading(false);
-      return;
-    }
-    if (data?.logs) {
-      setLogs(data.logs);
-      // Auto-expand the first step if there are logs
-      if (data.logs.length > 0) {
-        const firstStep = data.logs[0].step;
-        setExpandedStep(firstStep);
-      }
-    }
-    setLogsLoading(false);
-  };
-
-  // Fetch document title and logs on mount
-  useEffect(() => {
-    documentsApi.get(docId).then(({ data }) => {
-      if (data) setDocTitle(data.title);
-    });
-
-    fetchLogs();
-  }, [docId]);
-
-  // Group logs by step
-  const logsByStep = useMemo(() => {
-    const grouped: Record<string, ProcessingLogEntry[]> = {};
-    for (const log of logs) {
-      if (!grouped[log.step]) grouped[log.step] = [];
-      grouped[log.step].push(log);
-    }
-    return grouped;
-  }, [logs]);
-
-  // Get steps in order
-  const steps = useMemo(() => {
-    const orderedSteps = ["ocr", "title", "correspondent", "document_type", "tags", "custom_fields", "pipeline"];
-    return orderedSteps.filter(step => logsByStep[step]?.length > 0);
-  }, [logsByStep]);
-
-  const clearLogs = async () => {
-    const { error } = await processingApi.clearLogs(docId);
-    if (error) {
-      console.error("Failed to clear logs:", error);
-      return;
-    }
-    setLogs([]);
-    setExpandedStep(null);
-  };
+  const isLoading = isSyncing && logs.length === 0;
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -417,10 +405,10 @@ export default function ProcessingPage({
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchLogs}
-            disabled={logsLoading}
+            onClick={handleRefresh}
+            disabled={isRefreshing || isSyncing}
           >
-            <RefreshCw className={cn("h-4 w-4 mr-2", logsLoading && "animate-spin")} />
+            <RefreshCw className={cn("h-4 w-4 mr-2", (isRefreshing || isSyncing) && "animate-spin")} />
             Refresh
           </Button>
           {logs.length > 0 && (
@@ -442,7 +430,7 @@ export default function ProcessingPage({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={clearLogs}
+                onClick={handleClear}
               >
                 <Trash2 className="h-4 w-4 mr-2" />
                 Clear
@@ -454,7 +442,7 @@ export default function ProcessingPage({
 
       {/* Main content */}
       <div className="flex-1 overflow-hidden p-6">
-        {logsLoading ? (
+        {isLoading ? (
           <div className="h-full flex items-center justify-center">
             <div className="text-center text-muted-foreground">
               <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3" />

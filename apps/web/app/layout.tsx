@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import "./globals.css";
 import { Sidebar } from "@/components/sidebar";
+import { AppTinyBaseProvider } from "@/lib/tinybase";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-geist-sans",
@@ -34,10 +35,12 @@ export default async function RootLayout({
         className={`${spaceGrotesk.variable} ${jetbrainsMono.variable} antialiased`}
       >
         <NextIntlClientProvider messages={messages}>
-          <div className="flex h-screen bg-background">
-            <Sidebar />
-            <main className="flex-1 overflow-auto">{children}</main>
-          </div>
+          <AppTinyBaseProvider>
+            <div className="flex h-screen bg-background">
+              <Sidebar />
+              <main className="flex-1 overflow-auto">{children}</main>
+            </div>
+          </AppTinyBaseProvider>
         </NextIntlClientProvider>
       </body>
     </html>
