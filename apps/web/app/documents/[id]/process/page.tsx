@@ -332,9 +332,8 @@ export default function ProcessingPage({
                           )}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {new Date().toLocaleTimeString()}
+                          {event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString()}
                         </div>
-                      </div>
                     </div>
                   );
                 })}
