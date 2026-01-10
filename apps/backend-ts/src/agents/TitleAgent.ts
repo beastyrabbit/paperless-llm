@@ -174,7 +174,7 @@ export const TitleAgentServiceLive = Layer.effect(
                 title: analysis.suggestedTitle,
               });
 
-              yield* paperless.removeTagFromDocument(input.docId, tagConfig.correspondentDone);
+              yield* paperless.removeTagFromDocument(input.docId, tagConfig.ocrDone);
               yield* paperless.addTagToDocument(input.docId, tagConfig.titleDone);
 
               return {
@@ -293,7 +293,7 @@ export const TitleAgentServiceLive = Layer.effect(
                   title: analysis.suggestedTitle,
                 });
 
-                yield* paperless.removeTagFromDocument(input.docId, tagConfig.correspondentDone);
+                yield* paperless.removeTagFromDocument(input.docId, tagConfig.ocrDone);
                 yield* paperless.addTagToDocument(input.docId, tagConfig.titleDone);
 
                 yield* Effect.sync(() =>

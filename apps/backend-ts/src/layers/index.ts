@@ -31,10 +31,11 @@ export const DatabaseLayer = Layer.provideMerge(
 
 /**
  * External services layer - requires Config.
+ * Note: PaperlessService is NOT included here as it depends on TinyBaseService.
+ * Use CoreServicesLayer or AppLayer for full service access.
  */
 export const ExternalServicesLayer = Layer.provideMerge(
   Layer.mergeAll(
-    PaperlessServiceLive,
     OllamaServiceLive,
     MistralServiceLive,
     PromptServiceLive
