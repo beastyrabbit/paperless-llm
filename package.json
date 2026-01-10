@@ -19,13 +19,15 @@
     "test:e2e": "turbo run test:e2e",
     "format": "turbo run format",
     "clean": "turbo run clean && rm -rf node_modules .turbo",
-    "precommit": "turbo run precommit --filter='...[HEAD^]'"
+    "precommit": "pre-commit run --all-files",
+    "demo:record": "bunx tsx scripts/record-demo.ts"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "better-sqlite3": "^12.5.0",
     "concurrently": "^9.2.1",
-    "tsx": "^4.19.2",
+    "playwright": "^1.57.0",
+    "tsx": "^4.21.0",
     "turbo": "^2.5.0"
   },
   "packageManager": "pnpm@9.15.0"
