@@ -28,12 +28,20 @@ export const DocumentSchema = Schema.Struct({
 
 export type Document = Schema.Schema.Type<typeof DocumentSchema>;
 
+export const CustomFieldValueSchema = Schema.Struct({
+  field: Schema.Number,
+  value: Schema.Unknown,
+});
+
+export type CustomFieldValue = Schema.Schema.Type<typeof CustomFieldValueSchema>;
+
 export const DocumentUpdateSchema = Schema.Struct({
   title: Schema.String.pipe(Schema.optional),
   correspondent: Schema.NullOr(Schema.Number).pipe(Schema.optional),
   document_type: Schema.NullOr(Schema.Number).pipe(Schema.optional),
   tags: Schema.Array(Schema.Number).pipe(Schema.optional),
   archive_serial_number: Schema.NullOr(Schema.Number).pipe(Schema.optional),
+  custom_fields: Schema.Array(CustomFieldValueSchema).pipe(Schema.optional),
 });
 
 export type DocumentUpdate = Schema.Schema.Type<typeof DocumentUpdateSchema>;
