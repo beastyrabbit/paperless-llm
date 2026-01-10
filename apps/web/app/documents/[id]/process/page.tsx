@@ -189,6 +189,21 @@ export default function ProcessingPage({
       try {
         const data: StreamEvent = JSON.parse(event.data);
         setEvents((prev) => [...prev, data]);
+  // Start processing
+  const startProcessing = () => {
+    setProcessing(true);
+    setStarted(true);
+    setEvents([]);
+    setProgress(0);
+
+    const eventSource = processingApi.stream(docId);
+    let eventCount = 0;
+    const estimatedEvents = 15;
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data: StreamEvent = JSON.parse(event.data);
+        setEvents((prev) => [...prev, data]);
         eventCount++;
         setProgress(Math.min((eventCount / estimatedEvents) * 100, 95));
 
@@ -202,23 +217,9 @@ export default function ProcessingPage({
           setProcessing(false);
           eventSource.close();
         }
-      } catch (error) {
-        console.error("Failed to parse SSE event:", error, "Raw data:", event.data);
-        setEvents((prev) => [
-          ...prev,
-          { type: "error", message: `Failed to parse event: ${error}` },
-        ]);
+      } catch {
+        // Ignore parse errors
       }
-    };
-
-    eventSource.onerror = (error) => {
-      console.error("SSE connection error:", error);
-      setProcessing(false);
-      eventSource.close();
-      setEvents((prev) => [
-        ...prev,
-        { type: "error", message: "Connection lost. Check console for details." },
-      ]);
     };
 
     eventSource.onerror = () => {
@@ -229,8 +230,12 @@ export default function ProcessingPage({
         { type: "error", message: "Connection lost" },
       ]);
     };
-  };
 
+    // Return cleanup function
+    return () => {
+      eventSource.close();
+    };
+  };
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header */}
