@@ -10,7 +10,7 @@ import { TitleAgentService, TitleAgentServiceLive } from '../../src/agents/Title
 import { ConfigService } from '../../src/config/index.js';
 import { OllamaService } from '../../src/services/OllamaService.js';
 import { PromptService } from '../../src/services/PromptService.js';
-import { TinyBaseService, TinyBaseServiceLive } from '../../src/services/TinyBaseService.js';
+import { TinyBaseService } from '../../src/services/TinyBaseService.js';
 import { PaperlessService } from '../../src/services/PaperlessService.js';
 import { sampleDocument, sampleLlmResponse } from '../setup.js';
 
@@ -25,7 +25,7 @@ const createMockConfig = () =>
         confirmationMaxRetries: 3,
       },
       tags: {
-        correspondentDone: 'llm-correspondent-done',
+        ocrDone: 'llm-ocr-done',
         titleDone: 'llm-title-done',
         manualReview: 'llm-manual-review',
       },
@@ -65,12 +65,30 @@ const createMockPaperless = (overrides = {}) => {
     updateDocument: vi.fn(() => Effect.succeed(sampleDocument(1))),
     addTagToDocument: vi.fn(() => Effect.succeed(undefined)),
     removeTagFromDocument: vi.fn(() => Effect.succeed(undefined)),
+    transitionDocumentTag: vi.fn(() => Effect.succeed(undefined)),
   };
 
   const mocks = { ...defaultMocks, ...overrides };
 
   return {
     layer: Layer.succeed(PaperlessService, mocks as unknown as PaperlessService),
+    mocks,
+  };
+};
+
+const createMockTinyBase = (overrides = {}) => {
+  const defaultMocks = {
+    getSimilarTitles: vi.fn(() => Effect.succeed([])),
+    addPendingReview: vi.fn(() => Effect.succeed(undefined)),
+    getPendingReview: vi.fn(() => Effect.succeed(null)),
+    getPendingReviews: vi.fn(() => Effect.succeed([])),
+    removePendingReview: vi.fn(() => Effect.succeed(undefined)),
+    isBlocked: vi.fn(() => Effect.succeed(false)),
+    getAllSettings: vi.fn(() => Effect.succeed({})),
+  };
+  const mocks = { ...defaultMocks, ...overrides };
+  return {
+    layer: Layer.succeed(TinyBaseService, mocks as unknown as TinyBaseService),
     mocks,
   };
 };
@@ -102,7 +120,7 @@ describe('TitleAgentService', () => {
 
       const TestLayer = Layer.provideMerge(
         TitleAgentServiceLive,
-        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, TinyBaseServiceLive)
+        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -155,7 +173,7 @@ describe('TitleAgentService', () => {
 
       const TestLayer = Layer.provideMerge(
         TitleAgentServiceLive,
-        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, TinyBaseServiceLive)
+        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -195,7 +213,7 @@ describe('TitleAgentService', () => {
 
       const TestLayer = Layer.provideMerge(
         TitleAgentServiceLive,
-        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, TinyBaseServiceLive)
+        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -244,7 +262,7 @@ describe('TitleAgentService', () => {
 
       const TestLayer = Layer.provideMerge(
         TitleAgentServiceLive,
-        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, TinyBaseServiceLive)
+        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, createMockTinyBase().layer)
       );
 
       await Effect.runPromise(
@@ -286,7 +304,7 @@ describe('TitleAgentService', () => {
 
       const TestLayer = Layer.provideMerge(
         TitleAgentServiceLive,
-        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, TinyBaseServiceLive)
+        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -323,7 +341,7 @@ describe('TitleAgentService', () => {
 
       const TestLayer = Layer.provideMerge(
         TitleAgentServiceLive,
-        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, TinyBaseServiceLive)
+        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -353,7 +371,7 @@ describe('TitleAgentService', () => {
 
       const TestLayer = Layer.provideMerge(
         TitleAgentServiceLive,
-        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, TinyBaseServiceLive)
+        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -385,7 +403,7 @@ describe('TitleAgentService', () => {
 
       const TestLayer = Layer.provideMerge(
         TitleAgentServiceLive,
-        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, TinyBaseServiceLive)
+        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -412,7 +430,7 @@ describe('TitleAgentService', () => {
 
       const TestLayer = Layer.provideMerge(
         TitleAgentServiceLive,
-        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, TinyBaseServiceLive)
+        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -443,7 +461,7 @@ describe('TitleAgentService', () => {
 
       const TestLayer = Layer.provideMerge(
         TitleAgentServiceLive,
-        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, TinyBaseServiceLive)
+        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -473,7 +491,7 @@ describe('TitleAgentService', () => {
 
       const TestLayer = Layer.provideMerge(
         TitleAgentServiceLive,
-        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, TinyBaseServiceLive)
+        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, createMockTinyBase().layer)
       );
 
       await Effect.runPromise(
@@ -483,8 +501,8 @@ describe('TitleAgentService', () => {
         }).pipe(Effect.provide(TestLayer))
       );
 
-      expect(mocks.removeTagFromDocument).toHaveBeenCalledWith(1, 'llm-correspondent-done');
-      expect(mocks.addTagToDocument).toHaveBeenCalledWith(1, 'llm-title-done');
+      // Code now uses atomic transitionDocumentTag instead of separate remove/add
+      expect(mocks.transitionDocumentTag).toHaveBeenCalledWith(1, 'llm-ocr-done', 'llm-title-done');
     });
 
     it('should add manual review tag when queued for review', async () => {
@@ -499,7 +517,7 @@ describe('TitleAgentService', () => {
 
       const TestLayer = Layer.provideMerge(
         TitleAgentServiceLive,
-        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, TinyBaseServiceLive)
+        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, createMockTinyBase().layer)
       );
 
       await Effect.runPromise(
@@ -528,7 +546,7 @@ describe('TitleAgentService', () => {
 
       const TestLayer = Layer.provideMerge(
         TitleAgentServiceLive,
-        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, TinyBaseServiceLive)
+        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, createMockTinyBase().layer)
       );
 
       const events = await Effect.runPromise(
@@ -560,7 +578,7 @@ describe('TitleAgentService', () => {
 
       const TestLayer = Layer.provideMerge(
         TitleAgentServiceLive,
-        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, TinyBaseServiceLive)
+        Layer.mergeAll(mockOllama, mockPaperless, mockConfig, mockPrompts, createMockTinyBase().layer)
       );
 
       const events = await Effect.runPromise(

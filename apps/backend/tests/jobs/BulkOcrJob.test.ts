@@ -8,7 +8,7 @@ import { Effect, Layer } from 'effect';
 import { BulkOcrJobService, BulkOcrJobServiceLive } from '../../src/jobs/BulkOcrJob.js';
 import { PaperlessService } from '../../src/services/PaperlessService.js';
 import { MistralService } from '../../src/services/MistralService.js';
-import { TinyBaseService, TinyBaseServiceLive } from '../../src/services/TinyBaseService.js';
+import { TinyBaseService } from '../../src/services/TinyBaseService.js';
 import { ConfigService } from '../../src/config/index.js';
 import { sampleDocument } from '../setup.js';
 
@@ -39,6 +39,8 @@ const createMockPaperlessService = (overrides = {}) => {
     downloadPdf: vi.fn(() => Effect.succeed(new Uint8Array([0x25, 0x50, 0x44, 0x46]))),
     addTagToDocument: vi.fn(() => Effect.succeed(undefined)),
     removeTagFromDocument: vi.fn(() => Effect.succeed(undefined)),
+    transitionDocumentTag: vi.fn(() => Effect.succeed(undefined)),
+    updateDocument: vi.fn(() => Effect.succeed(sampleDocument(1))),
   };
 
   const mocks = { ...defaultMocks, ...overrides };
@@ -62,6 +64,19 @@ const createMockMistralService = (overrides = {}) => {
   };
 };
 
+const createMockTinyBase = (overrides = {}) => {
+  const defaultMocks = {
+    getAllSettings: vi.fn(() => Effect.succeed({})),
+    getSetting: vi.fn(() => Effect.succeed(null)),
+    setSetting: vi.fn(() => Effect.succeed(undefined)),
+  };
+  const mocks = { ...defaultMocks, ...overrides };
+  return {
+    layer: Layer.succeed(TinyBaseService, mocks as unknown as TinyBaseService),
+    mocks,
+  };
+};
+
 // ===========================================================================
 // Test Suites
 // ===========================================================================
@@ -75,7 +90,7 @@ describe('BulkOcrJobService', () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, TinyBaseServiceLive)
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -98,7 +113,7 @@ describe('BulkOcrJobService', () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, TinyBaseServiceLive)
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -130,7 +145,7 @@ describe('BulkOcrJobService', () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, TinyBaseServiceLive)
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -164,7 +179,7 @@ describe('BulkOcrJobService', () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, TinyBaseServiceLive)
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer)
       );
 
       await Effect.runPromise(
@@ -204,7 +219,7 @@ describe('BulkOcrJobService', () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, TinyBaseServiceLive)
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -245,7 +260,7 @@ describe('BulkOcrJobService', () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, TinyBaseServiceLive)
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -287,7 +302,7 @@ describe('BulkOcrJobService', () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, TinyBaseServiceLive)
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer)
       );
 
       await Effect.runPromise(
@@ -307,9 +322,8 @@ describe('BulkOcrJobService', () => {
         }).pipe(Effect.provide(TestLayer))
       );
 
-      // Should remove pending tag and add ocr-done tag
-      expect(mocks.removeTagFromDocument).toHaveBeenCalled();
-      expect(mocks.addTagToDocument).toHaveBeenCalled();
+      // Should use atomic tag transition (pending -> ocr-done)
+      expect(mocks.transitionDocumentTag).toHaveBeenCalled();
     });
 
     it('should handle OCR errors in progress', async () => {
@@ -327,7 +341,7 @@ describe('BulkOcrJobService', () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, TinyBaseServiceLive)
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -373,7 +387,7 @@ describe('BulkOcrJobService', () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, TinyBaseServiceLive)
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -408,7 +422,7 @@ describe('BulkOcrJobService', () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, TinyBaseServiceLive)
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(
@@ -448,7 +462,7 @@ describe('BulkOcrJobService', () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, TinyBaseServiceLive)
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer)
       );
 
       const result = await Effect.runPromise(

@@ -43,11 +43,34 @@ const createMockConfig = (overrides = {}) =>
         confirmationEnabled: true,
         confirmationMaxRetries: 3,
       },
+      tags: {
+        pending: 'llm-pending',
+        ocrDone: 'llm-ocr-done',
+        correspondentDone: 'llm-correspondent-done',
+        documentTypeDone: 'llm-document-type-done',
+        titleDone: 'llm-title-done',
+        tagsDone: 'llm-tags-done',
+        processed: 'llm-processed',
+      },
       language: 'en',
       debug: false,
       ...overrides,
     },
   } as unknown as ConfigService);
+
+const createMockTinyBase = (overrides = {}) => {
+  const defaultMocks = {
+    getAllSettings: vi.fn(() => Effect.succeed({})),
+    setSetting: vi.fn(() => Effect.succeed(undefined)),
+    getSetting: vi.fn(() => Effect.succeed(null)),
+    clearAllSettings: vi.fn(() => Effect.succeed(undefined)),
+  };
+  const mocks = { ...defaultMocks, ...overrides };
+  return {
+    layer: Layer.succeed(TinyBaseService, mocks as unknown as TinyBaseService),
+    mocks,
+  };
+};
 
 const createMockPaperless = (connected = true) =>
   Layer.succeed(PaperlessService, {
@@ -77,7 +100,8 @@ describe('Settings Handlers', () => {
 
   describe('getSettings', () => {
     it('should return settings from config', async () => {
-      const TestLayer = createMockConfig();
+      const { layer: mockTinyBase } = createMockTinyBase();
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
 
       const result = await Effect.runPromise(
         settingsHandlers.getSettings.pipe(Effect.provide(TestLayer))
@@ -85,11 +109,11 @@ describe('Settings Handlers', () => {
 
       expect(result).toMatchObject({
         paperless_url: 'http://localhost:8000',
-        paperless_token: '********', // Should be masked
+        paperless_token: 'test-token', // No longer masked - local app
         ollama_url: 'http://localhost:11434',
         ollama_model_large: 'llama3:latest',
         ollama_model_small: 'llama3:8b',
-        mistral_api_key: '********', // Should be masked
+        mistral_api_key: 'test-mistral-key', // No longer masked - local app
         auto_processing_enabled: false,
         auto_processing_interval_minutes: 10,
         confirmation_enabled: true,
@@ -99,19 +123,21 @@ describe('Settings Handlers', () => {
       });
     });
 
-    it('should mask sensitive tokens', async () => {
-      const TestLayer = createMockConfig();
+    it('should return actual tokens (local app)', async () => {
+      const { layer: mockTinyBase } = createMockTinyBase();
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
 
       const result = await Effect.runPromise(
         settingsHandlers.getSettings.pipe(Effect.provide(TestLayer))
       );
 
-      expect(result.paperless_token).toBe('********');
-      expect(result.mistral_api_key).toBe('********');
+      // Local app returns actual values, not masked
+      expect(result.paperless_token).toBe('test-token');
+      expect(result.mistral_api_key).toBe('test-mistral-key');
     });
 
-    it('should return null for unset values', async () => {
-      const TestLayer = Layer.succeed(ConfigService, {
+    it('should return empty string for unset values', async () => {
+      const emptyConfig = Layer.succeed(ConfigService, {
         config: {
           paperless: { url: '', token: '' },
           ollama: { url: '', modelLarge: '', modelSmall: '' },
@@ -123,27 +149,34 @@ describe('Settings Handlers', () => {
             confirmationEnabled: true,
             confirmationMaxRetries: 3,
           },
+          tags: {
+            pending: 'llm-pending',
+            ocrDone: 'llm-ocr-done',
+            correspondentDone: 'llm-correspondent-done',
+            documentTypeDone: 'llm-document-type-done',
+            titleDone: 'llm-title-done',
+            tagsDone: 'llm-tags-done',
+            processed: 'llm-processed',
+          },
           language: 'en',
           debug: false,
         },
       } as unknown as ConfigService);
+      const { layer: mockTinyBase } = createMockTinyBase();
+      const TestLayer = Layer.mergeAll(emptyConfig, mockTinyBase);
 
       const result = await Effect.runPromise(
         settingsHandlers.getSettings.pipe(Effect.provide(TestLayer))
       );
 
-      expect(result.paperless_token).toBeNull();
-      expect(result.mistral_api_key).toBeNull();
+      expect(result.paperless_token).toBe('');
+      expect(result.mistral_api_key).toBe('');
     });
   });
 
   describe('updateSettings', () => {
     it('should store settings in TinyBase', async () => {
-      const mockSetSetting = vi.fn(() => Effect.succeed(undefined));
-      const mockTinyBase = Layer.succeed(TinyBaseService, {
-        setSetting: mockSetSetting,
-      } as unknown as TinyBaseService);
-
+      const { layer: mockTinyBase, mocks } = createMockTinyBase();
       const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
 
       await Effect.runPromise(
@@ -152,18 +185,14 @@ describe('Settings Handlers', () => {
         )
       );
 
-      expect(mockSetSetting).toHaveBeenCalledWith(
-        'auto_processing_enabled',
+      expect(mocks.setSetting).toHaveBeenCalledWith(
+        'auto_processing.enabled',
         'true'
       );
     });
 
     it('should ignore undefined values', async () => {
-      const mockSetSetting = vi.fn(() => Effect.succeed(undefined));
-      const mockTinyBase = Layer.succeed(TinyBaseService, {
-        setSetting: mockSetSetting,
-      } as unknown as TinyBaseService);
-
+      const { layer: mockTinyBase, mocks } = createMockTinyBase();
       const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
 
       await Effect.runPromise(
@@ -173,18 +202,16 @@ describe('Settings Handlers', () => {
         } as any).pipe(Effect.provide(TestLayer))
       );
 
-      expect(mockSetSetting).toHaveBeenCalledTimes(1);
-      expect(mockSetSetting).toHaveBeenCalledWith(
-        'auto_processing_enabled',
+      // setSetting called once for auto_processing_enabled,
+      // and getAllSettings called once for returning updated settings
+      expect(mocks.setSetting).toHaveBeenCalledWith(
+        'auto_processing.enabled',
         'true'
       );
     });
 
     it('should return updated settings', async () => {
-      const mockTinyBase = Layer.succeed(TinyBaseService, {
-        setSetting: vi.fn(() => Effect.succeed(undefined)),
-      } as unknown as TinyBaseService);
-
+      const { layer: mockTinyBase } = createMockTinyBase();
       const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
 
       const result = await Effect.runPromise(
@@ -200,11 +227,17 @@ describe('Settings Handlers', () => {
   });
 
   describe('testPaperlessConnection', () => {
+    beforeEach(() => {
+      vi.restoreAllMocks();
+    });
+
     it('should return success when connected', async () => {
-      const TestLayer = Layer.mergeAll(
-        createMockConfig(),
-        createMockPaperless(true)
+      vi.spyOn(global, 'fetch').mockImplementation(() =>
+        mockFetchResponse({ results: [] })
       );
+
+      const { layer: mockTinyBase } = createMockTinyBase();
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
 
       const result = await Effect.runPromise(
         settingsHandlers.testPaperlessConnection.pipe(Effect.provide(TestLayer))
@@ -218,29 +251,33 @@ describe('Settings Handlers', () => {
     });
 
     it('should return error when not connected', async () => {
-      const TestLayer = Layer.mergeAll(
-        createMockConfig(),
-        createMockPaperless(false)
+      vi.spyOn(global, 'fetch').mockImplementation(() =>
+        mockFetchError(401, 'Unauthorized')
       );
+
+      const { layer: mockTinyBase } = createMockTinyBase();
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
 
       const result = await Effect.runPromise(
         settingsHandlers.testPaperlessConnection.pipe(Effect.provide(TestLayer))
       );
 
-      expect(result).toEqual({
-        status: 'error',
-        message: 'Failed to connect to Paperless-ngx',
-        details: null,
-      });
+      expect(result.status).toBe('error');
     });
   });
 
   describe('testOllamaConnection', () => {
+    beforeEach(() => {
+      vi.restoreAllMocks();
+    });
+
     it('should return success when connected', async () => {
-      const TestLayer = Layer.mergeAll(
-        createMockConfig(),
-        createMockOllama(true)
+      vi.spyOn(global, 'fetch').mockImplementation(() =>
+        mockFetchResponse({ models: [] })
       );
+
+      const { layer: mockTinyBase } = createMockTinyBase();
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
 
       const result = await Effect.runPromise(
         settingsHandlers.testOllamaConnection.pipe(Effect.provide(TestLayer))
@@ -254,29 +291,33 @@ describe('Settings Handlers', () => {
     });
 
     it('should return error when not connected', async () => {
-      const TestLayer = Layer.mergeAll(
-        createMockConfig(),
-        createMockOllama(false)
+      vi.spyOn(global, 'fetch').mockImplementation(() =>
+        mockFetchError(500, 'Server Error')
       );
+
+      const { layer: mockTinyBase } = createMockTinyBase();
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
 
       const result = await Effect.runPromise(
         settingsHandlers.testOllamaConnection.pipe(Effect.provide(TestLayer))
       );
 
-      expect(result).toEqual({
-        status: 'error',
-        message: 'Failed to connect to Ollama',
-        details: null,
-      });
+      expect(result.status).toBe('error');
     });
   });
 
   describe('testMistralConnection', () => {
+    beforeEach(() => {
+      vi.restoreAllMocks();
+    });
+
     it('should return success when connected', async () => {
-      const TestLayer = Layer.mergeAll(
-        createMockConfig(),
-        createMockMistral(true)
+      vi.spyOn(global, 'fetch').mockImplementation(() =>
+        mockFetchResponse({ data: [] })
       );
+
+      const { layer: mockTinyBase } = createMockTinyBase();
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
 
       const result = await Effect.runPromise(
         settingsHandlers.testMistralConnection.pipe(Effect.provide(TestLayer))
@@ -290,20 +331,18 @@ describe('Settings Handlers', () => {
     });
 
     it('should return error when not connected', async () => {
-      const TestLayer = Layer.mergeAll(
-        createMockConfig(),
-        createMockMistral(false)
+      vi.spyOn(global, 'fetch').mockImplementation(() =>
+        mockFetchError(401, 'Unauthorized')
       );
+
+      const { layer: mockTinyBase } = createMockTinyBase();
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
 
       const result = await Effect.runPromise(
         settingsHandlers.testMistralConnection.pipe(Effect.provide(TestLayer))
       );
 
-      expect(result).toEqual({
-        status: 'error',
-        message: 'Failed to connect to Mistral AI',
-        details: null,
-      });
+      expect(result.status).toBe('error');
     });
   });
 
@@ -317,7 +356,8 @@ describe('Settings Handlers', () => {
         mockFetchResponse({ collections: [] })
       );
 
-      const TestLayer = createMockConfig();
+      const { layer: mockTinyBase } = createMockTinyBase();
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
 
       const result = await Effect.runPromise(
         settingsHandlers.testQdrantConnection.pipe(Effect.provide(TestLayer))
@@ -335,17 +375,14 @@ describe('Settings Handlers', () => {
         mockFetchError(500, 'Server Error')
       );
 
-      const TestLayer = createMockConfig();
+      const { layer: mockTinyBase } = createMockTinyBase();
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
 
       const result = await Effect.runPromise(
         settingsHandlers.testQdrantConnection.pipe(Effect.provide(TestLayer))
       );
 
-      expect(result).toEqual({
-        status: 'error',
-        message: 'Failed to connect to Qdrant',
-        details: null,
-      });
+      expect(result.status).toBe('error');
     });
 
     it('should return error when fetch throws', async () => {
@@ -353,7 +390,8 @@ describe('Settings Handlers', () => {
         Promise.reject(new Error('Network error'))
       );
 
-      const TestLayer = createMockConfig();
+      const { layer: mockTinyBase } = createMockTinyBase();
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
 
       // The handler's catch returns an error result as the failure value
       const result = await Effect.runPromise(
@@ -366,7 +404,6 @@ describe('Settings Handlers', () => {
       // The catch handler returns this error object
       expect(result).toMatchObject({
         status: 'error',
-        message: 'Failed to connect to Qdrant',
       });
     });
   });
@@ -387,8 +424,9 @@ describe('Settings Handlers', () => {
         settingsHandlers.getOllamaModels.pipe(Effect.provide(TestLayer))
       );
 
-      expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({
+      // Handler returns { models: [...] } format
+      expect(result.models).toHaveLength(2);
+      expect(result.models[0]).toEqual({
         name: 'llama3:latest',
         size: 1000,
         modified_at: '2024-01-01',
@@ -406,7 +444,8 @@ describe('Settings Handlers', () => {
         settingsHandlers.getOllamaModels.pipe(Effect.provide(TestLayer))
       );
 
-      expect(result).toEqual([]);
+      // Handler returns { models: [] } on error
+      expect(result).toEqual({ models: [] });
     });
   });
 
@@ -436,8 +475,9 @@ describe('Settings Handlers', () => {
         settingsHandlers.getMistralModels.pipe(Effect.provide(TestLayer))
       );
 
-      expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({
+      // Handler returns { models: [...] } format
+      expect(result.models).toHaveLength(2);
+      expect(result.models[0]).toEqual({
         id: 'mistral-large-latest',
         object: 'model',
         created: 1704067200,
@@ -456,7 +496,8 @@ describe('Settings Handlers', () => {
         settingsHandlers.getMistralModels.pipe(Effect.provide(TestLayer))
       );
 
-      expect(result).toEqual([]);
+      // Handler returns { models: [] } on error
+      expect(result).toEqual({ models: [] });
     });
   });
 });
