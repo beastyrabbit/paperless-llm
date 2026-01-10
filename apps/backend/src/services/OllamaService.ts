@@ -72,8 +72,11 @@ export interface OllamaService {
     prompt: string,
     options?: OllamaChatOptions
   ) => Stream.Stream<string, OllamaError>;
+  readonly embed: (
+    text: string
+  ) => Effect.Effect<number[], OllamaError>;
   readonly testConnection: () => Effect.Effect<boolean, OllamaError>;
-  readonly getModel: (size: 'large' | 'small') => string;
+  readonly getModel: (size: 'large' | 'small' | 'embedding') => string;
 }
 
 // ===========================================================================
@@ -97,20 +100,23 @@ export const OllamaServiceLive = Layer.effect(
     const dbSettings = yield* tinybaseService.getAllSettings();
     const cachedModelLarge = dbSettings['ollama.model_large'] ?? configOllama.modelLarge;
     const cachedModelSmall = dbSettings['ollama.model_small'] ?? configOllama.modelSmall;
+    const cachedModelEmbedding = dbSettings['ollama.embedding_model'] ?? 'nomic-embed-text';
 
     // Helper to get current config from TinyBase with fallback to ConfigService
-    const getConfig = (): Effect.Effect<{ url: string; modelLarge: string; modelSmall: string }, never> =>
+    const getConfig = (): Effect.Effect<{ url: string; modelLarge: string; modelSmall: string; modelEmbedding: string }, never> =>
       pipe(
         tinybaseService.getAllSettings(),
         Effect.map((settings) => ({
           url: settings['ollama.url'] ?? configOllama.url,
           modelLarge: settings['ollama.model_large'] ?? configOllama.modelLarge,
           modelSmall: settings['ollama.model_small'] ?? configOllama.modelSmall,
+          modelEmbedding: settings['ollama.embedding_model'] ?? 'nomic-embed-text',
         })),
         Effect.catchAll(() => Effect.succeed({
           url: configOllama.url,
           modelLarge: configOllama.modelLarge,
           modelSmall: configOllama.modelSmall,
+          modelEmbedding: 'nomic-embed-text',
         }))
       );
 
@@ -337,6 +343,36 @@ export const OllamaServiceLive = Layer.effect(
           })
         ),
 
+      embed: (text: string) =>
+        Effect.gen(function* () {
+          const { url: baseUrl, modelEmbedding } = yield* getConfig();
+
+          return yield* Effect.tryPromise({
+            try: async () => {
+              const response = await fetch(`${baseUrl}/api/embed`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: modelEmbedding,
+                  input: text,
+                }),
+              });
+
+              if (!response.ok) {
+                throw new Error(`Ollama embed error: ${response.status} ${response.statusText}`);
+              }
+
+              const result = (await response.json()) as { embeddings: number[][] };
+              return result.embeddings[0] ?? [];
+            },
+            catch: (error) =>
+              new OllamaError({
+                message: `Embedding failed: ${String(error)}`,
+                cause: error,
+              }),
+          });
+        }),
+
       testConnection: () =>
         pipe(
           request<{ models: OllamaModel[] }>('GET', '/api/tags'),
@@ -344,8 +380,16 @@ export const OllamaServiceLive = Layer.effect(
           Effect.catchAll(() => Effect.succeed(false))
         ),
 
-      getModel: (size) =>
-        size === 'large' ? cachedModelLarge : cachedModelSmall,
+      getModel: (size) => {
+        switch (size) {
+          case 'large':
+            return cachedModelLarge;
+          case 'small':
+            return cachedModelSmall;
+          case 'embedding':
+            return cachedModelEmbedding;
+        }
+      },
     };
   })
 );

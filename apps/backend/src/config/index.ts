@@ -28,6 +28,7 @@ const defaultConfig: ResolvedConfig = {
   qdrant: {
     url: 'http://localhost:6333',
     collectionName: 'documents',
+    embeddingDimension: 768, // Must match embedding model (nomic-embed-text=768, mxbai-embed-large=1024)
   },
   autoProcessing: {
     enabled: false,

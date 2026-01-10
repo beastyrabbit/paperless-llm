@@ -26,6 +26,7 @@ export const MistralConfigSchema = Schema.Struct({
 export const QdrantConfigSchema = Schema.Struct({
   url: Schema.String.pipe(Schema.optional),
   collectionName: Schema.String.pipe(Schema.optional),
+  embeddingDimension: Schema.Number.pipe(Schema.optional),
 });
 
 // Auto processing configuration
@@ -100,6 +101,7 @@ export interface ResolvedConfig {
   qdrant: {
     url: string;
     collectionName: string;
+    embeddingDimension: number;
   };
   autoProcessing: {
     enabled: boolean;

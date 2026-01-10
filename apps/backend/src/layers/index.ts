@@ -9,6 +9,7 @@ import {
   OllamaServiceLive,
   MistralServiceLive,
   PromptServiceLive,
+  QdrantServiceLive,
 } from '../services/index.js';
 import {
   BootstrapJobServiceLive,
@@ -54,17 +55,29 @@ export const ExternalServicesLayer = Layer.provideMerge(
 );
 
 /**
+ * Base services layer - services with minimal dependencies.
+ */
+const BaseServicesLayer = Layer.mergeAll(
+  OllamaServiceLive,
+  MistralServiceLive,
+  PromptServiceLive
+);
+
+/**
  * Core services layer - all fundamental services.
- * PaperlessService depends on TinyBaseService, so we provide TinyBase first.
+ * QdrantService depends on TinyBaseService + OllamaService, so we build the layers in order:
+ * 1. TinyBase + Base services (Ollama, Mistral, Prompt)
+ * 2. Then Paperless + Qdrant on top
  */
 const CoreServicesLayer = Layer.provideMerge(
   Layer.mergeAll(
     PaperlessServiceLive,
-    OllamaServiceLive,
-    MistralServiceLive,
-    PromptServiceLive
+    QdrantServiceLive
   ),
-  TinyBaseServiceLive
+  Layer.provideMerge(
+    BaseServicesLayer,
+    TinyBaseServiceLive
+  )
 );
 
 /**
