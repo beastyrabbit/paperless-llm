@@ -2,19 +2,25 @@
  * Document Processing Pipeline orchestrating all agents.
  *
  * Pipeline Order: OCR → Schema Analysis → Title → Correspondent → Document Type → Tags → Custom Fields
+ *
+ * Uses LangGraph-based agents for all Ollama interactions (Title, Correspondent, DocumentType, Tags,
+ * SchemaAnalysis, CustomFields). Only OCR uses MistralService directly.
  */
 import { Effect, Context, Layer, Stream, pipe } from 'effect';
 import { ConfigService, PaperlessService, TinyBaseService } from '../services/index.js';
 import { AgentError } from '../errors/index.js';
 import type { Document } from '../models/index.js';
 
+// OCR still uses Mistral directly
 import { OCRAgentService } from './OCRAgent.js';
-import { TitleAgentService } from './TitleAgent.js';
-import { CorrespondentAgentService } from './CorrespondentAgent.js';
-import { DocumentTypeAgentService } from './DocumentTypeAgent.js';
-import { TagsAgentService } from './TagsAgent.js';
-import { CustomFieldsAgentService } from './CustomFieldsAgent.js';
-import { SchemaAnalysisAgentService } from './SchemaAnalysisAgent.js';
+
+// LangGraph-based agents
+import { TitleAgentGraphService } from './TitleAgentGraph.js';
+import { CorrespondentAgentGraphService } from './CorrespondentAgentGraph.js';
+import { DocumentTypeAgentGraphService } from './DocumentTypeAgentGraph.js';
+import { TagsAgentGraphService } from './TagsAgentGraph.js';
+import { CustomFieldsAgentGraphService } from './CustomFieldsAgentGraph.js';
+import { SchemaAnalysisAgentGraphService } from './SchemaAnalysisAgentGraph.js';
 
 // ===========================================================================
 // Types
@@ -86,13 +92,16 @@ export const ProcessingPipelineServiceLive = Layer.effect(
     const paperless = yield* PaperlessService;
     const tinybase = yield* TinyBaseService;
 
+    // OCR uses Mistral directly
     const ocrAgent = yield* OCRAgentService;
-    const titleAgent = yield* TitleAgentService;
-    const correspondentAgent = yield* CorrespondentAgentService;
-    const documentTypeAgent = yield* DocumentTypeAgentService;
-    const tagsAgent = yield* TagsAgentService;
-    const customFieldsAgent = yield* CustomFieldsAgentService;
-    const schemaAnalysisAgent = yield* SchemaAnalysisAgentService;
+
+    // LangGraph-based agents
+    const titleAgent = yield* TitleAgentGraphService;
+    const correspondentAgent = yield* CorrespondentAgentGraphService;
+    const documentTypeAgent = yield* DocumentTypeAgentGraphService;
+    const tagsAgent = yield* TagsAgentGraphService;
+    const customFieldsAgent = yield* CustomFieldsAgentGraphService;
+    const schemaAnalysisAgent = yield* SchemaAnalysisAgentGraphService;
 
     const { tags: tagConfig, pipeline: pipelineConfig } = config.config;
 
@@ -449,6 +458,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
               .process({
                 docId,
                 content,
+                docTitle: updatedDoc.title ?? `Document ${docId}`,
                 documentType: documentTypeName,
                 customFields,
               })
@@ -814,6 +824,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                 .process({
                   docId,
                   content,
+                  docTitle: updatedDoc.title ?? `Document ${docId}`,
                   documentType: documentTypeName,
                   customFields,
                 })
@@ -943,6 +954,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
               const cfResult = yield* customFieldsAgent.process({
                 docId,
                 content,
+                docTitle: doc.title ?? `Document ${docId}`,
                 customFields,
               });
               return {

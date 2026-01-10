@@ -40,3 +40,11 @@ export {
   type PromptGroup,
   type LanguageInfo,
 } from './PromptService.js';
+
+export {
+  QdrantService,
+  QdrantServiceLive,
+  QdrantError,
+  type DocumentVector,
+  type SearchResult,
+} from './QdrantService.js';
