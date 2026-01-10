@@ -377,6 +377,7 @@ export interface PromptInfo {
 
 export interface PromptGroup {
   name: string;
+  category: 'document' | 'system';
   main: PromptInfo;
   confirmation: PromptInfo | null;
 }

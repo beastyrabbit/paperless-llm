@@ -212,6 +212,8 @@
     "confirmationPrompt": "Bestätigungs-Prompt",
     "mainPlusConfirmation": "Haupt + Bestätigung",
     "mainOnly": "Nur Haupt",
+    "documentPrompts": "Dokument",
+    "systemPrompts": "System",
     "loadingPrompts": "Prompts werden geladen...",
     "failedToLoad": "Prompts konnten nicht geladen werden",
     "editTemplate": "Vorlage bearbeiten",

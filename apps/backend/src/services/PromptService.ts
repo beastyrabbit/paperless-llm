@@ -21,6 +21,7 @@ export interface PromptInfo {
 
 export interface PromptGroup {
   name: string;
+  category: 'document' | 'system';
   main: PromptInfo;
   confirmation: PromptInfo | null;
 }
@@ -179,7 +180,7 @@ export const PromptServiceLive = Layer.effect(
           const standalonePrompts = ['schema_analysis', 'schema_cleanup', 'custom_fields', 'metadata_description', 'confirmation'];
           const groups: PromptGroup[] = [];
 
-          // Add paired prompts (main + confirmation)
+          // Add paired prompts (main + confirmation) - Document prompts
           for (const name of pairedPrompts) {
             const main = loadPrompt(name, targetLang) ?? loadPrompt(name, 'en');
             if (!main) continue;
@@ -188,15 +189,15 @@ export const PromptServiceLive = Layer.effect(
             const confirmation =
               loadPrompt(confirmationName, targetLang) ?? loadPrompt(confirmationName, 'en');
 
-            groups.push({ name, main, confirmation });
+            groups.push({ name, category: 'document', main, confirmation });
           }
 
-          // Add standalone prompts (no confirmation)
+          // Add standalone prompts (no confirmation) - System prompts
           for (const name of standalonePrompts) {
             const main = loadPrompt(name, targetLang) ?? loadPrompt(name, 'en');
             if (!main) continue;
 
-            groups.push({ name, main, confirmation: null });
+            groups.push({ name, category: 'system', main, confirmation: null });
           }
 
           return groups;

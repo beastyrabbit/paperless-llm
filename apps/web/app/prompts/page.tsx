@@ -44,6 +44,7 @@ const VARIABLE_DESCRIPTIONS: Record<string, string> = {
 
 type PromptType = "main" | "confirmation";
 type ViewMode = "edit" | "preview";
+type PromptCategory = "document" | "system";
 
 export default function PromptsPage() {
   const t = useTranslations("prompts");
@@ -53,12 +54,18 @@ export default function PromptsPage() {
   const [selectedGroup, setSelectedGroup] = useState<PromptGroup | null>(null);
   const [promptType, setPromptType] = useState<PromptType>("main");
   const [viewMode, setViewMode] = useState<ViewMode>("edit");
+  const [promptCategory, setPromptCategory] = useState<PromptCategory>("document");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [editedContent, setEditedContent] = useState<string>("");
   const [hasChanges, setHasChanges] = useState(false);
+
+  // Filter groups by category
+  const filteredGroups = useMemo(() => {
+    return groups.filter((g) => g.category === promptCategory);
+  }, [groups, promptCategory]);
 
   // Get current prompt based on selection
   const currentPrompt = useMemo(() => {
@@ -270,8 +277,38 @@ export default function PromptsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
+            {/* Category Tabs */}
+            <div className="flex border-b border-zinc-200 dark:border-zinc-800">
+              <button
+                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                  promptCategory === "document"
+                    ? "text-emerald-600 border-b-2 border-emerald-600"
+                    : "text-zinc-500 hover:text-zinc-700"
+                }`}
+                onClick={() => {
+                  setPromptCategory("document");
+                  setSelectedGroup(null);
+                }}
+              >
+                {t("documentPrompts")}
+              </button>
+              <button
+                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                  promptCategory === "system"
+                    ? "text-emerald-600 border-b-2 border-emerald-600"
+                    : "text-zinc-500 hover:text-zinc-700"
+                }`}
+                onClick={() => {
+                  setPromptCategory("system");
+                  setSelectedGroup(null);
+                }}
+              >
+                {t("systemPrompts")}
+              </button>
+            </div>
+            {/* Prompt List */}
             <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-              {groups.map((group) => (
+              {filteredGroups.map((group) => (
                 <button
                   key={group.name}
                   className={`w-full flex items-center justify-between p-4 text-left hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors ${
