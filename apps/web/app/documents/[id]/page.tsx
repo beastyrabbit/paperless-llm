@@ -161,7 +161,7 @@ export default function DocumentDetailPage({
             variant={isProcessed ? "secondary" : "default"}
             disabled={isProcessed}
           >
-            <Link href={`/documents/${docId}/process`}>
+            <Link href={`/documents/${docId}/process`} target="_blank">
               {isProcessed ? (
                 <>
                   <Sparkles className="mr-2 h-4 w-4" />
@@ -176,7 +176,6 @@ export default function DocumentDetailPage({
               )}
             </Link>
           </Button>
-        </div>
       </header>
 
       <div className="flex flex-col gap-6 p-8">
