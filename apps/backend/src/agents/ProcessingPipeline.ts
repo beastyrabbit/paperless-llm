@@ -1099,12 +1099,14 @@ export const ProcessingPipelineServiceLive = Layer.effect(
 
               case 'ocr':
                 // OCR doesn't have a stream mode
+                yield* Effect.sync(() => emit.single({ type: 'step_start', docId, step }));
                 const ocrResult = yield* ocrAgent.process({ docId });
                 yield* Effect.sync(() => emit.single({ type: 'step_complete', docId, step, data: ocrResult }));
                 break;
 
               case 'schema_analysis':
                 // Schema analysis doesn't have a stream mode
+                yield* Effect.sync(() => emit.single({ type: 'step_start', docId, step }));
                 const schemaResult = yield* schemaAnalysisAgent.process({ docId, content });
                 yield* Effect.sync(() => emit.single({ type: 'step_complete', docId, step, data: schemaResult }));
                 break;
