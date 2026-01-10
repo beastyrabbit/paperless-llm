@@ -152,7 +152,7 @@ export default function DocumentDetailPage({
   }, []);
 
   // Start processing function
-  const startProcessing = async () => {
+  const startProcessing = async (full: boolean = false) => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
@@ -162,7 +162,7 @@ export default function DocumentDetailPage({
     setProcessingComplete(false);
     setProcessingError(false);
 
-    const eventSource = processingApi.stream(docId);
+    const eventSource = processingApi.stream(docId, { full });
     eventSourceRef.current = eventSource;
 
     eventSource.onmessage = (event) => {
@@ -287,10 +287,11 @@ export default function DocumentDetailPage({
               </Link>
             </Button>
 
-            {/* Start Processing button */}
+            {/* Run Single Step button */}
             <Button
-              onClick={startProcessing}
+              onClick={() => startProcessing(false)}
               disabled={processing || isProcessed}
+              variant="outline"
               size="sm"
             >
               {processing ? (
@@ -310,6 +311,27 @@ export default function DocumentDetailPage({
                 </>
               )}
             </Button>
+
+            {/* Full Pipeline button */}
+            {!isProcessed && (
+              <Button
+                onClick={() => startProcessing(true)}
+                disabled={processing}
+                size="sm"
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Full Pipeline
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         </div>
       </header>
