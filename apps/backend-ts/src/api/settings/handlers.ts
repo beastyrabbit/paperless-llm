@@ -153,7 +153,7 @@ export const testPaperlessConnection = Effect.gen(function* () {
         headers: { Authorization: `Token ${token}` },
       });
       if (response.ok) {
-        return { status: 'connected' as const, message: 'Connected to Paperless-ngx', details: null };
+        return { status: 'success' as const, message: 'Connected to Paperless-ngx', details: null };
       }
       return { status: 'error' as const, message: `Failed to connect: HTTP ${response.status}`, details: null };
     },
@@ -182,7 +182,7 @@ export const testOllamaConnection = Effect.gen(function* () {
     try: async () => {
       const response = await fetch(`${url}/api/tags`);
       if (response.ok) {
-        return { status: 'connected' as const, message: 'Connected to Ollama', details: null };
+        return { status: 'success' as const, message: 'Connected to Ollama', details: null };
       }
       return { status: 'error' as const, message: `Failed to connect: HTTP ${response.status}`, details: null };
     },
@@ -213,7 +213,7 @@ export const testMistralConnection = Effect.gen(function* () {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (response.ok) {
-        return { status: 'connected' as const, message: 'Connected to Mistral AI', details: null };
+        return { status: 'success' as const, message: 'Connected to Mistral AI', details: null };
       }
       return { status: 'error' as const, message: `Failed to connect: HTTP ${response.status}`, details: null };
     },
@@ -242,7 +242,7 @@ export const testQdrantConnection = Effect.gen(function* () {
     try: async () => {
       const response = await fetch(`${url}/collections`);
       if (response.ok) {
-        return { status: 'connected' as const, message: 'Connected to Qdrant', details: null };
+        return { status: 'success' as const, message: 'Connected to Qdrant', details: null };
       }
       return { status: 'error' as const, message: `Failed to connect: HTTP ${response.status}`, details: null };
     },
@@ -349,7 +349,8 @@ export const importConfigFromYaml = Effect.gen(function* () {
     path.join(process.cwd(), 'config.yaml'),
     path.join(process.cwd(), '../backend/config.yaml'),
     path.join(process.cwd(), '../../config.yaml'),
-    '/mnt/storage/workspace/projects/paperless-rewrite/apps/backend/config.yaml',
+    path.join(process.cwd(), '../../apps/backend/config.yaml'),
+    '/app/config.yaml', // Docker container path
   ];
 
   let configPath: string | null = null;

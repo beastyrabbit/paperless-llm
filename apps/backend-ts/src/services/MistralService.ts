@@ -93,13 +93,17 @@ export const MistralServiceLive = Layer.effect(
 
     // Helper to get current config from TinyBase with fallback to ConfigService
     const getConfig = (): Effect.Effect<{ apiKey: string; model: string }, never> =>
-      Effect.gen(function* () {
-        const dbSettings = yield* tinybaseService.getAllSettings();
-        return {
+      pipe(
+        tinybaseService.getAllSettings(),
+        Effect.map((dbSettings) => ({
           apiKey: dbSettings['mistral.api_key'] ?? configMistral.apiKey,
           model: dbSettings['mistral.model'] ?? configMistral.model,
-        };
-      });
+        })),
+        Effect.catchAll(() => Effect.succeed({
+          apiKey: configMistral.apiKey,
+          model: configMistral.model,
+        }))
+      );
 
     // Helper for making requests - reads config dynamically
     const request = <T>(

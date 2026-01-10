@@ -220,7 +220,8 @@ const autoImportConfigYaml = (store: Store): void => {
     path.join(process.cwd(), 'config.yaml'),
     path.join(process.cwd(), '../backend/config.yaml'),
     path.join(process.cwd(), '../../config.yaml'),
-    '/mnt/storage/workspace/projects/paperless-rewrite/apps/backend/config.yaml',
+    path.join(process.cwd(), '../../apps/backend/config.yaml'),
+    '/app/config.yaml', // Docker container path
   ];
 
   let configPath: string | null = null;

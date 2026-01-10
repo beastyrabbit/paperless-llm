@@ -93,16 +93,26 @@ export const OllamaServiceLive = Layer.effect(
     const tinybaseService = yield* TinyBaseService;
     const { ollama: configOllama } = configService.config;
 
+    // Cache initial model names at service creation time
+    const dbSettings = yield* tinybaseService.getAllSettings();
+    const cachedModelLarge = dbSettings['ollama.model_large'] ?? configOllama.modelLarge;
+    const cachedModelSmall = dbSettings['ollama.model_small'] ?? configOllama.modelSmall;
+
     // Helper to get current config from TinyBase with fallback to ConfigService
     const getConfig = (): Effect.Effect<{ url: string; modelLarge: string; modelSmall: string }, never> =>
-      Effect.gen(function* () {
-        const dbSettings = yield* tinybaseService.getAllSettings();
-        return {
-          url: dbSettings['ollama.url'] ?? configOllama.url,
-          modelLarge: dbSettings['ollama.model_large'] ?? configOllama.modelLarge,
-          modelSmall: dbSettings['ollama.model_small'] ?? configOllama.modelSmall,
-        };
-      });
+      pipe(
+        tinybaseService.getAllSettings(),
+        Effect.map((settings) => ({
+          url: settings['ollama.url'] ?? configOllama.url,
+          modelLarge: settings['ollama.model_large'] ?? configOllama.modelLarge,
+          modelSmall: settings['ollama.model_small'] ?? configOllama.modelSmall,
+        })),
+        Effect.catchAll(() => Effect.succeed({
+          url: configOllama.url,
+          modelLarge: configOllama.modelLarge,
+          modelSmall: configOllama.modelSmall,
+        }))
+      );
 
     // Helper for making requests - reads config dynamically
     const request = <T>(
@@ -335,10 +345,7 @@ export const OllamaServiceLive = Layer.effect(
         ),
 
       getModel: (size) =>
-        Effect.gen(function* () {
-          const { modelLarge, modelSmall } = yield* getConfig();
-          return size === 'large' ? modelLarge : modelSmall;
-        }).pipe(Effect.runSync),
+        size === 'large' ? cachedModelLarge : cachedModelSmall,
     };
   })
 );

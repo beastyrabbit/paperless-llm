@@ -99,13 +99,17 @@ export const PaperlessServiceLive = Layer.effect(
 
     // Helper to get current config from TinyBase with fallback to ConfigService
     const getConfig = (): Effect.Effect<{ url: string; token: string }, never> =>
-      Effect.gen(function* () {
-        const dbSettings = yield* tinybaseService.getAllSettings();
-        return {
+      pipe(
+        tinybaseService.getAllSettings(),
+        Effect.map((dbSettings) => ({
           url: dbSettings['paperless.url'] ?? configPaperless.url,
           token: dbSettings['paperless.token'] ?? configPaperless.token,
-        };
-      });
+        })),
+        Effect.catchAll(() => Effect.succeed({
+          url: configPaperless.url,
+          token: configPaperless.token,
+        }))
+      );
 
     // Helper for making authenticated requests - reads config dynamically
     const request = <T>(
