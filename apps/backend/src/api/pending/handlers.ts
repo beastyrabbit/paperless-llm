@@ -352,6 +352,9 @@ interface RejectWithFeedbackRequest {
   feedback?: string;
   category?: string;
   block_type?: string;
+  // Alternative field names for API consistency
+  rejection_reason?: string;
+  rejection_category?: string;
 }
 
 export const rejectWithFeedback = (id: string, request: RejectWithFeedbackRequest) =>
@@ -372,12 +375,13 @@ export const rejectWithFeedback = (id: string, request: RejectWithFeedbackReques
     }
 
     // Add feedback to blocked suggestions if block_type is provided
+    // Support both field naming conventions (feedback/category and rejection_reason/rejection_category)
     if (request.block_type) {
       yield* tinybase.addBlockedSuggestion({
         suggestionName: item.suggestion,
         blockType: request.block_type as any,
-        rejectionReason: request.feedback ?? null,
-        rejectionCategory: request.category as any ?? null,
+        rejectionReason: request.rejection_reason ?? request.feedback ?? null,
+        rejectionCategory: (request.rejection_category ?? request.category) as any ?? null,
         docId: item.docId,
       });
     }
@@ -445,6 +449,32 @@ export const unblockItem = (blockId: number) =>
     yield* tinybase.removeBlockedSuggestion(blockId);
 
     return { success: true, unblocked_id: blockId };
+  });
+
+// ===========================================================================
+// Add Blocked Suggestion (for seeding training data)
+// ===========================================================================
+
+interface AddBlockedSuggestionRequest {
+  name: string;
+  block_type: string;
+  rejection_reason?: string;
+  rejection_category?: string;
+}
+
+export const addBlockedSuggestion = (request: AddBlockedSuggestionRequest) =>
+  Effect.gen(function* () {
+    const tinybase = yield* TinyBaseService;
+
+    const id = yield* tinybase.addBlockedSuggestion({
+      suggestionName: request.name,
+      blockType: request.block_type as any,
+      rejectionReason: request.rejection_reason ?? null,
+      rejectionCategory: request.rejection_category as any ?? null,
+      docId: null,
+    });
+
+    return { success: true, id };
   });
 
 // ===========================================================================

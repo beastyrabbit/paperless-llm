@@ -84,6 +84,13 @@ const ANALYSIS_SYSTEM_PROMPT = `You are a schema analysis specialist for a docum
 
 Your task is to analyze documents and suggest new entities (correspondents, document types, tags) that should be added to improve the system's schema.
 
+## CRITICAL: Be VERY Conservative
+
+New suggestions should be RARE. The existing schema is curated and comprehensive.
+- Only suggest something if there is absolutely NO existing entity that could work
+- ALWAYS prefer broader categories over specific subtypes
+- When in doubt, DO NOT suggest - let the existing schema handle it
+
 ## Tool Usage Guidelines
 
 You have access to tools to search for similar processed documents. These tools are OPTIONAL and should be used sparingly:
@@ -92,24 +99,54 @@ You have access to tools to search for similar processed documents. These tools 
 - Make at most 2-3 tool calls total, then provide your final answer
 - You can make your decision based on the document content alone if tools don't provide useful information
 
-Guidelines:
+## Anti-Patterns - DO NOT Suggest These:
+
+1. **Subtypes when broader types exist**:
+   - "Zahnärztliche Rechnung" when "Rechnungen" exists → Use "Rechnungen"
+   - "Steuererinnerung" when "Brief" or tax documents exist → Use existing
+
+2. **Year-based tags**: "2020", "2021", "2024" → Use date filters instead
+
+3. **Single-use tags**: Tags that only apply to one document are not useful
+
+4. **Technical codes**: "GOZ", "ICD-10", "BIC", "IBAN" → Too specific, not helpful for search
+
+5. **Granular details**: "Laborkosten", "Materialkosten", "Dentaltechnik" → Too specific
+
+6. **Product names**: Unless it's a major vendor, avoid product-specific tags
+
+## LEARN FROM REJECTIONS
+
+If you see a "LEARN FROM PAST REJECTIONS" section, pay close attention:
+- If similar items were rejected for being "too specific", use broader categories
+- If subtypes were rejected, use the parent type
+- Patterns from rejections apply to ALL similar future suggestions
+
+## Guidelines:
 1. Only suggest NEW entities that don't already exist
 2. Never suggest entities that are on the blocked list
 3. If a document matches a pending suggestion, note the match
-4. Be conservative - only suggest entities with high confidence (>0.8)
-5. Consider how the entity would apply to other similar documents
+4. Be VERY conservative - only suggest entities with VERY high confidence (>0.9)
+5. Consider: "Would 5+ different documents use this entity?"
 6. Use consistent naming conventions matching existing entities
 
 Entity Types:
 - correspondent: The sender/originator of documents (companies, organizations, people)
 - document_type: Categories like Invoice, Contract, Letter, Report
-- tag: Descriptive labels like "urgent", "tax-related", "2024"
+- tag: Descriptive labels for broad categories: "finance", "medical", "legal", "urgent"
 
 You MUST respond with structured JSON matching the required schema.`;
 
 // ===========================================================================
 // LangGraph State
 // ===========================================================================
+
+// Type for rejected items with reasons (for learning)
+interface RejectedItem {
+  name: string;
+  reason: string;
+  category: string;
+}
 
 const SchemaAnalysisState = Annotation.Root({
   // Input
@@ -125,6 +162,11 @@ const SchemaAnalysisState = Annotation.Root({
   blockedDocTypes: Annotation<Set<string>>,
   blockedTags: Annotation<Set<string>>,
   blockedGlobal: Annotation<Set<string>>,
+
+  // Rejected items with reasons (for learning)
+  rejectedCorrespondents: Annotation<RejectedItem[]>,
+  rejectedDocTypes: Annotation<RejectedItem[]>,
+  rejectedTags: Annotation<RejectedItem[]>,
 
   // Messages for tool calls
   messages: Annotation<BaseMessage[]>({
@@ -172,6 +214,21 @@ export const SchemaAnalysisAgentGraphServiceLive = Layer.effect(
         const blocked = yield* tinybase.getBlockedSuggestions(blockType as 'correspondent' | 'document_type' | 'tag' | 'global');
         return new Set(blocked.map((b) => b.normalizedName));
       }).pipe(Effect.catchAll(() => Effect.succeed(new Set<string>())));
+
+    // Helper to get rejected items with reasons (for learning)
+    const getRejectedWithReasons = (blockType: string): Effect.Effect<RejectedItem[], never> =>
+      Effect.gen(function* () {
+        const blocked = yield* tinybase.getBlockedSuggestions(blockType as 'correspondent' | 'document_type' | 'tag' | 'global');
+        // Only include items that have a rejection reason
+        return blocked
+          .filter((b) => b.rejectionReason || b.rejectionCategory)
+          .slice(0, 30) // Limit to last 30 for context window
+          .map((b) => ({
+            name: b.suggestionName,
+            reason: b.rejectionReason ?? '',
+            category: b.rejectionCategory ?? '',
+          }));
+      }).pipe(Effect.catchAll(() => Effect.succeed([])));
 
     // Filter out blocked suggestions
     const filterBlockedSuggestions = (
@@ -247,10 +304,52 @@ export const SchemaAnalysisAgentGraphServiceLive = Layer.effect(
       const pendingDocTypesList = pending.document_type.join(', ') || 'None';
       const pendingTagsList = pending.tag.join(', ') || 'None';
 
+      // Format rejection history for learning
+      const formatRejections = (items: RejectedItem[]): string => {
+        if (items.length === 0) return 'None';
+        return items.map((item) => {
+          const parts = [`"${item.name}"`];
+          if (item.reason) parts.push(`reason: ${item.reason}`);
+          if (item.category) parts.push(`category: ${item.category}`);
+          return `- ${parts.join(' - ')}`;
+        }).join('\n');
+      };
+
+      const rejectedCorrespondentsText = formatRejections(state.rejectedCorrespondents);
+      const rejectedDocTypesText = formatRejections(state.rejectedDocTypes);
+      const rejectedTagsText = formatRejections(state.rejectedTags);
+
+      // Check if we have any rejections to learn from
+      const hasRejections = state.rejectedCorrespondents.length > 0 ||
+        state.rejectedDocTypes.length > 0 ||
+        state.rejectedTags.length > 0;
+
+      const rejectionHistorySection = hasRejections ? `
+## LEARN FROM PAST REJECTIONS
+
+The user has rejected these suggestions before. Learn from their preferences:
+
+### Rejected Correspondents
+${rejectedCorrespondentsText}
+
+### Rejected Document Types
+${rejectedDocTypesText}
+
+### Rejected Tags
+${rejectedTagsText}
+
+**KEY PATTERNS TO LEARN:**
+- If a suggestion was "too specific", prefer broader categories
+- If a subtype was rejected (e.g., "Zahnärztliche Rechnung"), use the parent type ("Rechnungen")
+- If year tags were rejected (e.g., "2020"), don't suggest year-based tags
+- If technical codes were rejected (e.g., "GOZ"), avoid technical/domain-specific tags
+
+` : '';
+
       return `## Document Content
 
 ${state.content.slice(0, 8000)}
-
+${rejectionHistorySection}
 ## Existing Entities
 
 ### Correspondents
@@ -416,6 +515,13 @@ Analyze this document and suggest any new entities that should be added to the s
             getBlockedNames('global'),
           ]);
 
+          // Get rejected items with reasons for learning
+          const [rejectedCorrespondents, rejectedDocTypes, rejectedTags] = yield* Effect.all([
+            getRejectedWithReasons('correspondent'),
+            getRejectedWithReasons('document_type'),
+            getRejectedWithReasons('tag'),
+          ]);
+
           const initialState: SchemaAnalysisStateType = {
             docId,
             content,
@@ -427,6 +533,9 @@ Analyze this document and suggest any new entities that should be added to the s
             blockedDocTypes,
             blockedTags,
             blockedGlobal,
+            rejectedCorrespondents,
+            rejectedDocTypes,
+            rejectedTags,
             messages: [],
             analysis: null,
             error: null,
@@ -486,6 +595,13 @@ Analyze this document and suggest any new entities that should be added to the s
               getBlockedNames('global'),
             ]);
 
+            // Get rejected items with reasons for learning
+            const [rejectedCorrespondents, rejectedDocTypes, rejectedTags] = yield* Effect.all([
+              getRejectedWithReasons('correspondent'),
+              getRejectedWithReasons('document_type'),
+              getRejectedWithReasons('tag'),
+            ]);
+
             yield* Effect.sync(() => emit.single(emitAnalyzing('schema_analysis', 'Analyzing document for schema improvements')));
 
             const initialState: SchemaAnalysisStateType = {
@@ -499,6 +615,9 @@ Analyze this document and suggest any new entities that should be added to the s
               blockedDocTypes,
               blockedTags,
               blockedGlobal,
+              rejectedCorrespondents,
+              rejectedDocTypes,
+              rejectedTags,
               messages: [],
               analysis: null,
               error: null,

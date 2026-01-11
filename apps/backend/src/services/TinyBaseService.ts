@@ -467,6 +467,22 @@ export const TinyBaseServiceLive = Layer.effect(
       addPendingReview: (item) =>
         Effect.try({
           try: () => {
+            // Check for duplicates: same docId + type + suggestion (normalized)
+            const table = store.getTable('pendingReviews') ?? {};
+            const normalizedSuggestion = item.suggestion.toLowerCase().trim();
+
+            for (const [existingId, row] of Object.entries(table)) {
+              if (
+                row.docId === item.docId &&
+                row.type === item.type &&
+                String(row.suggestion).toLowerCase().trim() === normalizedSuggestion
+              ) {
+                // Duplicate found - return existing ID without adding
+                return existingId;
+              }
+            }
+
+            // No duplicate - add new item
             const id = generateId();
             const rowData = sanitizeForStorage({
               ...item,

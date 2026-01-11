@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
   CheckCircle2,
@@ -68,6 +69,8 @@ type SectionKey = (typeof sections)[number]["key"];
 
 export default function PendingPage() {
   const t = useTranslations("pending");
+  const searchParams = useSearchParams();
+  const docIdFilter = searchParams.get("docId");
   const [items, setItems] = useState<PendingItem[]>([]);
   const [counts, setCounts] = useState<PendingCounts>({
     correspondent: 0,
@@ -402,9 +405,17 @@ export default function PendingPage() {
   const searchResults = getFilteredExistingEntities();
 
   // Filter items by section - include both regular types and schema_* types
-  const filteredItems = items.filter((item) =>
-    item.type === activeSection || item.type === `schema_${activeSection}`
-  );
+  // Also filter by docId if specified in URL
+  const filteredItems = items.filter((item) => {
+    const matchesSection = item.type === activeSection || item.type === `schema_${activeSection}`;
+    const matchesDocId = !docIdFilter || item.doc_id === Number(docIdFilter);
+    return matchesSection && matchesDocId;
+  });
+
+  // Count items matching docId filter across all sections
+  const docFilteredCount = docIdFilter
+    ? items.filter((item) => item.doc_id === Number(docIdFilter)).length
+    : 0;
 
   const handleSelectOption = (id: string, option: string) => {
     setSelectedValues((prev) => ({ ...prev, [id]: option }));
@@ -764,6 +775,24 @@ export default function PendingPage() {
       </header>
 
       <div className="p-8">
+        {/* Document Filter Banner */}
+        {docIdFilter && (
+          <div className="mb-6 flex items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-700 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-400">
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              <span>
+                {t("filterByDocument", { docId: docIdFilter, count: docFilteredCount })}
+              </span>
+            </div>
+            <a href="/pending">
+              <Button variant="outline" size="sm" className="gap-1">
+                <X className="h-4 w-4" />
+                {t("clearFilter")}
+              </Button>
+            </a>
+          </div>
+        )}
+
         {/* Error Alert */}
         {error && (
           <div className="mb-6 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-400">
