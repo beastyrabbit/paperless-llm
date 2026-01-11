@@ -405,7 +405,7 @@ export function ConnectionsTab() {
               </Button>
             </div>
             <ModelCombobox
-              models={mistralModels.map((m) => ({ name: m.name, value: m.id }))}
+              models={mistralModels.map((m) => ({ name: m.name || m.id, value: m.id }))}
               value={mistralModel}
               onValueChange={(v) => updateSetting("mistral.model", v)}
               placeholder="Select OCR model..."

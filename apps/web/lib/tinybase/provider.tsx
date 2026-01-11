@@ -56,7 +56,7 @@ interface AppTinyBaseProviderProps {
 
 export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
   const [store] = useState(() => createAppStore());
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(true); // Start true to wait for initial sync
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const mountedRef = useRef(true);
