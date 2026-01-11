@@ -29,19 +29,33 @@ Ein Dokumenttyp kategorisiert, um welche Art von Dokument es sich handelt. Er be
 - **Anleitung** - Bedienungsanleitungen, Anweisungen
 - **Bericht** - Berichte, Analysen
 
+## KRITISCH: Immer breite existierende Kategorien verwenden
+
+**Erstelle KEINE Untertypen wenn breitere Typen existieren:**
+
+- Eine Zahnarztrechnung ist IMMER NOCH eine "Rechnungen" - NICHT "Zahnärztliche Rechnung"
+- Eine Steuererinnerung ist IMMER NOCH ein "Brief" - NICHT "Steuererinnerung"
+- Ein Versicherungsbrief ist IMMER NOCH "Brief" oder "Versicherungsunterlagen" - NICHT "Versicherungsbrief"
+- Eine Bankbenachrichtigung ist IMMER NOCH "Brief" oder "Kontoauszug" - NICHT "Bankbenachrichtigung"
+
+Die inhaltlichen Details werden durch Tags und Korrespondent abgedeckt, nicht durch den Dokumenttyp.
+
 ## Richtlinien
 
 1. **Existierende Typen verwenden**: Die Dokumenttypliste ist vorab geprüft. Finde die beste Übereinstimmung daraus.
-2. **EXAKTE Namen verwenden**: Gib den EXAKTEN Namen aus der Liste zurück (z.B. "Rechnungen" nicht "Rechnung")
-3. **Bei Bedarf breit zuordnen**: Wenn kein exakter Typ existiert, verwende die nächste Kategorie
-   - Eine "Garantiekarte" kann als "Garantie" oder "Quittung" klassifiziert werden
+2. **Breite Kategorien gewinnen immer**: Verwende die BREITESTE passende Kategorie:
+   - Jede Rechnung/Faktura → "Rechnungen"
+   - Jeder Brief/Hinweis/Erinnerung → "Brief"
+   - Jeder Vertrag/Vereinbarung → "Vertrag"
+3. **EXAKTE Namen verwenden**: Gib den EXAKTEN Namen aus der Liste zurück (z.B. "Rechnungen" nicht "Rechnung")
 4. **Deutsch oder Englisch konsistent verwenden**: Der bestehenden Namenskonvention folgen
 5. **Hauptzweck bedenken**: Was ist die Hauptfunktion dieses Dokuments?
 6. **Auf Struktur achten**: Rechnungen haben Positionen, Briefe haben Anreden usw.
-7. **Neue Typen - AUSNAHME**: Setze `is_new: true` nur wenn:
-   - Kein existierender Typ auch nur annähernd passt
-   - Dies eine wirklich neue Dokumentkategorie ist
-   - Die Konfidenz sehr hoch ist (>0.9)
+7. **Neue Typen - FAST NIE**: Setze `is_new: true` nur wenn:
+   - Du ALLE existierenden Typen erschöpft hast und keiner passt
+   - Dies eine wirklich neue Dokumentkategorie ohne Obertyp ist
+   - Die Konfidenz extrem hoch ist (>0.95)
+   - In der Praxis sollte das fast nie vorkommen
 
 **WICHTIG**: Der `suggested_document_type` muss EXAKT einem Namen aus "Existierende Dokumenttypen" entsprechen (Groß-/Kleinschreibung beachten!).
 

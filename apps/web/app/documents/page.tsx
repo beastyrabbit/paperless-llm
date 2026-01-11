@@ -290,14 +290,31 @@ export default function DocumentsPage() {
                       </div>
 
                       {/* Status */}
-                      <div>
+                      <div onClick={(e) => {
+                        // Stop propagation for manual_review to allow click through to pending page
+                        if (doc.processing_status === "manual_review") {
+                          e.stopPropagation();
+                        }
+                      }}>
                         {doc.processing_status && statusConfig[doc.processing_status] && (
-                          <Badge
-                            variant={statusConfig[doc.processing_status].variant}
-                            className="text-xs"
-                          >
-                            {t(statusConfig[doc.processing_status].labelKey)}
-                          </Badge>
+                          doc.processing_status === "manual_review" ? (
+                            <Link href={`/pending?docId=${doc.id}`}>
+                              <Badge
+                                variant={statusConfig[doc.processing_status].variant}
+                                className="text-xs cursor-pointer hover:opacity-80"
+                                title={t("clickToViewPending")}
+                              >
+                                {t(statusConfig[doc.processing_status].labelKey)}
+                              </Badge>
+                            </Link>
+                          ) : (
+                            <Badge
+                              variant={statusConfig[doc.processing_status].variant}
+                              className="text-xs"
+                            >
+                              {t(statusConfig[doc.processing_status].labelKey)}
+                            </Badge>
+                          )
                         )}
                       </div>
 

@@ -47,12 +47,27 @@ Use these descriptions to better understand what each tag is meant for.
 
 Never suggest any of these as tags - they are document types, not tags.
 
+## DO NOT Suggest These Types of Tags
+
+**Tags should help FIND documents, not describe every detail:**
+
+1. **Year-based tags**: "2020", "2021", "2024" - Use date filters instead
+2. **Technical codes**: "GOZ", "ICD-10", "BIC", "IBAN", "StNr" - Too specific for search
+3. **Granular cost categories**: "Laborkosten", "Materialkosten" - Too specific
+4. **Product names**: "Poster", "Monitor", "Keyboard" - One-time purchases aren't useful tags
+5. **Company-specific terms**: "Dentaltechnik GmbH" - That's a correspondent, not a tag
+6. **Currency tags**: "EUR", "USD" - Not useful for search
+7. **Single-document tags**: If only ONE document would have this tag, it's not useful
+
+**Ask yourself**: "Would I search for this tag? Would 5+ documents have it?"
+
 ## When to Suggest New Tags
 
-**This should be RARE.** Only suggest new tags (`is_new: true`) when:
+**This should be ALMOST NEVER.** Only suggest new tags (`is_new: true`) when:
 1. No existing tag covers the concept AT ALL
-2. You have very high confidence (>0.9)
-3. Multiple documents would benefit from this tag
+2. You have extremely high confidence (>0.95)
+3. At least 5+ documents would benefit from this tag
+4. The tag represents a broad, useful category (like "medical", "legal", "finance")
 
 In most cases, you should find suitable existing tags. The tag list has been curated to be comprehensive.
 

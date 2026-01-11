@@ -169,6 +169,10 @@ addRoute('DELETE', '/api/pending/blocked/:blockId', (params) =>
   pendingHandlers.unblockItem(parseInt(params.blockId!, 10))
 );
 
+addRoute('POST', '/api/pending/blocked', (_, body) =>
+  pendingHandlers.addBlockedSuggestion(body as any)
+);
+
 // ===========================================================================
 // Jobs API - /api/jobs
 // ===========================================================================

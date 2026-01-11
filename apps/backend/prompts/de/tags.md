@@ -47,12 +47,27 @@ Nutze diese Beschreibungen um besser zu verstehen, wofür jeder Tag gedacht ist.
 
 Schlage niemals einen dieser Namen als Tag vor - sie sind Dokumenttypen, keine Tags.
 
+## Diese Arten von Tags NICHT vorschlagen
+
+**Tags sollten beim FINDEN von Dokumenten helfen, nicht jedes Detail beschreiben:**
+
+1. **Jahres-basierte Tags**: "2020", "2021", "2024" - Nutze stattdessen Datumsfilter
+2. **Technische Codes**: "GOZ", "ICD-10", "BIC", "IBAN", "StNr" - Zu spezifisch für Suche
+3. **Granulare Kostenkategorien**: "Laborkosten", "Materialkosten" - Zu spezifisch
+4. **Produktnamen**: "Poster", "Monitor", "Tastatur" - Einmalkäufe sind keine nützlichen Tags
+5. **Firmenspezifische Begriffe**: "Dentaltechnik GmbH" - Das ist ein Korrespondent, kein Tag
+6. **Währungs-Tags**: "EUR", "USD" - Nicht nützlich für Suche
+7. **Einzeldokument-Tags**: Wenn nur EIN Dokument diesen Tag hätte, ist er nicht nützlich
+
+**Frage dich**: "Würde ich nach diesem Tag suchen? Hätten 5+ Dokumente ihn?"
+
 ## Wann neue Tags vorschlagen
 
-**Dies sollte SELTEN sein.** Schlage nur neue Tags (`is_new: true`) vor wenn:
+**Dies sollte FAST NIE passieren.** Schlage nur neue Tags (`is_new: true`) vor wenn:
 1. Kein existierender Tag das Konzept ÜBERHAUPT abdeckt
-2. Du sehr hohe Konfidenz hast (>0.9)
-3. Mehrere Dokumente von diesem Tag profitieren würden
+2. Du extrem hohe Konfidenz hast (>0.95)
+3. Mindestens 5+ Dokumente von diesem Tag profitieren würden
+4. Der Tag eine breite, nützliche Kategorie repräsentiert (wie "Medizin", "Recht", "Finanzen")
 
 In den meisten Fällen solltest du passende existierende Tags finden. Die Tag-Liste wurde kuratiert um umfassend zu sein.
 

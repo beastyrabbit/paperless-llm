@@ -108,15 +108,22 @@
     "unableToConnect": "Verbindung zum Backend nicht möglich",
     "statusPending": "Ausstehend",
     "statusOcrDone": "OCR erledigt",
+    "statusSummaryDone": "Zusammenfassung erledigt",
+    "statusSchemaReview": "Schema-Prüfung",
     "statusCorrDone": "Korr. erledigt",
     "statusDocTypeDone": "Typ erledigt",
     "statusTitleDone": "Titel erledigt",
     "statusTagsDone": "Tags erledigt",
-    "statusProcessed": "Fertig"
+    "statusProcessed": "Fertig",
+    "statusFailed": "Fehlgeschlagen",
+    "statusManualReview": "Manuelle Prüfung",
+    "clickToViewPending": "Klicken Sie, um ausstehende Überprüfungen für dieses Dokument anzuzeigen"
   },
   "pending": {
     "title": "Zur Überprüfung",
     "subtitle": "{count} Elemente erfordern Ihre Genehmigung",
+    "filterByDocument": "{count} ausstehende(s) Element(e) für Dokument #{docId}",
+    "clearFilter": "Alle anzeigen",
     "noItems": "Keine Elemente zur Überprüfung",
     "allCaughtUp": "Alles erledigt!",
     "approve": "Genehmigen",

@@ -116,11 +116,14 @@
     "statusTagsDone": "Tags Done",
     "statusProcessed": "Complete",
     "statusFailed": "Failed",
-    "statusManualReview": "Manual Review"
+    "statusManualReview": "Manual Review",
+    "clickToViewPending": "Click to view pending reviews for this document"
   },
   "pending": {
     "title": "Pending Review",
     "subtitle": "{count} items requiring your approval",
+    "filterByDocument": "Showing {count} pending item(s) for document #{docId}",
+    "clearFilter": "Show all",
     "noItems": "No items pending review",
     "allCaughtUp": "All caught up!",
     "approve": "Approve",
