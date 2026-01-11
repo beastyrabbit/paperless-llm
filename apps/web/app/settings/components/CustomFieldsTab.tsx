@@ -94,24 +94,40 @@ export function CustomFieldsTab({ onHasChanges, onSave }: CustomFieldsTabProps) 
     onHasChanges?.(hasChanges);
   }, [hasChanges, onHasChanges]);
 
+  const saveSelection = async (newSelection: number[]) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/settings/custom-fields`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selected_field_ids: newSelection }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      setHasChanges(false);
+    } catch (err) {
+      console.error("Failed to save custom fields selection:", err);
+      setError(err instanceof Error ? err.message : "Failed to save selection");
+    }
+  };
+
   const toggleCustomField = (id: number) => {
-    setSelectedCustomFields((prev) => {
-      const newSelection = prev.includes(id)
-        ? prev.filter((f) => f !== id)
-        : [...prev, id];
-      setHasChanges(true);
-      return newSelection;
-    });
+    const newSelection = selectedCustomFields.includes(id)
+      ? selectedCustomFields.filter((f) => f !== id)
+      : [...selectedCustomFields, id];
+    setSelectedCustomFields(newSelection);
+    saveSelection(newSelection);
   };
 
   const selectAll = () => {
-    setSelectedCustomFields(customFields.map((f) => f.id));
-    setHasChanges(true);
+    const allIds = customFields.map((f) => f.id);
+    setSelectedCustomFields(allIds);
+    saveSelection(allIds);
   };
 
   const clearSelection = () => {
     setSelectedCustomFields([]);
-    setHasChanges(true);
+    saveSelection([]);
   };
 
   // Expose save function for parent

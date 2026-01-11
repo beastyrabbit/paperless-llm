@@ -66,11 +66,13 @@ export const getSettings = Effect.gen(function* () {
     confirmation_enabled: getBool('auto_processing.confirmation_enabled', autoProcessing.confirmationEnabled),
     confirmation_max_retries: getNum('auto_processing.confirmation_max_retries', autoProcessing.confirmationMaxRetries),
     language: get('language', language),
+    prompt_language: get('prompt_language', language),
     debug: getBool('debug', debug),
     // Include tags configuration for frontend filtering
     tags: {
       pending: get('tags.pending', tags.pending),
       ocr_done: get('tags.ocr_done', tags.ocrDone),
+      schema_review: get('tags.schema_review', (tags as Record<string, string>).schemaReview || 'llm-schema-review'),
       title_done: get('tags.title_done', tags.titleDone),
       correspondent_done: get('tags.correspondent_done', tags.correspondentDone),
       document_type_done: get('tags.document_type_done', tags.documentTypeDone),
@@ -88,23 +90,54 @@ export const getSettings = Effect.gen(function* () {
 
 // Map frontend field names to TinyBase keys
 const SETTINGS_KEY_MAP: Record<string, string> = {
+  // Paperless connection
   paperless_url: 'paperless.url',
   paperless_token: 'paperless.token',
   paperless_external_url: 'paperless.external_url',
+  // Ollama
   ollama_url: 'ollama.url',
   ollama_model_large: 'ollama.model_large',
   ollama_model_small: 'ollama.model_small',
   ollama_embedding_model: 'ollama.embedding_model',
   ollama_model_translation: 'ollama.model_translation',
+  // Mistral
   mistral_api_key: 'mistral.api_key',
   mistral_model: 'mistral.model',
+  // Qdrant
   qdrant_url: 'qdrant.url',
+  // Auto processing
   auto_processing_enabled: 'auto_processing.enabled',
   auto_processing_interval_minutes: 'auto_processing.interval_minutes',
   confirmation_enabled: 'auto_processing.confirmation_enabled',
   confirmation_max_retries: 'auto_processing.confirmation_max_retries',
+  // Language
   language: 'language',
+  prompt_language: 'prompt_language',
+  // Debug
   debug: 'debug',
+  'debug.log_level': 'debug.log_level',
+  'debug.log_prompts': 'debug.log_prompts',
+  'debug.log_responses': 'debug.log_responses',
+  'debug.save_processing_history': 'debug.save_processing_history',
+  // Pipeline settings
+  'pipeline.ocr': 'pipeline.ocr',
+  'pipeline.title': 'pipeline.title',
+  'pipeline.correspondent': 'pipeline.correspondent',
+  'pipeline.tags': 'pipeline.tags',
+  'pipeline.custom_fields': 'pipeline.custom_fields',
+  // Vector search
+  'vector_search.enabled': 'vector_search.enabled',
+  'vector_search.top_k': 'vector_search.top_k',
+  'vector_search.min_score': 'vector_search.min_score',
+  // Workflow tags - passthrough
+  'tags.pending': 'tags.pending',
+  'tags.ocr_done': 'tags.ocr_done',
+  'tags.schema_review': 'tags.schema_review',
+  'tags.correspondent_done': 'tags.correspondent_done',
+  'tags.document_type_done': 'tags.document_type_done',
+  'tags.title_done': 'tags.title_done',
+  'tags.tags_done': 'tags.tags_done',
+  'tags.processed': 'tags.processed',
 };
 
 export const updateSettings = (updates: SettingsUpdate) =>

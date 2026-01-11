@@ -10,6 +10,7 @@ import { Schema } from 'effect';
 export const TagsConfigSchema = Schema.Struct({
   pending: Schema.String,
   ocr_done: Schema.String,
+  schema_review: Schema.String,
   title_done: Schema.String,
   correspondent_done: Schema.String,
   document_type_done: Schema.String,
@@ -36,6 +37,7 @@ export const SettingsSchema = Schema.Struct({
   confirmation_enabled: Schema.Boolean,
   confirmation_max_retries: Schema.Number,
   language: Schema.String,
+  prompt_language: Schema.String,
   debug: Schema.Boolean,
   tags: TagsConfigSchema,
 });
@@ -59,6 +61,7 @@ export const SettingsUpdateSchema = Schema.Struct({
   confirmation_enabled: Schema.Boolean.pipe(Schema.optional),
   confirmation_max_retries: Schema.Number.pipe(Schema.optional),
   language: Schema.String.pipe(Schema.optional),
+  prompt_language: Schema.String.pipe(Schema.optional),
   debug: Schema.Boolean.pipe(Schema.optional),
 });
 
