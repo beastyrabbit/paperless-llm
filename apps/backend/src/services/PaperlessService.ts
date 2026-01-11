@@ -286,7 +286,7 @@ export const PaperlessServiceLive = Layer.effect(
             'GET',
             '/documents/',
             undefined,
-            { tags__id__in: tagIds.join(','), page_size: limit }
+            { tags__id__all: tagIds.join(','), page_size: limit }
           );
           return response.results;
         }),
