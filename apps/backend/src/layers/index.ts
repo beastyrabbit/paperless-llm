@@ -18,6 +18,7 @@ import {
 } from '../jobs/index.js';
 import {
   OCRAgentServiceLive,
+  SummaryAgentServiceLive,
   TitleAgentServiceLive,
   CorrespondentAgentServiceLive,
   DocumentTypeAgentServiceLive,
@@ -94,6 +95,7 @@ const JobsLayer = Layer.mergeAll(
  */
 const AgentsLayer = Layer.mergeAll(
   OCRAgentServiceLive,
+  SummaryAgentServiceLive,
   TitleAgentServiceLive,
   CorrespondentAgentServiceLive,
   DocumentTypeAgentServiceLive,

@@ -35,11 +35,17 @@ import { documentsApi, processingApi, settingsApi, type DocumentDetail } from "@
 // Helper to determine processing status from tags
 function getProcessingStatus(tags: Array<{ id: number; name: string }>): string {
   const tagNames = tags.map((t) => t.name);
+  // Check for final/error states first
   if (tagNames.some((t) => t.includes("processed"))) return "processed";
+  if (tagNames.some((t) => t.includes("failed"))) return "failed";
+  if (tagNames.some((t) => t.includes("manual-review"))) return "manual_review";
+  // Check pipeline states in reverse order (most advanced first)
   if (tagNames.some((t) => t.includes("tags-done"))) return "tags_done";
   if (tagNames.some((t) => t.includes("document-type-done"))) return "document_type_done";
   if (tagNames.some((t) => t.includes("correspondent-done"))) return "correspondent_done";
   if (tagNames.some((t) => t.includes("title-done"))) return "title_done";
+  if (tagNames.some((t) => t.includes("schema-review"))) return "schema_review";
+  if (tagNames.some((t) => t.includes("summary-done"))) return "summary_done";
   if (tagNames.some((t) => t.includes("ocr-done"))) return "ocr_done";
   if (tagNames.some((t) => t.includes("pending"))) return "pending";
   return "unknown";
@@ -57,7 +63,11 @@ function getNextStep(status: string): { step: string; label: string } | null {
     case "unknown":
       return { step: "ocr", label: "OCR" };
     case "ocr_done":
+      return { step: "summary", label: "Summary" };
+    case "summary_done":
       return { step: "title", label: "Title" };
+    case "schema_review":
+      return { step: "title", label: "Title" }; // Resume from title after schema review
     case "title_done":
       return { step: "correspondent", label: "Correspondent" };
     case "correspondent_done":
@@ -68,6 +78,10 @@ function getNextStep(status: string): { step: string; label: string } | null {
       return { step: "custom_fields", label: "Custom Fields" };
     case "processed":
       return null; // Already fully processed
+    case "failed":
+      return { step: "retry", label: "Retry" };
+    case "manual_review":
+      return { step: "review", label: "Review" };
     default:
       return { step: "title", label: "Title" };
   }

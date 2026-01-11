@@ -84,7 +84,13 @@ const ANALYSIS_SYSTEM_PROMPT = `You are a schema analysis specialist for a docum
 
 Your task is to analyze documents and suggest new entities (correspondents, document types, tags) that should be added to improve the system's schema.
 
-You have access to tools to search for similar processed documents. Use these to see how similar documents were classified and what entities were used.
+## Tool Usage Guidelines
+
+You have access to tools to search for similar processed documents. These tools are OPTIONAL and should be used sparingly:
+- Only call a tool if you genuinely need more information
+- If a tool returns "not found" or empty results, DO NOT call the same tool again - proceed with your analysis
+- Make at most 2-3 tool calls total, then provide your final answer
+- You can make your decision based on the document content alone if tools don't provide useful information
 
 Guidelines:
 1. Only suggest NEW entities that don't already exist
@@ -433,7 +439,24 @@ Analyze this document and suggest any new entities that should be added to the s
             catch: (e) => new AgentError({ message: `Schema analysis graph failed: ${e}`, agent: 'schema_analysis', cause: e }),
           });
 
-          return toResult(result);
+          const finalResult = toResult(result);
+
+          // Log the result
+          yield* tinybase.addProcessingLog({
+            docId,
+            timestamp: new Date().toISOString(),
+            step: 'schema_analysis',
+            eventType: 'result',
+            data: {
+              success: true,
+              hasSuggestions: finalResult.hasSuggestions,
+              suggestionsCount: finalResult.suggestions.length,
+              matchesPendingCount: finalResult.matchesPending.length,
+              reasoning: finalResult.reasoning,
+            },
+          });
+
+          return finalResult;
         }).pipe(
           Effect.mapError((e) =>
             e instanceof AgentError ? e : new AgentError({ message: `Schema analysis failed: ${e}`, agent: 'schema_analysis', cause: e })
@@ -509,6 +532,21 @@ Analyze this document and suggest any new entities that should be added to the s
             }
 
             const finalResult = toResult(result);
+
+            // Log the result
+            yield* tinybase.addProcessingLog({
+              docId,
+              timestamp: new Date().toISOString(),
+              step: 'schema_analysis',
+              eventType: 'result',
+              data: {
+                success: true,
+                hasSuggestions: finalResult.hasSuggestions,
+                suggestionsCount: finalResult.suggestions.length,
+                matchesPendingCount: finalResult.matchesPending.length,
+                reasoning: finalResult.reasoning,
+              },
+            });
 
             yield* Effect.sync(() => emit.single(emitResult('schema_analysis', finalResult)));
             yield* Effect.sync(() => emit.single(emitComplete('schema_analysis')));

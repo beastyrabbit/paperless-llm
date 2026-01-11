@@ -41,6 +41,8 @@ export const AutoProcessingConfigSchema = Schema.Struct({
 export const TagsConfigSchema = Schema.Struct({
   pending: Schema.String.pipe(Schema.optional),
   ocrDone: Schema.String.pipe(Schema.optional),
+  summaryDone: Schema.String.pipe(Schema.optional),
+  schemaReview: Schema.String.pipe(Schema.optional),
   titleDone: Schema.String.pipe(Schema.optional),
   correspondentDone: Schema.String.pipe(Schema.optional),
   documentTypeDone: Schema.String.pipe(Schema.optional),
@@ -53,6 +55,7 @@ export const TagsConfigSchema = Schema.Struct({
 // Pipeline configuration
 export const PipelineConfigSchema = Schema.Struct({
   enableOcr: Schema.Boolean.pipe(Schema.optional),
+  enableSummary: Schema.Boolean.pipe(Schema.optional),
   enableTitle: Schema.Boolean.pipe(Schema.optional),
   enableCorrespondent: Schema.Boolean.pipe(Schema.optional),
   enableDocumentType: Schema.Boolean.pipe(Schema.optional),
@@ -112,6 +115,8 @@ export interface ResolvedConfig {
   tags: {
     pending: string;
     ocrDone: string;
+    summaryDone: string;
+    schemaReview: string;
     titleDone: string;
     correspondentDone: string;
     documentTypeDone: string;
@@ -122,6 +127,7 @@ export interface ResolvedConfig {
   };
   pipeline: {
     enableOcr: boolean;
+    enableSummary: boolean;
     enableTitle: boolean;
     enableCorrespondent: boolean;
     enableDocumentType: boolean;

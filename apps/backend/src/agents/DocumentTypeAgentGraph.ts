@@ -61,7 +61,13 @@ export const DocumentTypeAgentGraphService = Context.GenericTag<DocumentTypeAgen
 
 const ANALYSIS_SYSTEM_PROMPT = `You are a document classification specialist. Your task is to identify the document type/category.
 
-You have access to tools to search for similar processed documents. Use these to see how similar documents were classified.
+## Tool Usage Guidelines
+
+You have access to tools to search for similar processed documents. These tools are OPTIONAL and should be used sparingly:
+- Only call a tool if you genuinely need more information
+- If a tool returns "not found" or empty results, DO NOT call the same tool again - proceed with your analysis
+- Make at most 2-3 tool calls total, then provide your final answer
+- You can make your decision based on the document content alone if tools don't provide useful information
 
 Document types describe what kind of document this is:
 - Invoice, Receipt, Contract, Letter, Report
@@ -301,6 +307,12 @@ Review this document type classification and provide your confirmation decision.
           yield* paperless.updateDocument(input.docId, { document_type: docTypeId });
           yield* paperless.transitionDocumentTag(input.docId, tagConfig.correspondentDone, tagConfig.documentTypeDone);
 
+          // Clean up any existing pending review for this document and type
+          yield* tinybase.removePendingReviewByDocAndType(input.docId, 'document_type');
+
+          // Remove manual review tag if it was previously set
+          yield* paperless.removeTagFromDocument(input.docId, tagConfig.manualReview);
+
           // Log result
           yield* tinybase.addProcessingLog({
             docId: input.docId,
@@ -403,6 +415,13 @@ Review this document type classification and provide your confirmation decision.
                 const docTypeId = yield* paperless.getOrCreateDocumentType(lastAnalysis.suggested_document_type);
                 yield* paperless.updateDocument(input.docId, { document_type: docTypeId });
                 yield* paperless.transitionDocumentTag(input.docId, tagConfig.correspondentDone, tagConfig.documentTypeDone);
+
+                // Clean up any existing pending review for this document and type
+                yield* tinybase.removePendingReviewByDocAndType(input.docId, 'document_type');
+
+                // Remove manual review tag if it was previously set
+                yield* paperless.removeTagFromDocument(input.docId, tagConfig.manualReview);
+
                 yield* Effect.sync(() => emit.single(emitResult('document_type', {
                   success: true,
                   value: lastAnalysis!.suggested_document_type,

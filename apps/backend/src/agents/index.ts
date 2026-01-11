@@ -31,6 +31,15 @@ export {
   type OCRResult,
 } from './OCRAgent.js';
 
+// Summary Agent (uses Ollama directly, not LangGraph confirmation loop)
+export {
+  SummaryAgentService,
+  SummaryAgentServiceLive,
+  type SummaryAgentService as SummaryAgentServiceInterface,
+  type SummaryInput,
+  type SummaryResult,
+} from './SummaryAgentGraph.js';
+
 // Processing Pipeline
 export {
   ProcessingPipelineService,

@@ -39,6 +39,8 @@ const defaultConfig: ResolvedConfig = {
   tags: {
     pending: 'llm-pending',
     ocrDone: 'llm-ocr-done',
+    summaryDone: 'llm-summary-done',
+    schemaReview: 'llm-schema-review',
     titleDone: 'llm-title-done',
     correspondentDone: 'llm-correspondent-done',
     documentTypeDone: 'llm-document-type-done',
@@ -49,6 +51,7 @@ const defaultConfig: ResolvedConfig = {
   },
   pipeline: {
     enableOcr: true,
+    enableSummary: false,
     enableTitle: true,
     enableCorrespondent: true,
     enableDocumentType: true,

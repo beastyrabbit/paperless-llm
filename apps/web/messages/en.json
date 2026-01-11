@@ -108,11 +108,15 @@
     "unableToConnect": "Unable to connect to backend",
     "statusPending": "Pending",
     "statusOcrDone": "OCR Done",
+    "statusSummaryDone": "Summary Done",
+    "statusSchemaReview": "Schema Review",
     "statusCorrDone": "Corr. Done",
     "statusDocTypeDone": "DocType Done",
     "statusTitleDone": "Title Done",
     "statusTagsDone": "Tags Done",
-    "statusProcessed": "Complete"
+    "statusProcessed": "Complete",
+    "statusFailed": "Failed",
+    "statusManualReview": "Manual Review"
   },
   "pending": {
     "title": "Pending Review",
@@ -326,6 +330,8 @@
       "description": "Enable or disable individual processing steps",
       "ocr": "OCR Processing",
       "ocrDesc": "Extract text from PDFs using Mistral AI",
+      "summary": "Document Summary",
+      "summaryDesc": "Generate a summary and add as document note",
       "titleGeneration": "Title Generation",
       "titleDesc": "Generate descriptive document titles",
       "correspondent": "Correspondent Assignment",

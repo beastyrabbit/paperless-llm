@@ -353,7 +353,7 @@ export default function ProcessingPage({
 
   // Get steps in order
   const steps = useMemo(() => {
-    const orderedSteps = ["ocr", "title", "correspondent", "document_type", "tags", "custom_fields", "pipeline"];
+    const orderedSteps = ["ocr", "summary", "schema_analysis", "title", "correspondent", "document_type", "tags", "custom_fields", "qdrant_index", "pipeline"];
     return orderedSteps.filter(step => logsByStep[step]?.length > 0);
   }, [logsByStep]);
 

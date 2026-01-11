@@ -209,6 +209,7 @@ export interface TinyBaseService {
   readonly addPendingReview: (item: Omit<PendingReview, 'id' | 'createdAt'>) => Effect.Effect<string, DatabaseError>;
   readonly updatePendingReview: (id: string, updates: Partial<PendingReview>) => Effect.Effect<void, DatabaseError>;
   readonly removePendingReview: (id: string) => Effect.Effect<void, DatabaseError>;
+  readonly removePendingReviewByDocAndType: (docId: number, type: PendingReview['type']) => Effect.Effect<void, DatabaseError>;
   readonly getPendingCounts: () => Effect.Effect<PendingCounts, DatabaseError>;
 
   // Tag Metadata
@@ -500,6 +501,20 @@ export const TinyBaseServiceLive = Layer.effect(
             store.delRow('pendingReviews', id);
           },
           catch: (e) => new DatabaseError({ message: `Failed to remove pending review: ${e}`, operation: 'removePendingReview', cause: e }),
+        }),
+
+      removePendingReviewByDocAndType: (docId, type) =>
+        Effect.try({
+          try: () => {
+            const table = store.getTable('pendingReviews') ?? {};
+            // Find all matching rows and delete them
+            for (const [id, row] of Object.entries(table)) {
+              if (row?.['docId'] === docId && row?.['type'] === type) {
+                store.delRow('pendingReviews', id);
+              }
+            }
+          },
+          catch: (e) => new DatabaseError({ message: `Failed to remove pending review by doc and type: ${e}`, operation: 'removePendingReviewByDocAndType', cause: e }),
         }),
 
       getPendingCounts: () =>

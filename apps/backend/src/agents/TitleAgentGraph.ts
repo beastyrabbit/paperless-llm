@@ -73,7 +73,15 @@ const extractSystemPrompt = (promptContent: string, addToolNote = true): string 
 
   // Add tool usage note if needed
   const toolNote = addToolNote
-    ? '\n\nYou have access to tools to search for similar processed documents. Use them to inform your decisions.\n\nYou MUST respond with structured JSON matching the required schema.'
+    ? `\n\n## Tool Usage Guidelines
+
+You have access to tools to search for similar processed documents. These tools are OPTIONAL and should be used sparingly:
+- Only call a tool if you genuinely need more information
+- If a tool returns "not found" or empty results, DO NOT call the same tool again - proceed with your analysis
+- Make at most 2-3 tool calls total, then provide your final answer
+- You can make your decision based on the document content alone if tools don't provide useful information
+
+You MUST respond with structured JSON matching the required schema.`
     : '\n\nYou MUST respond with structured JSON: { "confirmed": boolean, "feedback": string, "suggested_changes": string }';
 
   return systemPart + toolNote;
@@ -266,6 +274,12 @@ Review this title suggestion and provide your confirmation decision.`;
           yield* paperless.updateDocument(input.docId, { title: analysis.suggested_title });
           yield* paperless.transitionDocumentTag(input.docId, tagConfig.ocrDone, tagConfig.titleDone);
 
+          // Clean up any existing pending review for this document and type
+          yield* tinybase.removePendingReviewByDocAndType(input.docId, 'title');
+
+          // Remove manual review tag if it was previously set
+          yield* paperless.removeTagFromDocument(input.docId, tagConfig.manualReview);
+
           // Log result
           yield* tinybase.addProcessingLog({
             docId: input.docId,
@@ -366,6 +380,13 @@ Review this title suggestion and provide your confirmation decision.`;
               if (node === 'apply' && lastAnalysis) {
                 yield* paperless.updateDocument(input.docId, { title: lastAnalysis.suggested_title });
                 yield* paperless.transitionDocumentTag(input.docId, tagConfig.ocrDone, tagConfig.titleDone);
+
+                // Clean up any existing pending review for this document and type
+                yield* tinybase.removePendingReviewByDocAndType(input.docId, 'title');
+
+                // Remove manual review tag if it was previously set
+                yield* paperless.removeTagFromDocument(input.docId, tagConfig.manualReview);
+
                 yield* Effect.sync(() => emit.single(emitResult('title', { success: true, value: lastAnalysis!.suggested_title })));
 
                 // Log result

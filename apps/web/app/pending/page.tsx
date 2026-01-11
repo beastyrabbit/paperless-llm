@@ -333,10 +333,11 @@ export default function PendingPage() {
       if (response.error) {
         setError(response.error);
       } else if (response.data) {
-        setSimilarGroups(response.data.groups);
+        const groups = response.data.groups ?? [];
+        setSimilarGroups(groups);
         // Initialize merge names with recommended names
         const names: Record<number, string> = {};
-        response.data.groups.forEach((group, index) => {
+        groups.forEach((group, index) => {
           names[index] = group.recommended_name;
         });
         setSimilarMergeNames(names);
@@ -987,14 +988,14 @@ export default function PendingPage() {
             ) : (
               <div className="space-y-6">
                 {/* Global blocks */}
-                {blockedItems.global_blocks.length > 0 && (
+                {(blockedItems.global_blocks?.length ?? 0) > 0 && (
                   <div>
                     <h3 className="text-sm font-medium text-zinc-500 mb-2 flex items-center gap-2">
                       <Globe className="h-4 w-4" />
-                      {t("blocked.globalBlocks")} ({blockedItems.global_blocks.length})
+                      {t("blocked.globalBlocks")} ({blockedItems.global_blocks?.length ?? 0})
                     </h3>
                     <div className="flex flex-wrap gap-2">
-                      {blockedItems.global_blocks.map((item) => (
+                      {blockedItems.global_blocks?.map((item) => (
                         <Badge
                           key={item.id}
                           variant="destructive"
@@ -1019,14 +1020,14 @@ export default function PendingPage() {
                 )}
 
                 {/* Correspondent blocks */}
-                {blockedItems.correspondent_blocks.length > 0 && (
+                {(blockedItems.correspondent_blocks?.length ?? 0) > 0 && (
                   <div>
                     <h3 className="text-sm font-medium text-zinc-500 mb-2 flex items-center gap-2">
                       <User className="h-4 w-4" />
-                      {t("blocked.correspondentBlocks")} ({blockedItems.correspondent_blocks.length})
+                      {t("blocked.correspondentBlocks")} ({blockedItems.correspondent_blocks?.length ?? 0})
                     </h3>
                     <div className="flex flex-wrap gap-2">
-                      {blockedItems.correspondent_blocks.map((item) => (
+                      {blockedItems.correspondent_blocks?.map((item) => (
                         <Badge
                           key={item.id}
                           variant="outline"
@@ -1051,14 +1052,14 @@ export default function PendingPage() {
                 )}
 
                 {/* Document type blocks */}
-                {blockedItems.document_type_blocks.length > 0 && (
+                {(blockedItems.document_type_blocks?.length ?? 0) > 0 && (
                   <div>
                     <h3 className="text-sm font-medium text-zinc-500 mb-2 flex items-center gap-2">
                       <FileText className="h-4 w-4" />
-                      {t("blocked.documentTypeBlocks")} ({blockedItems.document_type_blocks.length})
+                      {t("blocked.documentTypeBlocks")} ({blockedItems.document_type_blocks?.length ?? 0})
                     </h3>
                     <div className="flex flex-wrap gap-2">
-                      {blockedItems.document_type_blocks.map((item) => (
+                      {blockedItems.document_type_blocks?.map((item) => (
                         <Badge
                           key={item.id}
                           variant="outline"
@@ -1083,14 +1084,14 @@ export default function PendingPage() {
                 )}
 
                 {/* Tag blocks */}
-                {blockedItems.tag_blocks.length > 0 && (
+                {(blockedItems.tag_blocks?.length ?? 0) > 0 && (
                   <div>
                     <h3 className="text-sm font-medium text-zinc-500 mb-2 flex items-center gap-2">
                       <Tag className="h-4 w-4" />
-                      {t("blocked.tagBlocks")} ({blockedItems.tag_blocks.length})
+                      {t("blocked.tagBlocks")} ({blockedItems.tag_blocks?.length ?? 0})
                     </h3>
                     <div className="flex flex-wrap gap-2">
-                      {blockedItems.tag_blocks.map((item) => (
+                      {blockedItems.tag_blocks?.map((item) => (
                         <Badge
                           key={item.id}
                           variant="outline"
@@ -1633,7 +1634,7 @@ export default function PendingPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {similarGroups.length === 0 ? (
+          {(similarGroups?.length ?? 0) === 0 ? (
             <div className="py-8 text-center">
               <CheckCircle2 className="h-12 w-12 text-emerald-500 mx-auto mb-4" />
               <h3 className="font-semibold text-lg mb-1">{t("similar.noSimilar")}</h3>

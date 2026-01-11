@@ -41,6 +41,7 @@ export interface PaperlessService {
   readonly removeTagFromDocument: (docId: number, tagName: string) => Effect.Effect<void, PaperlessErrorType>;
   readonly transitionDocumentTag: (docId: number, fromTagName: string, toTagName: string) => Effect.Effect<void, PaperlessErrorType>;
   readonly deleteTag: (id: number) => Effect.Effect<void, PaperlessErrorType>;
+  readonly updateTagColor: (id: number, color: string) => Effect.Effect<void, PaperlessErrorType>;
   readonly mergeTags: (sourceId: number, targetId: number) => Effect.Effect<void, PaperlessErrorType>;
 
   // Correspondent operations
@@ -62,6 +63,10 @@ export interface PaperlessService {
   // Custom Field operations
   readonly getCustomFields: () => Effect.Effect<CustomField[], PaperlessErrorType>;
   readonly getCustomField: (id: number) => Effect.Effect<CustomField, PaperlessErrorType>;
+
+  // Note operations
+  readonly addNote: (docId: number, note: string) => Effect.Effect<void, PaperlessErrorType>;
+  readonly getNotes: (docId: number) => Effect.Effect<Array<{ id: number; note: string; created: string }>, PaperlessErrorType>;
 
   // Queue operations
   readonly getQueueStats: () => Effect.Effect<QueueStats, PaperlessErrorType>;
@@ -282,11 +287,12 @@ export const PaperlessServiceLive = Layer.effect(
 
           if (tagIds.length === 0) return [];
 
+          // Use tags__id__in for OR query (documents with ANY of the tags)
           const response = yield* request<PaginatedResponse<Document>>(
             'GET',
             '/documents/',
             undefined,
-            { tags__id__all: tagIds.join(','), page_size: limit }
+            { tags__id__in: tagIds.join(','), page_size: limit }
           );
           return response.results;
         }),
@@ -417,6 +423,8 @@ export const PaperlessServiceLive = Layer.effect(
 
       deleteTag: (id) => request<void>('DELETE', `/tags/${id}/`),
 
+      updateTagColor: (id, color) => request<void>('PATCH', `/tags/${id}/`, { color }),
+
       mergeTags: (sourceId, targetId) =>
         Effect.gen(function* () {
           // Get ALL documents with source tag (handles pagination)
@@ -537,6 +545,18 @@ export const PaperlessServiceLive = Layer.effect(
 
       getCustomField: (id) =>
         request<CustomField>('GET', `/custom_fields/${id}/`) as Effect.Effect<CustomField, PaperlessError | NotFoundError>,
+
+      // =====================================================================
+      // Note operations
+      // =====================================================================
+
+      addNote: (docId, note) =>
+        Effect.gen(function* () {
+          yield* request<{ id: number; note: string }>('POST', `/documents/${docId}/notes/`, { note });
+        }),
+
+      getNotes: (docId) =>
+        request<Array<{ id: number; note: string; created: string }>>('GET', `/documents/${docId}/notes/`),
 
       // =====================================================================
       // Queue operations

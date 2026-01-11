@@ -34,10 +34,11 @@ export const createSearchSimilarDocumentsTool = (deps: ToolDependencies) =>
           limit: Math.min(limit ?? 5, 10),
           filterProcessed: true,
         })
-      ).catch((e) => ({ error: String(e) }));
+      ).catch(() => ({ error: true as const }));
 
       if ('error' in result) {
-        return `Error searching documents: ${result.error}`;
+        // Return a clear, actionable message instead of raw error details
+        return 'Semantic search is currently unavailable. Please proceed with your analysis based on the document content alone.';
       }
 
       if (result.length === 0) {

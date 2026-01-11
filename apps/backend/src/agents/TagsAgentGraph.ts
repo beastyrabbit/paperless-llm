@@ -73,7 +73,13 @@ export const TagsAgentGraphService = Context.GenericTag<TagsAgentGraphService>('
 
 const ANALYSIS_SYSTEM_PROMPT = `You are a document tagging specialist. Your task is to analyze documents and suggest relevant, consistent tags.
 
-You have access to tools that let you search for similar processed documents and look up examples of how tags are used. Use these tools to inform your decisions and ensure consistency with existing tagging patterns.
+## Tool Usage Guidelines
+
+You have access to tools to search for similar processed documents. These tools are OPTIONAL and should be used sparingly:
+- Only call a tool if you genuinely need more information
+- If a tool returns "not found" or empty results, DO NOT call the same tool again - proceed with your analysis
+- Make at most 2-3 tool calls total, then provide your final answer
+- You can make your decision based on the document content alone if tools don't provide useful information
 
 Guidelines:
 1. Prefer existing tags for consistency
@@ -404,6 +410,12 @@ Review the tag suggestions and provide your confirmation decision.`;
             tagConfig.tagsDone
           );
 
+          // Clean up any existing pending review for this document and type
+          yield* tinybase.removePendingReviewByDocAndType(input.docId, 'tag');
+
+          // Remove manual review tag if it was previously set
+          yield* paperless.removeTagFromDocument(input.docId, tagConfig.manualReview);
+
           // Log result
           yield* tinybase.addProcessingLog({
             docId: input.docId,
@@ -591,6 +603,12 @@ Review the tag suggestions and provide your confirmation decision.`;
                   tagConfig.documentTypeDone,
                   tagConfig.tagsDone
                 );
+
+                // Clean up any existing pending review for this document and type
+                yield* tinybase.removePendingReviewByDocAndType(input.docId, 'tag');
+
+                // Remove manual review tag if it was previously set
+                yield* paperless.removeTagFromDocument(input.docId, tagConfig.manualReview);
 
                 yield* Effect.sync(() =>
                   emit.single(emitResult('tags', {
