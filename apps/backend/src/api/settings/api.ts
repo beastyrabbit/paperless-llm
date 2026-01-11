@@ -61,6 +61,7 @@ export const SettingsUpdateSchema = Schema.Struct({
   confirmation_enabled: Schema.Boolean.pipe(Schema.optional),
   confirmation_max_retries: Schema.Number.pipe(Schema.optional),
   language: Schema.String.pipe(Schema.optional),
+  prompt_language: Schema.String.pipe(Schema.optional),
   debug: Schema.Boolean.pipe(Schema.optional),
 });
 

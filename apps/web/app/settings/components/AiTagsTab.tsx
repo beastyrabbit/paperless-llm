@@ -127,14 +127,18 @@ export function AiTagsTab() {
 
   const saveTagSelection = async (newSelection: number[]) => {
     try {
-      await fetch(`${API_BASE}/api/settings/ai-tags`, {
+      const response = await fetch(`${API_BASE}/api/settings/ai-tags`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ selected_tag_ids: newSelection }),
       });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       setHasChanges(false);
     } catch (err) {
       console.error("Failed to save AI tags selection:", err);
+      setError(err instanceof Error ? err.message : "Failed to save selection");
     }
   };
 

@@ -66,14 +66,18 @@ export function AiDocumentTypesTab() {
 
   const saveDocTypeSelection = async (newSelection: number[]) => {
     try {
-      await fetch(`${API_BASE}/api/settings/ai-document-types`, {
+      const response = await fetch(`${API_BASE}/api/settings/ai-document-types`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ selected_type_ids: newSelection }),
       });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       setHasChanges(false);
     } catch (err) {
       console.error("Failed to save AI document types selection:", err);
+      setError(err instanceof Error ? err.message : "Failed to save selection");
     }
   };
 
