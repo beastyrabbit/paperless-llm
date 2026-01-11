@@ -16,6 +16,9 @@ import { ConfirmationResultSchema, type ConfirmationResult } from './types.js';
 // State Definition
 // ===========================================================================
 
+// Maximum number of tool calls allowed before forcing structured output
+const MAX_TOOL_CALLS = 5;
+
 /**
  * State annotation for the confirmation loop graph.
  */
@@ -42,6 +45,12 @@ export const ConfirmationLoopState = Annotation.Root({
   // Messages for tool calls
   messages: Annotation<BaseMessage[]>({
     reducer: (prev, next) => [...prev, ...next],
+  }),
+
+  // Tool call tracking to prevent infinite loops
+  toolCallCount: Annotation<number>,
+  toolCallCache: Annotation<Record<string, string>>({
+    reducer: (prev, next) => ({ ...prev, ...next }),
   }),
 
   // Outcome flags
@@ -433,6 +442,13 @@ const createConfirmNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>)
   };
 };
 
+/**
+ * Generate a cache key for a tool call to detect duplicates.
+ */
+const getToolCallCacheKey = (name: string, args: Record<string, unknown>): string => {
+  return `${name}:${JSON.stringify(args, Object.keys(args).sort())}`;
+};
+
 const createToolNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>) => {
   return async (state: ConfirmationLoopStateType): Promise<Partial<ConfirmationLoopStateType>> => {
     if (!config.tools?.length) {
@@ -448,12 +464,46 @@ const createToolNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>) =>
 
     const toolCalls = (lastMessage as unknown as { tool_calls: Array<{ name: string; args: Record<string, unknown>; id?: string }> }).tool_calls;
     const toolMessages: ToolMessage[] = [];
+    const newCacheEntries: Record<string, string> = {};
+    let newToolCallCount = 0;
 
     for (const toolCall of toolCalls) {
       const tool = config.tools.find((t) => t.name === toolCall.name);
       if (tool) {
+        // Check for duplicate tool calls
+        const cacheKey = getToolCallCacheKey(toolCall.name, toolCall.args);
+        const cachedResult = state.toolCallCache[cacheKey];
+
+        if (cachedResult) {
+          // Return cached result for duplicate calls
+          // Still count this as a tool call to prevent infinite loops
+          newToolCallCount++;
+          console.log(`[TOOL CACHE] Duplicate tool call detected: ${toolCall.name}, returning cached result (call ${state.toolCallCount + newToolCallCount}/${MAX_TOOL_CALLS})`);
+          config.logger?.({
+            eventType: 'tool_result',
+            data: {
+              toolName: toolCall.name,
+              toolArgs: toolCall.args,
+              cached: true,
+              result: cachedResult,
+            },
+            timestamp: new Date().toISOString(),
+            id: generateLogId('tool_result'),
+            parentId: lastResponseId,
+          });
+
+          toolMessages.push(
+            new ToolMessage({
+              content: `[Cached - call ${state.toolCallCount + newToolCallCount}/${MAX_TOOL_CALLS}] ${cachedResult}`,
+              tool_call_id: toolCall.id!,
+            })
+          );
+          continue;
+        }
+
         // Generate tool call ID
         const toolCallId = generateLogId('tool_call');
+        newToolCallCount++;
 
         // Log tool_call event (child of the response that requested tools)
         config.logger?.({
@@ -470,6 +520,10 @@ const createToolNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>) =>
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const result = await (tool as any).invoke(toolCall.args);
+          const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
+
+          // Cache the result
+          newCacheEntries[cacheKey] = resultStr;
 
           // Log tool_result event (child of the tool call)
           config.logger?.({
@@ -485,11 +539,15 @@ const createToolNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>) =>
 
           toolMessages.push(
             new ToolMessage({
-              content: typeof result === 'string' ? result : JSON.stringify(result),
+              content: resultStr,
               tool_call_id: toolCall.id!,
             })
           );
         } catch (error) {
+          const errorResult = `Tool error: ${String(error)}`;
+          // Cache error results too to prevent repeated failing calls
+          newCacheEntries[cacheKey] = errorResult;
+
           // Log tool error (child of the tool call)
           config.logger?.({
             eventType: 'tool_result',
@@ -504,7 +562,7 @@ const createToolNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>) =>
 
           toolMessages.push(
             new ToolMessage({
-              content: `Tool error: ${String(error)}`,
+              content: errorResult,
               tool_call_id: toolCall.id!,
             })
           );
@@ -512,7 +570,11 @@ const createToolNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>) =>
       }
     }
 
-    return { messages: toolMessages };
+    return {
+      messages: toolMessages,
+      toolCallCount: state.toolCallCount + newToolCallCount,
+      toolCallCache: newCacheEntries,
+    };
   };
 };
 
@@ -528,6 +590,11 @@ const shouldContinueAfterAnalysis = (state: ConfirmationLoopStateType): string =
   // Check for tool calls (use serialization-safe check)
   const lastMessage = state.messages[state.messages.length - 1];
   if (lastMessage && isAIMessageWithToolCalls(lastMessage)) {
+    // Enforce maximum tool call limit to prevent infinite loops
+    if (state.toolCallCount >= MAX_TOOL_CALLS) {
+      console.log(`[TOOL LIMIT] Maximum tool calls (${MAX_TOOL_CALLS}) reached, forcing structured output`);
+      return 'confirm';
+    }
     return 'tools';
   }
 
@@ -635,6 +702,8 @@ export const runConfirmationLoop = async <TAnalysis>(
     analysis: null,
     confirmation: null,
     messages: [],
+    toolCallCount: 0,
+    toolCallCache: {},
     confirmed: false,
     needsReview: false,
     error: null,
@@ -673,6 +742,8 @@ export async function* streamConfirmationLoop<TAnalysis>(
     analysis: null,
     confirmation: null,
     messages: [],
+    toolCallCount: 0,
+    toolCallCache: {},
     confirmed: false,
     needsReview: false,
     error: null,

@@ -70,21 +70,27 @@ export const getPendingDocuments = (tag?: string, limit = 50) =>
     // specific tag: just that tag
     let tagNames: string[];
     if (tag === 'all') {
-      // All documents including processed
+      // All documents including processed, failed, and manual review
       tagNames = [
         tagConfig.pending,
         tagConfig.ocrDone,
+        tagConfig.summaryDone,
+        tagConfig.schemaReview,
         tagConfig.titleDone,
         tagConfig.correspondentDone,
         tagConfig.documentTypeDone,
         tagConfig.tagsDone,
         tagConfig.processed,
+        tagConfig.failed,
+        tagConfig.manualReview,
       ];
     } else if (!tag) {
-      // Default: in-progress only (excludes processed)
+      // Default: in-progress only (excludes processed, failed, manual review)
       tagNames = [
         tagConfig.pending,
         tagConfig.ocrDone,
+        tagConfig.summaryDone,
+        tagConfig.schemaReview,
         tagConfig.titleDone,
         tagConfig.correspondentDone,
         tagConfig.documentTypeDone,
@@ -135,13 +141,31 @@ export const getPendingDocuments = (tag?: string, limit = 50) =>
 // Helper to determine processing status from tags
 const getProcessingStatus = (
   tagNames: string[],
-  tagConfig: { pending: string; ocrDone: string; titleDone: string; correspondentDone: string; documentTypeDone: string; tagsDone: string; processed: string }
+  tagConfig: {
+    pending: string;
+    ocrDone: string;
+    summaryDone: string;
+    schemaReview: string;
+    titleDone: string;
+    correspondentDone: string;
+    documentTypeDone: string;
+    tagsDone: string;
+    processed: string;
+    failed: string;
+    manualReview: string;
+  }
 ): string | null => {
+  // Check final/error states first
   if (tagNames.includes(tagConfig.processed)) return 'processed';
+  if (tagNames.includes(tagConfig.failed)) return 'failed';
+  if (tagNames.includes(tagConfig.manualReview)) return 'manual_review';
+  // Check pipeline states in reverse order (most advanced first)
   if (tagNames.includes(tagConfig.tagsDone)) return 'tags_done';
   if (tagNames.includes(tagConfig.documentTypeDone)) return 'document_type_done';
   if (tagNames.includes(tagConfig.correspondentDone)) return 'correspondent_done';
   if (tagNames.includes(tagConfig.titleDone)) return 'title_done';
+  if (tagNames.includes(tagConfig.schemaReview)) return 'schema_review';
+  if (tagNames.includes(tagConfig.summaryDone)) return 'summary_done';
   if (tagNames.includes(tagConfig.ocrDone)) return 'ocr_done';
   if (tagNames.includes(tagConfig.pending)) return 'pending';
   return null;

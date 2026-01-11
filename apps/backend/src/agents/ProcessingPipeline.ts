@@ -7,12 +7,15 @@
  * SchemaAnalysis, CustomFields). Only OCR uses MistralService directly.
  */
 import { Effect, Context, Layer, Stream, pipe } from 'effect';
-import { ConfigService, PaperlessService, TinyBaseService } from '../services/index.js';
+import { ConfigService, PaperlessService, TinyBaseService, QdrantService } from '../services/index.js';
 import { AgentError } from '../errors/index.js';
 import type { Document } from '../models/index.js';
 
 // OCR still uses Mistral directly
 import { OCRAgentService } from './OCRAgent.js';
+
+// Summary agent (uses Ollama directly, no confirmation loop)
+import { SummaryAgentService } from './SummaryAgentGraph.js';
 
 // LangGraph-based agents
 import { TitleAgentGraphService } from './TitleAgentGraph.js';
@@ -30,6 +33,7 @@ import type { StreamEvent } from './base.js';
 export type ProcessingState =
   | 'pending'
   | 'ocr_done'
+  | 'summary_done'
   | 'schema_review'
   | 'schema_analysis_done'
   | 'title_done'
@@ -94,9 +98,13 @@ export const ProcessingPipelineServiceLive = Layer.effect(
     const config = yield* ConfigService;
     const paperless = yield* PaperlessService;
     const tinybase = yield* TinyBaseService;
+    const qdrant = yield* QdrantService;
 
     // OCR uses Mistral directly
     const ocrAgent = yield* OCRAgentService;
+
+    // Summary uses Ollama directly (no confirmation loop)
+    const summaryAgent = yield* SummaryAgentService;
 
     // LangGraph-based agents
     const titleAgent = yield* TitleAgentGraphService;
@@ -106,7 +114,27 @@ export const ProcessingPipelineServiceLive = Layer.effect(
     const customFieldsAgent = yield* CustomFieldsAgentGraphService;
     const schemaAnalysisAgent = yield* SchemaAnalysisAgentGraphService;
 
-    const { tags: tagConfig, pipeline: pipelineConfig } = config.config;
+    const { tags: tagConfig, pipeline: defaultPipelineConfig } = config.config;
+
+    // Get pipeline settings from TinyBase (UI settings), falling back to config defaults
+    const getPipelineConfig = () =>
+      Effect.gen(function* () {
+        const dbSettings = yield* tinybase.getAllSettings();
+        const getBool = (key: string, fallback: boolean): boolean => {
+          const val = dbSettings[key];
+          if (val === undefined) return fallback;
+          return val === 'true' || val === '1';
+        };
+        return {
+          enableOcr: getBool('pipeline.ocr', defaultPipelineConfig.enableOcr),
+          enableSummary: getBool('pipeline.summary', defaultPipelineConfig.enableSummary),
+          enableTitle: getBool('pipeline.title', defaultPipelineConfig.enableTitle),
+          enableCorrespondent: getBool('pipeline.correspondent', defaultPipelineConfig.enableCorrespondent),
+          enableDocumentType: getBool('pipeline.document_type', defaultPipelineConfig.enableDocumentType),
+          enableTags: getBool('pipeline.tags', defaultPipelineConfig.enableTags),
+          enableCustomFields: getBool('pipeline.custom_fields', defaultPipelineConfig.enableCustomFields),
+        };
+      });
 
     // Determine current state from document tags
     const getCurrentState = (doc: Document): ProcessingState => {
@@ -118,6 +146,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
       if (tagNames.includes(tagConfig.correspondentDone)) return 'correspondent_done';
       if (tagNames.includes(tagConfig.titleDone)) return 'title_done';
       // Note: schema_analysis_done and schema_review tags would need to be added to config
+      if (tagNames.includes(tagConfig.summaryDone)) return 'summary_done';
       if (tagNames.includes(tagConfig.ocrDone)) return 'ocr_done';
       if (tagNames.includes(tagConfig.pending)) return 'pending';
       return 'pending';
@@ -165,6 +194,9 @@ export const ProcessingPipelineServiceLive = Layer.effect(
           let needsReview = false;
           let schemaReviewNeeded = false;
 
+          // Get pipeline config from TinyBase (UI settings)
+          const pipelineConfig = yield* getPipelineConfig();
+
           // Get document
           const doc = yield* paperless.getDocument(docId);
           let currentState: ProcessingState = getCurrentState(doc);
@@ -200,8 +232,46 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             currentState = 'ocr_done';
           }
 
+          // Step 1.5: Summary (optional, after OCR)
+          if (currentState === 'ocr_done' && pipelineConfig.enableSummary) {
+            const summaryResult = yield* summaryAgent
+              .process({ docId, content })
+              .pipe(
+                Effect.catchAll((e) =>
+                  Effect.succeed({
+                    success: false,
+                    docId,
+                    summary: '',
+                    summaryLength: 0,
+                    error: String(e),
+                  })
+                )
+              );
+
+            results['summary'] = {
+              step: 'summary',
+              success: summaryResult.success,
+              data: summaryResult,
+            };
+
+            if (!summaryResult.success) {
+              return {
+                docId,
+                success: false,
+                needsReview: false,
+                steps: results,
+                error: 'Summary generation failed',
+              };
+            }
+
+            currentState = 'summary_done';
+          } else if (currentState === 'ocr_done' && !pipelineConfig.enableSummary) {
+            // Skip summary step but don't transition tags (summary is optional)
+            currentState = 'summary_done';
+          }
+
           // Step 2: Schema Analysis (optional)
-          if (currentState === 'ocr_done') {
+          if (isState(currentState, 'ocr_done', 'summary_done')) {
             const schemaResult = yield* schemaAnalysisAgent.process({ docId, content }).pipe(
               Effect.catchAll((e) =>
                 Effect.succeed({
@@ -245,7 +315,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
           }
 
           // Step 3: Title
-          if (isState(currentState, 'ocr_done', 'schema_analysis_done') && pipelineConfig.enableTitle) {
+          if (isState(currentState, 'ocr_done', 'summary_done', 'schema_analysis_done') && pipelineConfig.enableTitle) {
             const titleResult = yield* titleAgent
               .process({
                 docId,
@@ -283,7 +353,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             }
 
             currentState = 'title_done';
-          } else if (isState(currentState, 'ocr_done', 'schema_analysis_done')) {
+          } else if (isState(currentState, 'ocr_done', 'summary_done', 'schema_analysis_done')) {
             // Skip disabled step but advance state
             currentState = 'title_done';
           }
@@ -518,6 +588,54 @@ export const ProcessingPipelineServiceLive = Layer.effect(
               },
             });
 
+            // Index document in Qdrant for vector search
+            const vectorSearchEnabled = (yield* tinybase.getAllSettings())['vector_search.enabled'] === 'true';
+            if (vectorSearchEnabled) {
+              const finalDoc = yield* paperless.getDocument(docId);
+              const allTags = yield* paperless.getTags();
+              const correspondents = yield* paperless.getCorrespondents();
+              const documentTypes = yield* paperless.getDocumentTypes();
+
+              const tagNames = (finalDoc.tags ?? [])
+                .map((id: number) => allTags.find((t) => t.id === id)?.name)
+                .filter((n): n is string => !!n && !n.startsWith('llm-'));
+
+              const correspondent = finalDoc.correspondent
+                ? correspondents.find((c) => c.id === finalDoc.correspondent)?.name
+                : undefined;
+
+              const documentType = finalDoc.document_type
+                ? documentTypes.find((dt) => dt.id === finalDoc.document_type)?.name
+                : undefined;
+
+              yield* qdrant.upsertDocument({
+                docId: finalDoc.id,
+                title: finalDoc.title ?? `Document ${finalDoc.id}`,
+                content: (finalDoc.content ?? '').slice(0, 10000), // Limit content for embedding
+                tags: tagNames,
+                correspondent,
+                documentType,
+              }).pipe(
+                Effect.catchAll((e) => {
+                  // Log error but don't fail pipeline
+                  console.error(`[Pipeline] Qdrant indexing failed for doc ${docId}:`, e);
+                  return Effect.succeed(undefined);
+                })
+              );
+
+              // Log Qdrant indexing
+              yield* tinybase.addProcessingLog({
+                docId,
+                timestamp: new Date().toISOString(),
+                step: 'qdrant_index',
+                eventType: 'result',
+                data: {
+                  success: true,
+                  indexed: true,
+                },
+              });
+            }
+
             results['complete'] = {
               step: 'complete',
               success: true,
@@ -545,6 +663,9 @@ export const ProcessingPipelineServiceLive = Layer.effect(
         Stream.asyncEffect<PipelineStreamEvent, AgentError>((emit) =>
           Effect.gen(function* () {
             const { docId, mockOcr = false } = input;
+
+            // Get pipeline config from TinyBase (UI settings)
+            const pipelineConfig = yield* getPipelineConfig();
 
             // Helper to create events with timestamps
             const event = (e: Omit<PipelineStreamEvent, 'timestamp'>): PipelineStreamEvent => ({
@@ -593,8 +714,49 @@ export const ProcessingPipelineServiceLive = Layer.effect(
               currentState = 'ocr_done';
             }
 
+            // Summary (optional, after OCR)
+            if (currentState === 'ocr_done' && pipelineConfig.enableSummary) {
+              yield* Effect.sync(() =>
+                emit.single(event({ type: 'step_start', docId, step: 'summary' }))
+              );
+
+              const summaryResult = yield* summaryAgent
+                .process({ docId, content })
+                .pipe(
+                  Effect.catchAll((e) =>
+                    Effect.succeed({
+                      success: false,
+                      docId,
+                      summary: '',
+                      summaryLength: 0,
+                      error: String(e),
+                    })
+                  )
+                );
+
+              yield* Effect.sync(() =>
+                emit.single(event({ type: 'step_complete', docId, step: 'summary', data: summaryResult }))
+              );
+
+              if (!summaryResult.success) {
+                yield* Effect.sync(() =>
+                  emit.single(event({ type: 'step_error', docId, step: 'summary', message: 'Summary generation failed' }))
+                );
+                yield* Effect.sync(() =>
+                  emit.single(event({ type: 'error', docId, message: 'Pipeline failed at summary' }))
+                );
+                yield* Effect.sync(() => emit.end());
+                return;
+              }
+
+              currentState = 'summary_done';
+            } else if (currentState === 'ocr_done' && !pipelineConfig.enableSummary) {
+              // Skip summary step
+              currentState = 'summary_done';
+            }
+
             // Schema Analysis
-            if (currentState === 'ocr_done') {
+            if (isState(currentState, 'ocr_done', 'summary_done')) {
               yield* Effect.sync(() =>
                 emit.single(event({ type: 'step_start', docId, step: 'schema_analysis' }))
               );
@@ -636,7 +798,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             }
 
             // Title
-            if (isState(currentState, 'ocr_done', 'schema_analysis_done') && pipelineConfig.enableTitle) {
+            if (isState(currentState, 'ocr_done', 'summary_done', 'schema_analysis_done') && pipelineConfig.enableTitle) {
               yield* Effect.sync(() =>
                 emit.single(event({ type: 'step_start', docId, step: 'title' }))
               );
@@ -670,7 +832,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
               }
 
               currentState = 'title_done';
-            } else if (isState(currentState, 'ocr_done', 'schema_analysis_done')) {
+            } else if (isState(currentState, 'ocr_done', 'summary_done', 'schema_analysis_done')) {
               // Skip disabled step but advance state
               currentState = 'title_done';
             }
@@ -896,6 +1058,54 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                   toState: 'processed',
                 },
               });
+
+              // Index document in Qdrant for vector search
+              const vectorSearchEnabled = (yield* tinybase.getAllSettings())['vector_search.enabled'] === 'true';
+              if (vectorSearchEnabled) {
+                const finalDoc = yield* paperless.getDocument(docId);
+                const allTags = yield* paperless.getTags();
+                const correspondents = yield* paperless.getCorrespondents();
+                const documentTypes = yield* paperless.getDocumentTypes();
+
+                const tagNames = (finalDoc.tags ?? [])
+                  .map((id: number) => allTags.find((t) => t.id === id)?.name)
+                  .filter((n): n is string => !!n && !n.startsWith('llm-'));
+
+                const correspondent = finalDoc.correspondent
+                  ? correspondents.find((c) => c.id === finalDoc.correspondent)?.name
+                  : undefined;
+
+                const documentType = finalDoc.document_type
+                  ? documentTypes.find((dt) => dt.id === finalDoc.document_type)?.name
+                  : undefined;
+
+                yield* qdrant.upsertDocument({
+                  docId: finalDoc.id,
+                  title: finalDoc.title ?? `Document ${finalDoc.id}`,
+                  content: (finalDoc.content ?? '').slice(0, 10000), // Limit content for embedding
+                  tags: tagNames,
+                  correspondent,
+                  documentType,
+                }).pipe(
+                  Effect.catchAll((e) => {
+                    // Log error but don't fail pipeline
+                    console.error(`[Pipeline] Qdrant indexing failed for doc ${docId}:`, e);
+                    return Effect.succeed(undefined);
+                  })
+                );
+
+                // Log Qdrant indexing
+                yield* tinybase.addProcessingLog({
+                  docId,
+                  timestamp: new Date().toISOString(),
+                  step: 'qdrant_index',
+                  eventType: 'result',
+                  data: {
+                    success: true,
+                    indexed: true,
+                  },
+                });
+              }
             }
 
             yield* Effect.sync(() =>
@@ -925,6 +1135,14 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                 step: 'ocr',
                 success: ocrResult.success,
                 data: ocrResult,
+              };
+
+            case 'summary':
+              const summaryResult = yield* summaryAgent.process({ docId, content });
+              return {
+                step: 'summary',
+                success: summaryResult.success,
+                data: summaryResult,
               };
 
             case 'title':
@@ -1062,6 +1280,15 @@ export const ProcessingPipelineServiceLive = Layer.effect(
               );
 
             switch (step) {
+              case 'summary':
+                if (summaryAgent.processStream) {
+                  yield* runAgentStream(summaryAgent.processStream({ docId, content }));
+                } else {
+                  const result = yield* summaryAgent.process({ docId, content });
+                  yield* Effect.sync(() => emit.single(event({ type: 'step_complete', docId, step, data: result })));
+                }
+                break;
+
               case 'title':
                 if (titleAgent.processStream) {
                   yield* runAgentStream(titleAgent.processStream({ docId, content }));

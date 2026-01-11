@@ -23,11 +23,6 @@ ollama:
   model_small: "gpt-oss:20b"       # Confirmation/verification model
   embedding_model: "qwen2.5:1.5b"      # For Qdrant embeddings (or nomic-embed-text)
 
-  # Thinking mode settings
-  thinking:
-    enabled: true
-    level: "high"                  # low, medium, high
-
 # Qdrant Vector Database
 qdrant:
   url: "http://your-qdrant-server:6333"
@@ -57,6 +52,7 @@ confirmation:
 tags:
   pending: "llm-pending"                     # Documents waiting to be processed
   ocr_done: "llm-ocr-done"                   # OCR completed
+  summary_done: "llm-summary-done"           # Summary generated
   schema_review: "llm-schema-review"         # Parked for schema review (new entities)
   correspondent_done: "llm-correspondent-done"  # Correspondent assigned
   document_type_done: "llm-document-type-done"  # Document type assigned
@@ -69,9 +65,10 @@ tags:
 # =============================================================================
 
 # Enable/disable individual processing steps
-# Order: OCR → Correspondent → Document Type → Title → Tags → Custom Fields
+# Order: OCR → Summary → Correspondent → Document Type → Title → Tags → Custom Fields
 pipeline:
   ocr: true                        # Mistral OCR
+  summary: false                   # Generate document summary (adds as note)
   correspondent: true              # Correspondent assignment
   document_type: true              # Document type assignment
   title: true                      # Title generation

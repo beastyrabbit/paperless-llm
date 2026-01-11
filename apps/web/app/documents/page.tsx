@@ -42,11 +42,15 @@ interface Document {
 const statusConfig: Record<string, { labelKey: string; variant: "warning" | "info" | "secondary" | "success" | "destructive" }> = {
   pending: { labelKey: "statusPending", variant: "warning" },
   ocr_done: { labelKey: "statusOcrDone", variant: "info" },
+  summary_done: { labelKey: "statusSummaryDone", variant: "info" },
+  schema_review: { labelKey: "statusSchemaReview", variant: "warning" },
   correspondent_done: { labelKey: "statusCorrDone", variant: "secondary" },
   document_type_done: { labelKey: "statusDocTypeDone", variant: "secondary" },
   title_done: { labelKey: "statusTitleDone", variant: "secondary" },
   tags_done: { labelKey: "statusTagsDone", variant: "secondary" },
   processed: { labelKey: "statusProcessed", variant: "success" },
+  failed: { labelKey: "statusFailed", variant: "destructive" },
+  manual_review: { labelKey: "statusManualReview", variant: "warning" },
 };
 
 export default function DocumentsPage() {
@@ -71,11 +75,15 @@ export default function DocumentsPage() {
           setTagMap({
             pending: settings.tags.pending,
             ocr_done: settings.tags.ocr_done,
+            summary_done: settings.tags.summary_done,
+            schema_review: settings.tags.schema_review,
             correspondent_done: settings.tags.correspondent_done,
             document_type_done: settings.tags.document_type_done,
             title_done: settings.tags.title_done,
             tags_done: settings.tags.tags_done,
             processed: settings.tags.processed,
+            failed: settings.tags.failed,
+            manual_review: settings.tags.manual_review,
           });
         }
       } catch (err) {
@@ -208,11 +216,15 @@ export default function DocumentsPage() {
               <SelectItem value="all">{t("allStatus")}</SelectItem>
               <SelectItem value="pending">{t("statusPending")}</SelectItem>
               <SelectItem value="ocr_done">{t("statusOcrDone")}</SelectItem>
+              <SelectItem value="summary_done">{t("statusSummaryDone")}</SelectItem>
+              <SelectItem value="schema_review">{t("statusSchemaReview")}</SelectItem>
               <SelectItem value="title_done">{t("statusTitleDone")}</SelectItem>
               <SelectItem value="correspondent_done">{t("statusCorrDone")}</SelectItem>
               <SelectItem value="document_type_done">{t("statusDocTypeDone")}</SelectItem>
               <SelectItem value="tags_done">{t("statusTagsDone")}</SelectItem>
               <SelectItem value="processed">{t("statusProcessed")}</SelectItem>
+              <SelectItem value="failed">{t("statusFailed")}</SelectItem>
+              <SelectItem value="manual_review">{t("statusManualReview")}</SelectItem>
             </SelectContent>
           </Select>
           {search && statusFilter !== "all" && (

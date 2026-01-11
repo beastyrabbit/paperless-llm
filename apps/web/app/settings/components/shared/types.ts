@@ -51,8 +51,6 @@ export interface Settings {
   ollama_model_small: string;
   ollama_model_translation: string;
   ollama_embedding_model: string;
-  ollama_thinking_enabled: boolean;
-  ollama_thinking_level: "low" | "medium" | "high";
   qdrant_url: string;
   qdrant_collection: string;
   // Processing
@@ -141,8 +139,6 @@ export const DEFAULT_SETTINGS: Settings = {
   ollama_model_small: "",
   ollama_model_translation: "",
   ollama_embedding_model: "",
-  ollama_thinking_enabled: true,
-  ollama_thinking_level: "high",
   qdrant_url: "",
   qdrant_collection: "paperless-documents",
   auto_processing_enabled: false,

@@ -168,6 +168,20 @@ export const OCRAgentServiceLive = Layer.effect(
             // Update tags: remove pending, add ocr-done
             yield* paperless.transitionDocumentTag(docId, tagConfig.pending, tagConfig.ocrDone);
 
+            // Log processing result
+            yield* tinybase.addProcessingLog({
+              docId,
+              timestamp: new Date().toISOString(),
+              step: 'ocr',
+              eventType: 'result',
+              data: {
+                success: true,
+                textLength: existingContent.length,
+                pages: 1,
+                mock: true,
+              },
+            });
+
             return {
               success: true,
               docId,
@@ -185,6 +199,19 @@ export const OCRAgentServiceLive = Layer.effect(
 
           // Update tags: remove pending, add ocr-done
           yield* paperless.transitionDocumentTag(docId, tagConfig.pending, tagConfig.ocrDone);
+
+          // Log processing result
+          yield* tinybase.addProcessingLog({
+            docId,
+            timestamp: new Date().toISOString(),
+            step: 'ocr',
+            eventType: 'result',
+            data: {
+              success: true,
+              textLength: ocrResult.text.length,
+              pages: ocrResult.pages,
+            },
+          });
 
           return {
             success: true,
@@ -219,6 +246,20 @@ export const OCRAgentServiceLive = Layer.effect(
 
               yield* paperless.transitionDocumentTag(docId, tagConfig.pending, tagConfig.ocrDone);
 
+              // Log processing result
+              yield* tinybase.addProcessingLog({
+                docId,
+                timestamp: new Date().toISOString(),
+                step: 'ocr',
+                eventType: 'result',
+                data: {
+                  success: true,
+                  textLength: existingContent.length,
+                  pages: 1,
+                  mock: true,
+                },
+              });
+
               yield* Effect.sync(() =>
                 emit.single(
                   emitResult('ocr', {
@@ -244,6 +285,19 @@ export const OCRAgentServiceLive = Layer.effect(
               const ocrResult = yield* runMistralOCR(pdfBytes);
 
               yield* paperless.transitionDocumentTag(docId, tagConfig.pending, tagConfig.ocrDone);
+
+              // Log processing result
+              yield* tinybase.addProcessingLog({
+                docId,
+                timestamp: new Date().toISOString(),
+                step: 'ocr',
+                eventType: 'result',
+                data: {
+                  success: true,
+                  textLength: ocrResult.text.length,
+                  pages: ocrResult.pages,
+                },
+              });
 
               yield* Effect.sync(() =>
                 emit.single(

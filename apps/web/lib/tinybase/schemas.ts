@@ -19,8 +19,6 @@ export const valuesSchema = {
   'ollama.model_small': { type: 'string', default: '' },
   'ollama.model_translation': { type: 'string', default: '' },
   'ollama.embedding_model': { type: 'string', default: '' },
-  'ollama.thinking_enabled': { type: 'boolean', default: false },
-  'ollama.thinking_level': { type: 'string', default: 'medium' },
 
   // Mistral OCR
   'mistral.api_key': { type: 'string', default: '' },
@@ -41,6 +39,7 @@ export const valuesSchema = {
 
   // Pipeline toggles
   'pipeline.ocr': { type: 'boolean', default: true },
+  'pipeline.summary': { type: 'boolean', default: false },
   'pipeline.title': { type: 'boolean', default: true },
   'pipeline.correspondent': { type: 'boolean', default: true },
   'pipeline.tags': { type: 'boolean', default: true },
@@ -60,15 +59,19 @@ export const valuesSchema = {
   'debug.log_responses': { type: 'boolean', default: false },
   'debug.save_processing_history': { type: 'boolean', default: true },
 
-  // Workflow tags (as JSON string)
+  // Workflow tags
+  'tags.color': { type: 'string', default: '#1e88e5' },
   'tags.pending': { type: 'string', default: 'llm-pending' },
   'tags.ocr_done': { type: 'string', default: 'llm-ocr-done' },
+  'tags.summary_done': { type: 'string', default: 'llm-summary-done' },
   'tags.schema_review': { type: 'string', default: 'llm-schema-review' },
   'tags.correspondent_done': { type: 'string', default: 'llm-correspondent-done' },
   'tags.document_type_done': { type: 'string', default: 'llm-document-type-done' },
   'tags.title_done': { type: 'string', default: 'llm-title-done' },
   'tags.tags_done': { type: 'string', default: 'llm-tags-done' },
   'tags.processed': { type: 'string', default: 'llm-processed' },
+  'tags.failed': { type: 'string', default: 'llm-failed' },
+  'tags.manual_review': { type: 'string', default: 'llm-manual-review' },
 
   // Sync metadata (internal use)
   '_lastSync': { type: 'string', default: '' },
@@ -104,8 +107,6 @@ export const API_TO_STORE_KEY_MAP: Record<string, SettingKey> = {
   ollama_model_small: 'ollama.model_small',
   ollama_model_translation: 'ollama.model_translation',
   ollama_embedding_model: 'ollama.embedding_model',
-  ollama_thinking_enabled: 'ollama.thinking_enabled',
-  ollama_thinking_level: 'ollama.thinking_level',
   mistral_api_key: 'mistral.api_key',
   mistral_model: 'mistral.model',
   qdrant_url: 'qdrant.url',
@@ -116,6 +117,7 @@ export const API_TO_STORE_KEY_MAP: Record<string, SettingKey> = {
   confirmation_max_retries: 'confirmation.max_retries',
   confirmation_require_user_for_new_entities: 'confirmation.require_user_for_new_entities',
   pipeline_ocr: 'pipeline.ocr',
+  pipeline_summary: 'pipeline.summary',
   pipeline_title: 'pipeline.title',
   pipeline_correspondent: 'pipeline.correspondent',
   pipeline_tags: 'pipeline.tags',
@@ -128,6 +130,7 @@ export const API_TO_STORE_KEY_MAP: Record<string, SettingKey> = {
   debug_log_prompts: 'debug.log_prompts',
   debug_log_responses: 'debug.log_responses',
   debug_save_processing_history: 'debug.save_processing_history',
+  tags_color: 'tags.color',
 };
 
 // Reverse mapping from store keys to API keys

@@ -77,17 +77,24 @@ export const CustomFieldsAgentGraphService = Context.GenericTag<CustomFieldsAgen
 
 const ANALYSIS_SYSTEM_PROMPT = `You are a document data extraction specialist. Your task is to extract values for custom fields from document content.
 
-You have access to tools that can help you:
+## Tool Usage Guidelines
+
+You have access to tools to search for similar processed documents. These tools are OPTIONAL and should be used sparingly:
+- Only call a tool if you genuinely need more information
+- If a tool returns "not found" or empty results, DO NOT call the same tool again - proceed with your analysis
+- Make at most 2-3 tool calls total, then provide your final answer
+- You can make your decision based on the document content alone if tools don't provide useful information
+
+Available tools:
 - list_custom_fields: List all available custom fields and their data types
 - get_documents_by_custom_field: Find documents that have a specific custom field filled to see example values
 - search_similar_documents: Find semantically similar processed documents
 - get_document: Get full details of a specific processed document
 
 Guidelines:
-1. Use tools to understand what values are typical for each custom field
-2. Only extract values for fields that have clear evidence in the document
-3. Match the expected data type for each field (string, number, boolean, date, etc.)
-4. Leave fields null if the value cannot be reliably determined
+1. Only extract values for fields that have clear evidence in the document
+2. Match the expected data type for each field (string, number, boolean, date, etc.)
+3. Leave fields null if the value cannot be reliably determined
 5. Provide reasoning for each extracted value
 6. Consider the document type when interpreting field meanings
 
@@ -210,6 +217,19 @@ Review these field extractions and provide your confirmation decision.`;
         Effect.gen(function* () {
           // If no custom fields defined, skip
           if (input.customFields.length === 0) {
+            // Log skip
+            yield* tinybase.addProcessingLog({
+              docId: input.docId,
+              timestamp: new Date().toISOString(),
+              step: 'custom_fields',
+              eventType: 'result',
+              data: {
+                success: true,
+                skipped: true,
+                reason: 'No custom fields defined in Paperless',
+              },
+            });
+
             return {
               success: true,
               value: null,
@@ -240,7 +260,20 @@ Review these field extractions and provide your confirmation decision.`;
           const analysis = result.analysis as CustomFieldsAnalysisOutput | null;
 
           if (!result.success || !analysis) {
-            // Custom fields don't block the pipeline
+            // Log failure (but custom fields don't block the pipeline)
+            yield* tinybase.addProcessingLog({
+              docId: input.docId,
+              timestamp: new Date().toISOString(),
+              step: 'custom_fields',
+              eventType: 'result',
+              data: {
+                success: false,
+                needsReview: true,
+                reason: result.error ?? 'Confirmation failed',
+                attempts: result.attempts,
+              },
+            });
+
             return {
               success: true,
               value: null,
@@ -255,6 +288,20 @@ Review these field extractions and provide your confirmation decision.`;
           }
 
           if (analysis.suggested_fields.length === 0) {
+            // Log no fields extracted
+            yield* tinybase.addProcessingLog({
+              docId: input.docId,
+              timestamp: new Date().toISOString(),
+              step: 'custom_fields',
+              eventType: 'result',
+              data: {
+                success: true,
+                fieldsExtracted: 0,
+                reason: 'No relevant field values found in document',
+                attempts: result.attempts,
+              },
+            });
+
             return {
               success: true,
               value: null,
@@ -304,6 +351,22 @@ Review these field extractions and provide your confirmation decision.`;
               custom_fields: newCustomFields,
             });
           }
+
+          // Log success
+          yield* tinybase.addProcessingLog({
+            docId: input.docId,
+            timestamp: new Date().toISOString(),
+            step: 'custom_fields',
+            eventType: 'result',
+            data: {
+              success: true,
+              fieldsExtracted: analysis.suggested_fields.length,
+              updatedFields,
+              reasoning: analysis.reasoning,
+              confidence: analysis.confidence,
+              attempts: result.attempts,
+            },
+          });
 
           return {
             success: true,

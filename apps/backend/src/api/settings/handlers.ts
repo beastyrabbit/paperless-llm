@@ -3,7 +3,7 @@
  */
 import { Effect, pipe } from 'effect';
 import { ConfigService } from '../../config/index.js';
-import { PaperlessService, OllamaService, MistralService, TinyBaseService } from '../../services/index.js';
+import { PaperlessService, OllamaService, MistralService, TinyBaseService, QdrantService } from '../../services/index.js';
 import type { Settings, SettingsUpdate, ConnectionTestResult, TagsStatus } from './api.js';
 
 // ===========================================================================
@@ -33,7 +33,7 @@ export const getSettings = Effect.gen(function* () {
     return isNaN(num) ? fallback : num;
   };
 
-  const { paperless, ollama, mistral, qdrant, autoProcessing, tags, language, debug } = config.config;
+  const { paperless, ollama, mistral, qdrant, autoProcessing, tags, language, debug, pipeline } = config.config;
 
   // Merge DB settings with config defaults
   const paperlessUrl = get('paperless.url', paperless.url || '');
@@ -47,6 +47,10 @@ export const getSettings = Effect.gen(function* () {
   const mistralApiKey = get('mistral.api_key', mistral.apiKey || '');
   const mistralModel = get('mistral.model', mistral.model || '');
   const qdrantUrl = get('qdrant.url', qdrant.url || '');
+  const qdrantCollection = get('qdrant.collection', (qdrant as Record<string, unknown>).collection as string || 'paperless-documents');
+  const vectorSearchEnabled = getBool('vector_search.enabled', false);
+  const vectorSearchTopK = getNum('vector_search.top_k', 5);
+  const vectorSearchMinScore = parseFloat(get('vector_search.min_score', '0.7')) || 0.7;
 
   // Return actual values - this is a local application, no need to mask secrets
   const settings: Settings = {
@@ -61,6 +65,10 @@ export const getSettings = Effect.gen(function* () {
     mistral_api_key: mistralApiKey,
     mistral_model: mistralModel,
     qdrant_url: qdrantUrl,
+    qdrant_collection: qdrantCollection,
+    vector_search_enabled: vectorSearchEnabled,
+    vector_search_top_k: vectorSearchTopK,
+    vector_search_min_score: vectorSearchMinScore,
     auto_processing_enabled: getBool('auto_processing.enabled', autoProcessing.enabled),
     auto_processing_interval_minutes: getNum('auto_processing.interval_minutes', autoProcessing.intervalMinutes),
     confirmation_enabled: getBool('auto_processing.confirmation_enabled', autoProcessing.confirmationEnabled),
@@ -70,15 +78,27 @@ export const getSettings = Effect.gen(function* () {
     debug: getBool('debug', debug),
     // Include tags configuration for frontend filtering
     tags: {
+      color: get('tags.color', '#1e88e5'),
       pending: get('tags.pending', tags.pending),
       ocr_done: get('tags.ocr_done', tags.ocrDone),
-      schema_review: get('tags.schema_review', (tags as Record<string, string>).schemaReview || 'llm-schema-review'),
+      summary_done: get('tags.summary_done', tags.summaryDone),
+      schema_review: get('tags.schema_review', tags.schemaReview),
       title_done: get('tags.title_done', tags.titleDone),
       correspondent_done: get('tags.correspondent_done', tags.correspondentDone),
       document_type_done: get('tags.document_type_done', tags.documentTypeDone),
       tags_done: get('tags.tags_done', tags.tagsDone),
       processed: get('tags.processed', tags.processed),
+      failed: get('tags.failed', tags.failed),
+      manual_review: get('tags.manual_review', tags.manualReview),
     },
+    // Pipeline settings
+    pipeline_ocr: getBool('pipeline.ocr', pipeline.enableOcr),
+    pipeline_summary: getBool('pipeline.summary', pipeline.enableSummary),
+    pipeline_title: getBool('pipeline.title', pipeline.enableTitle),
+    pipeline_correspondent: getBool('pipeline.correspondent', pipeline.enableCorrespondent),
+    pipeline_document_type: getBool('pipeline.document_type', pipeline.enableDocumentType),
+    pipeline_tags: getBool('pipeline.tags', pipeline.enableTags),
+    pipeline_custom_fields: getBool('pipeline.custom_fields', pipeline.enableCustomFields),
   };
 
   return settings;
@@ -105,6 +125,7 @@ const SETTINGS_KEY_MAP: Record<string, string> = {
   mistral_model: 'mistral.model',
   // Qdrant
   qdrant_url: 'qdrant.url',
+  qdrant_collection: 'qdrant.collection',
   // Auto processing
   auto_processing_enabled: 'auto_processing.enabled',
   auto_processing_interval_minutes: 'auto_processing.interval_minutes',
@@ -121,23 +142,38 @@ const SETTINGS_KEY_MAP: Record<string, string> = {
   'debug.save_processing_history': 'debug.save_processing_history',
   // Pipeline settings
   'pipeline.ocr': 'pipeline.ocr',
+  'pipeline.summary': 'pipeline.summary',
   'pipeline.title': 'pipeline.title',
   'pipeline.correspondent': 'pipeline.correspondent',
+  'pipeline.document_type': 'pipeline.document_type',
   'pipeline.tags': 'pipeline.tags',
   'pipeline.custom_fields': 'pipeline.custom_fields',
+  // Pipeline settings (underscore format from frontend)
+  pipeline_ocr: 'pipeline.ocr',
+  pipeline_summary: 'pipeline.summary',
+  pipeline_title: 'pipeline.title',
+  pipeline_correspondent: 'pipeline.correspondent',
+  pipeline_document_type: 'pipeline.document_type',
+  pipeline_tags: 'pipeline.tags',
+  pipeline_custom_fields: 'pipeline.custom_fields',
   // Vector search
-  'vector_search.enabled': 'vector_search.enabled',
-  'vector_search.top_k': 'vector_search.top_k',
-  'vector_search.min_score': 'vector_search.min_score',
+  vector_search_enabled: 'vector_search.enabled',
+  vector_search_top_k: 'vector_search.top_k',
+  vector_search_min_score: 'vector_search.min_score',
   // Workflow tags - passthrough
+  'tags.color': 'tags.color',
+  tags_color: 'tags.color',
   'tags.pending': 'tags.pending',
   'tags.ocr_done': 'tags.ocr_done',
+  'tags.summary_done': 'tags.summary_done',
   'tags.schema_review': 'tags.schema_review',
   'tags.correspondent_done': 'tags.correspondent_done',
   'tags.document_type_done': 'tags.document_type_done',
   'tags.title_done': 'tags.title_done',
   'tags.tags_done': 'tags.tags_done',
   'tags.processed': 'tags.processed',
+  'tags.failed': 'tags.failed',
+  'tags.manual_review': 'tags.manual_review',
 };
 
 export const updateSettings = (updates: SettingsUpdate) =>
@@ -266,15 +302,18 @@ export const testMistralConnection = Effect.gen(function* () {
 export const testQdrantConnection = Effect.gen(function* () {
   const config = yield* ConfigService;
   const tinybase = yield* TinyBaseService;
+  const qdrant = yield* QdrantService;
   const dbSettings = yield* tinybase.getAllSettings();
 
   const url = getSettingValue(dbSettings, 'qdrant.url', config.config.qdrant.url);
+  const collectionName = getSettingValue(dbSettings, 'qdrant.collection', config.config.qdrant.collectionName || 'paperless-documents');
 
   if (!url) {
     return { status: 'error' as const, message: 'Qdrant not configured', details: null };
   }
 
-  const result: ConnectionTestResult = yield* Effect.tryPromise({
+  // First, test basic connectivity
+  const connectResult: ConnectionTestResult = yield* Effect.tryPromise({
     try: async () => {
       const response = await fetch(`${url}/collections`);
       if (response.ok) {
@@ -289,7 +328,25 @@ export const testQdrantConnection = Effect.gen(function* () {
     }),
   });
 
-  return result;
+  if (connectResult.status === 'error') {
+    return connectResult;
+  }
+
+  // Now ensure the collection exists (create if needed)
+  const ensureResult = yield* qdrant.ensureCollection().pipe(
+    Effect.map(() => ({
+      status: 'success' as const,
+      message: `Connected to Qdrant. Collection "${collectionName}" ready.`,
+      details: null,
+    })),
+    Effect.catchAll((e) => Effect.succeed({
+      status: 'warning' as const,
+      message: `Connected to Qdrant, but collection setup failed: ${e.message}`,
+      details: null,
+    }))
+  );
+
+  return ensureResult;
 });
 
 // ===========================================================================
@@ -468,31 +525,56 @@ export const checkAndImportSettings = Effect.gen(function* () {
 // Workflow Tags
 // ===========================================================================
 
+// Convert camelCase to snake_case
+const toSnakeCase = (str: string): string =>
+  str.replace(/([A-Z])/g, '_$1').toLowerCase();
+
 export const getTagsStatus = Effect.gen(function* () {
   const config = yield* ConfigService;
   const paperless = yield* PaperlessService;
+  const tinybase = yield* TinyBaseService;
 
   const tagConfig = config.config.tags;
+  const dbSettings = yield* tinybase.getAllSettings();
+  const expectedColor = dbSettings['tags.color'] ?? '#1e88e5';
+
   const existingTagsResult = yield* pipe(
     paperless.getTags(),
     Effect.catchAll(() => Effect.succeed([]))
   );
-  const existingTagsMap = new Map(existingTagsResult.map((t) => [t.name, t.id]));
+  // Map tag name to { id, color }
+  const existingTagsMap = new Map(
+    existingTagsResult.map((t) => [t.name, { id: t.id, color: t.color ?? null }])
+  );
 
-  // Build tags array with key, name, exists, tag_id
-  const tags = Object.entries(tagConfig).map(([key, name]) => ({
-    key,
-    name,
-    exists: existingTagsMap.has(name),
-    tag_id: existingTagsMap.get(name) ?? null,
-  }));
+  // Build tags array with key (snake_case), name, exists, tag_id, color info
+  const tags = Object.entries(tagConfig).map(([key, name]) => {
+    const tagInfo = existingTagsMap.get(name);
+    const actualColor = tagInfo?.color ?? null;
+    // Normalize colors to lowercase for comparison
+    const colorMatches = actualColor !== null &&
+      actualColor.toLowerCase() === expectedColor.toLowerCase();
+
+    return {
+      key: toSnakeCase(key),
+      name,
+      exists: existingTagsMap.has(name),
+      tag_id: tagInfo?.id ?? null,
+      actual_color: actualColor,
+      color_matches: tagInfo ? colorMatches : null,
+    };
+  });
 
   const missingCount = tags.filter((t) => !t.exists).length;
+  const colorMismatchCount = tags.filter((t) => t.exists && !t.color_matches).length;
 
   return {
     tags,
+    expected_color: expectedColor,
     all_exist: missingCount === 0,
     missing_count: missingCount,
+    all_colors_match: colorMismatchCount === 0,
+    color_mismatch_count: colorMismatchCount,
   };
 });
 
@@ -508,6 +590,52 @@ export const createWorkflowTags = (tagNames: string[]) =>
 
     return { created: results };
   });
+
+export const fixWorkflowTagColors = Effect.gen(function* () {
+  const paperless = yield* PaperlessService;
+  const tinybase = yield* TinyBaseService;
+  const config = yield* ConfigService;
+
+  const tagConfig = config.config.tags;
+  const dbSettings = yield* tinybase.getAllSettings();
+  const expectedColor = dbSettings['tags.color'] ?? '#1e88e5';
+
+  const existingTags = yield* pipe(
+    paperless.getTags(),
+    Effect.catchAll(() => Effect.succeed([]))
+  );
+  const existingTagsMap = new Map(
+    existingTags.map((t) => [t.name, { id: t.id, color: t.color ?? null }])
+  );
+
+  const updated: string[] = [];
+  const failed: string[] = [];
+
+  // Update color for each workflow tag that exists but has wrong color
+  for (const [, name] of Object.entries(tagConfig)) {
+    const tagInfo = existingTagsMap.get(name);
+    if (!tagInfo) continue; // Tag doesn't exist, skip
+
+    const actualColor = tagInfo.color;
+    const colorMatches = actualColor !== null &&
+      actualColor.toLowerCase() === expectedColor.toLowerCase();
+
+    if (!colorMatches) {
+      const result = yield* pipe(
+        paperless.updateTagColor(tagInfo.id, expectedColor),
+        Effect.map(() => true),
+        Effect.catchAll(() => Effect.succeed(false))
+      );
+      if (result) {
+        updated.push(name);
+      } else {
+        failed.push(name);
+      }
+    }
+  }
+
+  return { updated, failed, color: expectedColor };
+});
 
 // ===========================================================================
 // AI Tags

@@ -110,6 +110,8 @@ addRoute('POST', '/api/settings/tags/create', (_, body) => {
   return settingsHandlers.createWorkflowTags(tag_names ?? []);
 });
 
+addRoute('POST', '/api/settings/tags/fix-colors', () => settingsHandlers.fixWorkflowTagColors);
+
 addRoute('POST', '/api/settings/import-config', () => settingsHandlers.importConfigFromYaml);
 
 addRoute('GET', '/api/settings/check-import', () => settingsHandlers.checkAndImportSettings);

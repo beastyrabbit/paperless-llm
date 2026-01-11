@@ -6,7 +6,6 @@ import {
   Loader2,
   TestTube,
   RefreshCw,
-  Brain,
   Database,
   Eye,
   EyeOff,
@@ -22,11 +21,6 @@ import {
   Button,
   Switch,
   Separator,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
 } from "@repo/ui";
 import { useTinyBase, useStringSetting, useBooleanSetting, useNumberSetting } from "@/lib/tinybase";
 import { StatusIndicator, type ConnectionStatus, type OllamaModel, type MistralModel } from "./shared";
@@ -48,8 +42,6 @@ export function ConnectionsTab() {
   const ollamaModelSmall = useStringSetting("ollama.model_small");
   const ollamaModelTranslation = useStringSetting("ollama.model_translation");
   const ollamaEmbeddingModel = useStringSetting("ollama.embedding_model");
-  const ollamaThinkingEnabled = useBooleanSetting("ollama.thinking_enabled");
-  const ollamaThinkingLevel = useStringSetting("ollama.thinking_level");
   const mistralApiKey = useStringSetting("mistral.api_key");
   const mistralModel = useStringSetting("mistral.model");
   const qdrantUrl = useStringSetting("qdrant.url");
@@ -343,42 +335,6 @@ export function ConnectionsTab() {
             </>
           )}
 
-          {/* Thinking Mode */}
-          <Separator />
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label className="flex items-center gap-2">
-                  <Brain className="h-4 w-4" />
-                  {t("ollama.thinkingMode")}
-                </Label>
-                <p className="text-xs text-zinc-500">{t("ollama.thinkingModeDesc")}</p>
-              </div>
-              <Switch
-                checked={ollamaThinkingEnabled}
-                onCheckedChange={(v) => updateSetting("ollama.thinking_enabled", v)}
-              />
-            </div>
-
-            {ollamaThinkingEnabled && (
-              <div className="space-y-2">
-                <Label>{t("ollama.thinkingLevel")}</Label>
-                <Select
-                  value={ollamaThinkingLevel}
-                  onValueChange={(v) => updateSetting("ollama.thinking_level", v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">{t("ollama.thinkingLow")}</SelectItem>
-                    <SelectItem value="medium">{t("ollama.thinkingMedium")}</SelectItem>
-                    <SelectItem value="high">{t("ollama.thinkingHigh")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
         </CardContent>
       </Card>
 

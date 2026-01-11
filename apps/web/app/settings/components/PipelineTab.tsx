@@ -26,6 +26,11 @@ const PIPELINE_ITEMS: PipelineItem[] = [
     descKey: "pipeline.ocrDesc",
   },
   {
+    key: "pipeline.summary",
+    labelKey: "pipeline.summary",
+    descKey: "pipeline.summaryDesc",
+  },
+  {
     key: "pipeline.title",
     labelKey: "pipeline.titleGeneration",
     descKey: "pipeline.titleDesc",
