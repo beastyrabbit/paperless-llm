@@ -279,13 +279,7 @@
       "smallModel": "Kleines Modell (Bestätigung)",
       "embeddingModel": "Embedding-Modell (Vektorsuche)",
       "translationModel": "Übersetzungsmodell (Optional)",
-      "translationModelDesc": "Modell für Prompt-Übersetzungen. Falls nicht gesetzt, wird das große Modell verwendet.",
-      "thinkingMode": "Denk-Modus",
-      "thinkingModeDesc": "Erweitertes Reasoning für komplexe Analysen aktivieren",
-      "thinkingLevel": "Denk-Stufe",
-      "thinkingLow": "Niedrig - Schnell, weniger detailliert",
-      "thinkingMedium": "Mittel - Ausgewogen",
-      "thinkingHigh": "Hoch - Gründliches Reasoning"
+      "translationModelDesc": "Modell für Prompt-Übersetzungen. Falls nicht gesetzt, wird das große Modell verwendet."
     },
     "mistral": {
       "title": "Mistral AI",

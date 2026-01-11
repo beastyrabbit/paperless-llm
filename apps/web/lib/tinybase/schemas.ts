@@ -19,8 +19,6 @@ export const valuesSchema = {
   'ollama.model_small': { type: 'string', default: '' },
   'ollama.model_translation': { type: 'string', default: '' },
   'ollama.embedding_model': { type: 'string', default: '' },
-  'ollama.thinking_enabled': { type: 'boolean', default: false },
-  'ollama.thinking_level': { type: 'string', default: 'medium' },
 
   // Mistral OCR
   'mistral.api_key': { type: 'string', default: '' },
@@ -104,8 +102,6 @@ export const API_TO_STORE_KEY_MAP: Record<string, SettingKey> = {
   ollama_model_small: 'ollama.model_small',
   ollama_model_translation: 'ollama.model_translation',
   ollama_embedding_model: 'ollama.embedding_model',
-  ollama_thinking_enabled: 'ollama.thinking_enabled',
-  ollama_thinking_level: 'ollama.thinking_level',
   mistral_api_key: 'mistral.api_key',
   mistral_model: 'mistral.model',
   qdrant_url: 'qdrant.url',
