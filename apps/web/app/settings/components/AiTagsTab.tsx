@@ -125,25 +125,36 @@ export function AiTagsTab() {
     fetchAiTags();
   }, [fetchAiTags]);
 
+  const saveTagSelection = async (newSelection: number[]) => {
+    try {
+      await fetch(`${API_BASE}/api/settings/ai-tags`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selected_tag_ids: newSelection }),
+      });
+      setHasChanges(false);
+    } catch (err) {
+      console.error("Failed to save AI tags selection:", err);
+    }
+  };
+
   const toggleAiTag = (tagId: number) => {
-    setSelectedAiTags((prev) => {
-      if (prev.includes(tagId)) {
-        return prev.filter((id) => id !== tagId);
-      } else {
-        return [...prev, tagId];
-      }
-    });
-    setHasChanges(true);
+    const newSelection = selectedAiTags.includes(tagId)
+      ? selectedAiTags.filter((id) => id !== tagId)
+      : [...selectedAiTags, tagId];
+    setSelectedAiTags(newSelection);
+    saveTagSelection(newSelection);
   };
 
   const selectAll = () => {
-    setSelectedAiTags(allTags.map((tg) => tg.id));
-    setHasChanges(true);
+    const allIds = allTags.map((tg) => tg.id);
+    setSelectedAiTags(allIds);
+    saveTagSelection(allIds);
   };
 
   const clearSelection = () => {
     setSelectedAiTags([]);
-    setHasChanges(true);
+    saveTagSelection([]);
   };
 
   // Optimize a tag description using AI

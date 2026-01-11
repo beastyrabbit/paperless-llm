@@ -64,25 +64,36 @@ export function AiDocumentTypesTab() {
     fetchAiDocTypes();
   }, [fetchAiDocTypes]);
 
+  const saveDocTypeSelection = async (newSelection: number[]) => {
+    try {
+      await fetch(`${API_BASE}/api/settings/ai-document-types`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selected_type_ids: newSelection }),
+      });
+      setHasChanges(false);
+    } catch (err) {
+      console.error("Failed to save AI document types selection:", err);
+    }
+  };
+
   const toggleAiDocType = (typeId: number) => {
-    setSelectedAiDocTypes((prev) => {
-      if (prev.includes(typeId)) {
-        return prev.filter((id) => id !== typeId);
-      } else {
-        return [...prev, typeId];
-      }
-    });
-    setHasChanges(true);
+    const newSelection = selectedAiDocTypes.includes(typeId)
+      ? selectedAiDocTypes.filter((id) => id !== typeId)
+      : [...selectedAiDocTypes, typeId];
+    setSelectedAiDocTypes(newSelection);
+    saveDocTypeSelection(newSelection);
   };
 
   const selectAll = () => {
-    setSelectedAiDocTypes(allDocumentTypes.map((dt) => dt.id));
-    setHasChanges(true);
+    const allIds = allDocumentTypes.map((dt) => dt.id);
+    setSelectedAiDocTypes(allIds);
+    saveDocTypeSelection(allIds);
   };
 
   const clearSelection = () => {
     setSelectedAiDocTypes([]);
-    setHasChanges(true);
+    saveDocTypeSelection([]);
   };
 
   return (
