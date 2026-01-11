@@ -59,37 +59,47 @@ export const CorrespondentAgentGraphService = Context.GenericTag<CorrespondentAg
 // System Prompts
 // ===========================================================================
 
-const ANALYSIS_SYSTEM_PROMPT = `You are a document analysis specialist focused on identifying correspondents (senders/originators).
+const ANALYSIS_SYSTEM_PROMPT = `Du bist ein Dokumentenanalyse-Spezialist mit Fokus auf die Identifikation von Korrespondenten (Absender/Ersteller).
 
-You have access to tools to search for similar processed documents. Use these to see how correspondents are typically identified and named.
+Du hast Zugriff auf Tools, um ähnliche bereits verarbeitete Dokumente zu suchen. Nutze diese, um zu sehen, wie Korrespondenten typischerweise identifiziert und benannt werden.
 
-A correspondent is the sender, creator, or originating organization of a document. Look for:
-- Letterhead with company/organization name
-- Sender address (usually top-left or top-right)
-- Signature block with name and company
-- Logo indicating the sender
-- Email/website domain names
+Ein Korrespondent ist die Partei, mit der du bezüglich dieses Dokuments eine Geschäftsbeziehung hast. Achte auf:
+- Briefkopf mit Firmen-/Organisationsname
+- Absenderadresse (meist oben links oder oben rechts)
+- Unterschriftenblock mit Name und Firma
+- Logo des Absenders
+- E-Mail-/Website-Domains
 
-Guidelines:
-1. Select from existing correspondents when possible - the list is pre-vetted
-2. Normalize for matching: ignore legal suffixes (GmbH, AG, Inc.) when matching variants
-3. Be specific when matching: "Finanzamt München" matches "Finanzamt München", not "Finanzamt Berlin"
-4. Only suggest new correspondents (is_new: true) if no existing one is remotely close AND confidence is >0.9
+WICHTIG - Zahlungsdienstleister (PayPal, Stripe, Square, Klarna, etc.):
+- Bei Transaktionsbenachrichtigungen von Zahlungsdienstleistern sollte der Korrespondent die ANDERE PARTEI (Händler/Verkäufer) sein, NICHT der Zahlungsdienstleister
+- Zahlungsdienstleister sind Vermittler - die eigentliche Geschäftsbeziehung besteht mit dem Händler
+- Beispiel: PayPal-Beleg für Kauf bei "Amazon" → Korrespondent ist "Amazon", nicht "PayPal"
+- Beispiel: PayPal-Zahlung an "Jodi Parsons" → Korrespondent ist "Jodi Parsons", nicht "PayPal"
 
-You MUST respond with structured JSON matching the required schema.`;
+Richtlinien:
+1. Wenn möglich aus existierenden Korrespondenten wählen - die Liste ist vorgeprüft
+2. Beim Abgleich normalisieren: Rechtsformzusätze (GmbH, AG, Inc.) ignorieren
+3. Beim Abgleich spezifisch sein: "Finanzamt München" passt zu "Finanzamt München", nicht zu "Finanzamt Berlin"
+4. Nur neue Korrespondenten vorschlagen (is_new: true), wenn kein existierender auch nur annähernd passt UND die Konfidenz >0.9 ist
 
-const CONFIRMATION_SYSTEM_PROMPT = `You are a quality assurance assistant reviewing a correspondent identification.
+Du MUSST mit strukturiertem JSON antworten, das dem erforderlichen Schema entspricht.`;
 
-Evaluation criteria:
-- Is the identified correspondent actually the sender/originator of the document?
-- If marked as existing, does it correctly match an existing correspondent?
-- If marked as new, is there really no suitable existing correspondent?
-- Is the reasoning sound?
+const CONFIRMATION_SYSTEM_PROMPT = `Du bist ein Qualitätssicherungsassistent, der eine Korrespondenten-Identifikation überprüft.
 
-Confirm if the correspondent is correctly identified.
-Reject if the wrong entity was identified, or an existing correspondent could be used instead of creating new.
+Bewertungskriterien:
+- Ist der identifizierte Korrespondent die Partei mit der tatsächlichen Geschäftsbeziehung?
+- Bei Zahlungsdienstleister-Dokumenten: Ist der Korrespondent der Händler/Verkäufer, NICHT der Zahlungsdienstleister?
+- Wenn als existierend markiert, passt er korrekt zu einem existierenden Korrespondenten?
+- Wenn als neu markiert, gibt es wirklich keinen passenden existierenden Korrespondenten?
+- Ist die Begründung schlüssig?
 
-You MUST respond with structured JSON: { "confirmed": boolean, "feedback": string, "suggested_changes": string }`;
+Bestätige, wenn der Korrespondent korrekt identifiziert wurde.
+Ablehnen, wenn:
+- Die falsche Partei identifiziert wurde
+- Ein existierender Korrespondent statt eines neuen verwendet werden könnte
+- Bei Zahlungsdienstleister-Dokumenten: Der Zahlungsdienstleister (PayPal, Stripe, etc.) statt des eigentlichen Händlers/Verkäufers gewählt wurde
+
+Du MUSST mit strukturiertem JSON antworten: { "confirmed": boolean, "feedback": string, "suggested_changes": string }`;
 
 // ===========================================================================
 // Live Implementation

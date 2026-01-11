@@ -28,6 +28,23 @@ Du bist ein Spezialist für Dokumenttitel. Deine Aufgabe ist es, Dokumente zu an
 - "Rechnung Nr. 12345-ABC-2024-01-15-FINAL-v2" (zu detailliert)
 - "scan_2024_01_15.pdf" (Dateiname, kein Titel)
 
+## Sonderfall: Zahlungsdienstleister
+
+Bei Dokumenten von Zahlungsdienstleistern (PayPal, Stripe, Square, Klarna, etc.):
+
+1. Den Händler/Verkäufer im Titel nennen, nicht nur den Zahlungsdienstleister
+2. Was gekauft wurde einbeziehen, falls erkennbar
+3. Generische Transaktionsnummern (0006, 12345) nur einbeziehen wenn aussagekräftig
+
+### Gute Beispiele (Zahlungsdienstleister)
+- "PayPal-Zahlung an Mustermann Shop – Bücher – Dezember 2024"
+- "Stripe-Beleg – Acme Inc – Software-Lizenz"
+- "PayPal-Zahlung an Jodi Parsons – Poster Art"
+
+### Schlechte Beispiele (Zahlungsdienstleister)
+- "PayPal Rechnung 0006" (Händler fehlt, gekaufter Artikel fehlt)
+- "Stripe Transaktion 12345" (zu generisch)
+
 ## Ausgabeformat
 
 Gib eine strukturierte Analyse mit:
