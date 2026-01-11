@@ -6,6 +6,9 @@ const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 const nextConfig: NextConfig = {
   output: "standalone",
 
+  // Hide dev indicators for clean screenshots
+  devIndicators: false,
+
   // Proxy API requests to backend
   async rewrites() {
     return [
