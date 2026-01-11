@@ -272,7 +272,22 @@ Review this title suggestion and provide your confirmation decision.`;
 
           // Apply the title
           yield* paperless.updateDocument(input.docId, { title: analysis.suggested_title });
-          yield* paperless.transitionDocumentTag(input.docId, tagConfig.ocrDone, tagConfig.titleDone);
+
+          // Determine the current workflow tag to transition from
+          // Title can run after: ocr_done, summary_done, or schema_analysis_done
+          const currentDoc = yield* paperless.getDocument(input.docId);
+          const allTags = yield* paperless.getTags();
+          const docTagNames = (currentDoc.tags ?? []).map(
+            (id: number) => allTags.find((t) => t.id === id)?.name
+          ).filter((n): n is string => n !== undefined);
+
+          const fromTag = docTagNames.includes(tagConfig.summaryDone)
+            ? tagConfig.summaryDone
+            : docTagNames.includes(tagConfig.schemaReview)
+              ? tagConfig.schemaReview
+              : tagConfig.ocrDone;
+
+          yield* paperless.transitionDocumentTag(input.docId, fromTag, tagConfig.titleDone);
 
           // Clean up any existing pending review for this document and type
           yield* tinybase.removePendingReviewByDocAndType(input.docId, 'title');
@@ -379,7 +394,22 @@ Review this title suggestion and provide your confirmation decision.`;
 
               if (node === 'apply' && lastAnalysis) {
                 yield* paperless.updateDocument(input.docId, { title: lastAnalysis.suggested_title });
-                yield* paperless.transitionDocumentTag(input.docId, tagConfig.ocrDone, tagConfig.titleDone);
+
+                // Determine the current workflow tag to transition from
+                // Title can run after: ocr_done, summary_done, or schema_analysis_done
+                const currentDoc = yield* paperless.getDocument(input.docId);
+                const allTags = yield* paperless.getTags();
+                const docTagNames = (currentDoc.tags ?? []).map(
+                  (id: number) => allTags.find((t) => t.id === id)?.name
+                ).filter((n): n is string => n !== undefined);
+
+                const fromTag = docTagNames.includes(tagConfig.summaryDone)
+                  ? tagConfig.summaryDone
+                  : docTagNames.includes(tagConfig.schemaReview)
+                    ? tagConfig.schemaReview
+                    : tagConfig.ocrDone;
+
+                yield* paperless.transitionDocumentTag(input.docId, fromTag, tagConfig.titleDone);
 
                 // Clean up any existing pending review for this document and type
                 yield* tinybase.removePendingReviewByDocAndType(input.docId, 'title');
