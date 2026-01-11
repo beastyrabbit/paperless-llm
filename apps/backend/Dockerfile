@@ -42,6 +42,8 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=builder /app/deploy/node_modules ./node_modules
 COPY --from=builder /app/deploy/package.json ./
 COPY --from=builder /app/apps/backend/dist ./dist
+# Copy prompts directory
+COPY --from=builder /app/apps/backend/prompts ./prompts
 
 # Create data directory with proper permissions
 RUN mkdir -p /app/data && chown -R backend:nodejs /app/data
