@@ -56,40 +56,28 @@ export interface CorrespondentAgentGraphService extends Agent<CorrespondentInput
 export const CorrespondentAgentGraphService = Context.GenericTag<CorrespondentAgentGraphService>('CorrespondentAgentGraphService');
 
 // ===========================================================================
-// System Prompts
+// Prompt Loading Helpers
 // ===========================================================================
 
-const ANALYSIS_SYSTEM_PROMPT = `You are a document analysis specialist focused on identifying correspondents (senders/originators).
+/**
+ * Extracts the system prompt from a prompt file.
+ * The system prompt is everything before the '---' separator.
+ * Also adds a note about tool usage and JSON response format.
+ */
+const extractSystemPrompt = (promptContent: string, addToolNote = true): string => {
+  // Find the --- separator
+  const separatorIndex = promptContent.indexOf('\n---\n');
+  const systemPart = separatorIndex !== -1
+    ? promptContent.slice(0, separatorIndex).trim()
+    : promptContent.trim();
 
-You have access to tools to search for similar processed documents. Use these to see how correspondents are typically identified and named.
+  // Add tool usage note if needed
+  const toolNote = addToolNote
+    ? '\n\nYou have access to tools to search for similar processed documents. Use them to inform your decisions.\n\nYou MUST respond with structured JSON matching the required schema.'
+    : '\n\nYou MUST respond with structured JSON: { "confirmed": boolean, "feedback": string, "suggested_changes": string }';
 
-A correspondent is the sender, creator, or originating organization of a document. Look for:
-- Letterhead with company/organization name
-- Sender address (usually top-left or top-right)
-- Signature block with name and company
-- Logo indicating the sender
-- Email/website domain names
-
-Guidelines:
-1. Select from existing correspondents when possible - the list is pre-vetted
-2. Normalize for matching: ignore legal suffixes (GmbH, AG, Inc.) when matching variants
-3. Be specific when matching: "Finanzamt München" matches "Finanzamt München", not "Finanzamt Berlin"
-4. Only suggest new correspondents (is_new: true) if no existing one is remotely close AND confidence is >0.9
-
-You MUST respond with structured JSON matching the required schema.`;
-
-const CONFIRMATION_SYSTEM_PROMPT = `You are a quality assurance assistant reviewing a correspondent identification.
-
-Evaluation criteria:
-- Is the identified correspondent actually the sender/originator of the document?
-- If marked as existing, does it correctly match an existing correspondent?
-- If marked as new, is there really no suitable existing correspondent?
-- Is the reasoning sound?
-
-Confirm if the correspondent is correctly identified.
-Reject if the wrong entity was identified, or an existing correspondent could be used instead of creating new.
-
-You MUST respond with structured JSON: { "confirmed": boolean, "feedback": string, "suggested_changes": string }`;
+  return systemPart + toolNote;
+};
 
 // ===========================================================================
 // Live Implementation
@@ -100,6 +88,7 @@ export const CorrespondentAgentGraphServiceLive = Layer.effect(
   Effect.gen(function* () {
     const config = yield* ConfigService;
     const ollama = yield* OllamaService;
+    const promptService = yield* PromptService;
     const tinybase = yield* TinyBaseService;
     const paperless = yield* PaperlessService;
     const qdrant = yield* QdrantService;
@@ -111,6 +100,13 @@ export const CorrespondentAgentGraphServiceLive = Layer.effect(
     const largeModel = ollama.getModel('large');
     const smallModel = ollama.getModel('small');
 
+    // Load prompts from prompt files based on configured language
+    const correspondentPrompt = yield* promptService.getPrompt('correspondent');
+    const correspondentConfirmationPrompt = yield* promptService.getPrompt('correspondent_confirmation');
+
+    const analysisSystemPrompt = extractSystemPrompt(correspondentPrompt.content, true);
+    const confirmationSystemPrompt = extractSystemPrompt(correspondentConfirmationPrompt.content, false);
+
     const tools = createAgentTools({
       paperless,
       qdrant,
@@ -120,8 +116,8 @@ export const CorrespondentAgentGraphServiceLive = Layer.effect(
     const graphConfig: ConfirmationLoopConfig<CorrespondentAnalysis> = {
       agentName: 'correspondent',
       analysisSchema: CorrespondentAnalysisSchema,
-      analysisSystemPrompt: ANALYSIS_SYSTEM_PROMPT,
-      confirmationSystemPrompt: CONFIRMATION_SYSTEM_PROMPT,
+      analysisSystemPrompt,
+      confirmationSystemPrompt,
       tools,
       largeModelUrl: ollamaUrl,
       largeModelName: largeModel,

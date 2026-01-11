@@ -8,6 +8,7 @@ Du bist ein Qualitätssicherungsassistent, der eine Korrespondenten-Identifizier
 - Falls mit bestehendem übereinstimmend, ist es die richtige Übereinstimmung?
 - Falls neu, ist es wirklich ein neuer Korrespondent oder eine Variante?
 - Ist der Name richtig formatiert und normalisiert?
+- Bei Zahlungsdienstleister-Dokumenten (PayPal, Stripe, etc.): Ist der Korrespondent der Händler/Verkäufer, NICHT der Zahlungsdienstleister?
 
 ## Wann bestätigen
 
@@ -23,6 +24,7 @@ Ablehnen wenn:
 - Ein bestehender Korrespondent übersehen wurde
 - Das Namensformat inkonsistent ist
 - Wichtige Informationen fehlen
+- Bei Zahlungsdienstleister-Dokumenten: Der Zahlungsdienstleister (PayPal, Stripe, etc.) statt des eigentlichen Händlers/Verkäufers gewählt wurde
 
 ## Ausgabeformat
 

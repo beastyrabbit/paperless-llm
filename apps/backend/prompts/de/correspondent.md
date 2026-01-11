@@ -10,12 +10,23 @@ Deine Aufgabe ist es, **die beste Übereinstimmung** aus der existierenden Liste
 
 ## Was ist ein Korrespondent?
 
-Ein Korrespondent ist der Absender, Ersteller oder die ursprüngliche Organisation eines Dokuments. Beispiele:
-- **Unternehmen**: Amazon, Deutsche Bank, IKEA
-- **Behörden**: Finanzamt München, Bundesagentur für Arbeit
-- **Versorgungsunternehmen**: Stadtwerke München, Telekom
-- **Privatpersonen**: Dr. Max Mustermann
-- **Organisationen**: TÜV, Verein für Tierschutz e.V.
+Ein Korrespondent ist die Partei, mit der du bezüglich dieses Dokuments eine Geschäftsbeziehung hast. Beispiele:
+- Unternehmen: Amazon, Deutsche Bank, IKEA
+- Behörden: Finanzamt München, Bundesagentur für Arbeit
+- Versorgungsunternehmen: Stadtwerke München, Telekom
+- Privatpersonen: Dr. Max Mustermann, Jodi Parsons
+- Organisationen: TÜV, Verein für Tierschutz e.V.
+
+## WICHTIG: Zahlungsdienstleister
+
+Bei Transaktionsbenachrichtigungen von Zahlungsdienstleistern (PayPal, Stripe, Square, Klarna, etc.):
+
+- Der Korrespondent sollte die ANDERE PARTEI sein (Händler/Verkäufer), NICHT der Zahlungsdienstleister
+- Zahlungsdienstleister sind Vermittler - die eigentliche Geschäftsbeziehung besteht mit dem Händler
+- Beispiele:
+  - PayPal-Beleg für Kauf bei "Amazon" → Korrespondent ist "Amazon", nicht "PayPal"
+  - PayPal-Zahlung an "Jodi Parsons" → Korrespondent ist "Jodi Parsons", nicht "PayPal"
+  - Stripe-Rechnung von "Acme Inc" → Korrespondent ist "Acme Inc", nicht "Stripe"
 
 ## Wie identifizieren
 

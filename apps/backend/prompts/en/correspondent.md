@@ -10,12 +10,23 @@ Your task is to **select the best match** from the existing list, NOT to suggest
 
 ## What is a Correspondent?
 
-A correspondent is the sender, creator, or originating organization of a document. Examples:
-- **Companies**: Amazon, Deutsche Bank, IKEA
-- **Government Agencies**: Finanzamt München, Bundesagentur für Arbeit
-- **Utilities**: Stadtwerke München, Telekom
-- **Individuals**: Dr. Max Mustermann
-- **Organizations**: TÜV, Verein für Tierschutz e.V.
+A correspondent is the entity with whom you have a business relationship regarding this document. Examples:
+- Companies: Amazon, Deutsche Bank, IKEA
+- Government Agencies: Finanzamt München, Bundesagentur für Arbeit
+- Utilities: Stadtwerke München, Telekom
+- Individuals: Dr. Max Mustermann, Jodi Parsons
+- Organizations: TÜV, Verein für Tierschutz e.V.
+
+## IMPORTANT: Payment Processors
+
+For transaction notifications from payment processors (PayPal, Stripe, Square, Klarna, etc.):
+
+- The correspondent should be the OTHER PARTY (merchant/seller), NOT the payment processor
+- Payment processors are intermediaries - the actual business relationship is with the merchant
+- Examples:
+  - PayPal receipt for purchase from "Amazon" → correspondent is "Amazon", not "PayPal"
+  - PayPal payment to "Jodi Parsons" → correspondent is "Jodi Parsons", not "PayPal"
+  - Stripe invoice from "Acme Inc" → correspondent is "Acme Inc", not "Stripe"
 
 ## How to Identify
 

@@ -56,34 +56,28 @@ export interface TitleAgentGraphService extends Agent<TitleInput, AgentProcessRe
 export const TitleAgentGraphService = Context.GenericTag<TitleAgentGraphService>('TitleAgentGraphService');
 
 // ===========================================================================
-// System Prompts
+// Prompt Loading Helpers
 // ===========================================================================
 
-const ANALYSIS_SYSTEM_PROMPT = `You are a document title specialist. Your task is to analyze documents and suggest clear, descriptive, professional titles.
+/**
+ * Extracts the system prompt from a prompt file.
+ * The system prompt is everything before the '---' separator.
+ * Also adds a note about tool usage and JSON response format.
+ */
+const extractSystemPrompt = (promptContent: string, addToolNote = true): string => {
+  // Find the --- separator
+  const separatorIndex = promptContent.indexOf('\n---\n');
+  const systemPart = separatorIndex !== -1
+    ? promptContent.slice(0, separatorIndex).trim()
+    : promptContent.trim();
 
-You have access to tools to search for similar processed documents. Use these to find examples of how similar documents were titled.
+  // Add tool usage note if needed
+  const toolNote = addToolNote
+    ? '\n\nYou have access to tools to search for similar processed documents. Use them to inform your decisions.\n\nYou MUST respond with structured JSON matching the required schema.'
+    : '\n\nYou MUST respond with structured JSON: { "confirmed": boolean, "feedback": string, "suggested_changes": string }';
 
-Guidelines:
-1. Titles should be concise but informative (3-10 words)
-2. Include key identifying information: document type, organization, subject, date (if relevant)
-3. Follow patterns from similar documents in the system
-4. Use the same language as the document content
-5. Avoid overly generic titles like "Document" or overly detailed ones with long reference numbers
-
-You MUST respond with structured JSON matching the required schema.`;
-
-const CONFIRMATION_SYSTEM_PROMPT = `You are a quality assurance assistant reviewing a title suggestion.
-
-Evaluation criteria:
-- Does the title accurately describe the document?
-- Is it the right length (not too short or too long)?
-- Does it follow the format of similar documents?
-- Is the language appropriate (matches document language)?
-
-Confirm if the title captures the document's essence and follows established patterns.
-Reject if the title is too generic, too specific, misses key information, or uses wrong language.
-
-You MUST respond with structured JSON: { "confirmed": boolean, "feedback": string, "suggested_changes": string }`;
+  return systemPart + toolNote;
+};
 
 // ===========================================================================
 // Live Implementation
@@ -94,7 +88,7 @@ export const TitleAgentGraphServiceLive = Layer.effect(
   Effect.gen(function* () {
     const config = yield* ConfigService;
     const ollama = yield* OllamaService;
-    const prompts = yield* PromptService;
+    const promptService = yield* PromptService;
     const tinybase = yield* TinyBaseService;
     const paperless = yield* PaperlessService;
     const qdrant = yield* QdrantService;
@@ -106,6 +100,13 @@ export const TitleAgentGraphServiceLive = Layer.effect(
     const largeModel = ollama.getModel('large');
     const smallModel = ollama.getModel('small');
 
+    // Load prompts from prompt files based on configured language
+    const titlePrompt = yield* promptService.getPrompt('title');
+    const titleConfirmationPrompt = yield* promptService.getPrompt('title_confirmation');
+
+    const analysisSystemPrompt = extractSystemPrompt(titlePrompt.content, true);
+    const confirmationSystemPrompt = extractSystemPrompt(titleConfirmationPrompt.content, false);
+
     const tools = createAgentTools({
       paperless,
       qdrant,
@@ -115,8 +116,8 @@ export const TitleAgentGraphServiceLive = Layer.effect(
     const graphConfig: ConfirmationLoopConfig<TitleAnalysis> = {
       agentName: 'title',
       analysisSchema: TitleAnalysisSchema,
-      analysisSystemPrompt: ANALYSIS_SYSTEM_PROMPT,
-      confirmationSystemPrompt: CONFIRMATION_SYSTEM_PROMPT,
+      analysisSystemPrompt,
+      confirmationSystemPrompt,
       tools,
       largeModelUrl: ollamaUrl,
       largeModelName: largeModel,
