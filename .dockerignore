@@ -1,0 +1,66 @@
+# Dependencies (installed in container)
+node_modules
+**/node_modules
+
+# Build outputs (created in container)
+dist
+**/dist
+.next
+**/.next
+.turbo
+**/.turbo
+
+# Git
+.git
+.gitignore
+
+# IDE and tooling
+.vscode
+.idea
+.cursor
+.claude
+.serena
+.playwright-mcp
+
+# Secrets and config
+.env*
+!.env.example
+config.yaml
+*.pem
+
+# Testing and development
+coverage
+**/coverage
+playwright-report
+test-results
+demo-videos/
+
+# Cache directories
+.ruff_cache
+__pycache__
+.mypy_cache
+.pytest_cache
+
+# Database files (runtime data)
+*.db
+langgraph.db
+apps/backend/data/*
+!apps/backend/data/.gitkeep
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+.pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python artifacts (legacy)
+.venv
+venv
+*.py[cod]
+*.egg-info

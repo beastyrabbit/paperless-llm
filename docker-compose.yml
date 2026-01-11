@@ -1,31 +1,18 @@
 services:
-  # Python Backend
+  # TypeScript Backend
   backend:
     build:
-      context: ./apps/backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/backend/Dockerfile
     ports:
-      - "8000:8000"
+      - "8765:8765"
     extra_hosts:
-      - "host.docker.internal:host-gateway"  # Required for Linux to access host services
-    environment:
-      - PAPERLESS_URL=${PAPERLESS_URL:-http://localhost:8080}
-      - PAPERLESS_TOKEN=${PAPERLESS_TOKEN:-}
-      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
-      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
-      - OLLAMA_MODEL_LARGE=${OLLAMA_MODEL_LARGE:-gpt-oss:120b}
-      - OLLAMA_MODEL_SMALL=${OLLAMA_MODEL_SMALL:-gpt-oss:20b}
-      - QDRANT_URL=http://qdrant:6333
-      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-paperless-documents}
-      - AUTO_PROCESSING_ENABLED=${AUTO_PROCESSING_ENABLED:-false}
-      - AUTO_PROCESSING_INTERVAL_MINUTES=${AUTO_PROCESSING_INTERVAL_MINUTES:-10}
+      - "host.docker.internal:host-gateway"
     volumes:
-      - ./apps/backend:/app
-      - langgraph-data:/app/data
-    depends_on:
-      - qdrant
+      - backend-data:/app/data
     networks:
       - paperless-llm
+    restart: unless-stopped
 
   # Next.js Frontend
   frontend:
@@ -33,32 +20,17 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
     ports:
-      - "3000:3000"
+      - "3765:3765"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-    volumes:
-      - ./apps/web/app:/app/apps/web/app
-      - ./apps/web/public:/app/apps/web/public
-      - ./packages/ui/src:/app/packages/ui/src
+      - BACKEND_URL=http://backend:8765
     depends_on:
       - backend
     networks:
       - paperless-llm
-
-  # Qdrant Vector Database
-  qdrant:
-    image: qdrant/qdrant:latest
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant-data:/qdrant/storage
-    networks:
-      - paperless-llm
+    restart: unless-stopped
 
 volumes:
-  qdrant-data:
-  langgraph-data:
+  backend-data:
 
 networks:
   paperless-llm:
