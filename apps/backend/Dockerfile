@@ -49,7 +49,9 @@ RUN addgroup --system --gid 1001 nodejs && \
 # Copy built artifacts
 COPY --from=builder /app/apps/backend/dist ./dist
 COPY --from=builder /app/apps/backend/package.json ./
-COPY --from=builder /app/apps/backend/node_modules ./node_modules
+# Copy both root and backend node_modules (pnpm hoists some deps to root)
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/backend/node_modules ./apps/backend/node_modules
 
 # Create data directory with proper permissions
 RUN mkdir -p /app/data && chown -R backend:nodejs /app/data
