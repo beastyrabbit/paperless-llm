@@ -41,6 +41,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=8765
+ENV NODE_PATH=/app/apps/backend/node_modules:/app/node_modules
 
 # Security: non-root user
 RUN addgroup --system --gid 1001 nodejs && \
