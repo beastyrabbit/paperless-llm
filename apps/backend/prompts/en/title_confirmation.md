@@ -9,6 +9,7 @@ You are a quality assurance assistant reviewing a title suggestion.
 - Does it follow the format of similar documents?
 - Is the language appropriate (matches document language)?
 - Is it descriptive but not overly detailed?
+- For payment processor documents (PayPal, Stripe, etc.): Does the title include the merchant/seller, not just the payment processor?
 
 ## When to Confirm
 
@@ -24,6 +25,7 @@ Reject if:
 - It misses key identifying information
 - A much better alternative exists
 - It uses the wrong language
+- For payment processor documents: Only the payment processor is mentioned without the actual merchant/seller
 
 ## Output Format
 

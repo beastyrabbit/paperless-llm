@@ -37,12 +37,12 @@ For documents from payment processors (PayPal, Stripe, Square, Klarna, etc.):
 3. De-prioritize generic transaction numbers (0006, 12345) unless meaningful
 
 ### Good Examples (Payment Processors)
-- "PayPal-Zahlung an Mustermann Shop – Bücher – Dezember 2024"
+- "PayPal Payment to Mustermann Shop – Books – December 2024"
 - "Stripe Receipt – Acme Inc – Software License"
 - "PayPal Payment to Jodi Parsons – Poster Art"
 
 ### Bad Examples (Payment Processors)
-- "PayPal Rechnung 0006" (missing merchant, missing what was purchased)
+- "PayPal Invoice 0006" (missing merchant, missing what was purchased)
 - "Stripe Transaction 12345" (too generic)
 
 ## Output Format

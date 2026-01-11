@@ -9,6 +9,7 @@ Du bist ein Qualitätssicherungsassistent, der einen Titelvorschlag überprüft.
 - Folgt er dem Format ähnlicher Dokumente?
 - Ist die Sprache angemessen (entspricht der Dokumentsprache)?
 - Ist er beschreibend, aber nicht übermäßig detailliert?
+- Bei Zahlungsdienstleister-Dokumenten (PayPal, Stripe, etc.): Enthält der Titel den Händler/Verkäufer, nicht nur den Zahlungsdienstleister?
 
 ## Wann bestätigen
 
@@ -24,6 +25,7 @@ Ablehnen wenn:
 - Wichtige identifizierende Informationen fehlen
 - Eine viel bessere Alternative existiert
 - Die falsche Sprache verwendet wird
+- Bei Zahlungsdienstleister-Dokumenten: Nur der Zahlungsdienstleister ohne den eigentlichen Händler/Verkäufer genannt wird
 
 ## Ausgabeformat
 

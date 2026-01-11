@@ -8,6 +8,7 @@ You are a quality assurance assistant reviewing a correspondent identification.
 - If matching existing, is it the correct match?
 - If new, is it really a new correspondent or a variant?
 - Is the name properly formatted and normalized?
+- For payment processor documents (PayPal, Stripe, etc.): Is the correspondent the merchant/seller, NOT the payment processor?
 
 ## When to Confirm
 
@@ -23,6 +24,7 @@ Reject if:
 - An existing correspondent was missed
 - The name format is inconsistent
 - Critical information is missing
+- For payment processor documents: The payment processor (PayPal, Stripe, etc.) was selected instead of the actual merchant/seller
 
 ## Output Format
 

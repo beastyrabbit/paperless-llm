@@ -56,41 +56,28 @@ export interface TitleAgentGraphService extends Agent<TitleInput, AgentProcessRe
 export const TitleAgentGraphService = Context.GenericTag<TitleAgentGraphService>('TitleAgentGraphService');
 
 // ===========================================================================
-// System Prompts
+// Prompt Loading Helpers
 // ===========================================================================
 
-const ANALYSIS_SYSTEM_PROMPT = `Du bist ein Spezialist für Dokumententitel. Deine Aufgabe ist es, Dokumente zu analysieren und klare, beschreibende, professionelle Titel vorzuschlagen.
+/**
+ * Extracts the system prompt from a prompt file.
+ * The system prompt is everything before the '---' separator.
+ * Also adds a note about tool usage and JSON response format.
+ */
+const extractSystemPrompt = (promptContent: string, addToolNote = true): string => {
+  // Find the --- separator
+  const separatorIndex = promptContent.indexOf('\n---\n');
+  const systemPart = separatorIndex !== -1
+    ? promptContent.slice(0, separatorIndex).trim()
+    : promptContent.trim();
 
-Du hast Zugriff auf Tools, um ähnliche bereits verarbeitete Dokumente zu suchen. Nutze diese, um Beispiele zu finden, wie ähnliche Dokumente betitelt wurden.
+  // Add tool usage note if needed
+  const toolNote = addToolNote
+    ? '\n\nYou have access to tools to search for similar processed documents. Use them to inform your decisions.\n\nYou MUST respond with structured JSON matching the required schema.'
+    : '\n\nYou MUST respond with structured JSON: { "confirmed": boolean, "feedback": string, "suggested_changes": string }';
 
-Richtlinien:
-1. Titel sollten prägnant aber informativ sein (3-10 Wörter)
-2. Wichtige Identifikationsmerkmale einbeziehen: Dokumenttyp, Organisation, Betreff, Datum (falls relevant)
-3. Muster von ähnlichen Dokumenten im System folgen
-4. Dieselbe Sprache wie der Dokumentinhalt verwenden
-5. Zu allgemeine Titel wie "Dokument" oder zu detaillierte mit langen Referenznummern vermeiden
-
-SONDERFALL - Zahlungsdienstleister (PayPal, Stripe, Square, Klarna, etc.):
-- Bei Zahlungsbestätigungen/Quittungen den HÄNDLER/VERKÄUFER im Titel nennen, nicht nur den Zahlungsdienstleister
-- Was gekauft wurde einbeziehen, falls aus dem Dokument erkennbar
-- Generische Rechnungs-/Transaktionsnummern (0006, 12345) nur einbeziehen wenn sie aussagekräftig sind
-- Beispiel: "PayPal-Zahlung an Mustermann Shop – Bücher – Dezember 2024"
-
-Du MUSST mit strukturiertem JSON antworten, das dem erforderlichen Schema entspricht.`;
-
-const CONFIRMATION_SYSTEM_PROMPT = `Du bist ein Qualitätssicherungsassistent, der einen Titelvorschlag überprüft.
-
-Bewertungskriterien:
-- Beschreibt der Titel das Dokument genau?
-- Hat er die richtige Länge (nicht zu kurz oder zu lang)?
-- Folgt er dem Format ähnlicher Dokumente?
-- Ist die Sprache angemessen (entspricht der Dokumentsprache)?
-- Bei Zahlungsdienstleister-Dokumenten: Enthält der Titel den Händler/Verkäufer, nicht nur den Zahlungsdienstleister?
-
-Bestätige, wenn der Titel das Wesen des Dokuments erfasst und etablierten Mustern folgt.
-Ablehnen, wenn der Titel zu allgemein ist, zu spezifisch, wichtige Informationen fehlen, falsche Sprache verwendet wird, oder bei Zahlungsdokumenten: nur den Zahlungsdienstleister ohne den eigentlichen Händler/Verkäufer nennt.
-
-Du MUSST mit strukturiertem JSON antworten: { "confirmed": boolean, "feedback": string, "suggested_changes": string }`;
+  return systemPart + toolNote;
+};
 
 // ===========================================================================
 // Live Implementation
@@ -101,7 +88,7 @@ export const TitleAgentGraphServiceLive = Layer.effect(
   Effect.gen(function* () {
     const config = yield* ConfigService;
     const ollama = yield* OllamaService;
-    const prompts = yield* PromptService;
+    const promptService = yield* PromptService;
     const tinybase = yield* TinyBaseService;
     const paperless = yield* PaperlessService;
     const qdrant = yield* QdrantService;
@@ -113,6 +100,13 @@ export const TitleAgentGraphServiceLive = Layer.effect(
     const largeModel = ollama.getModel('large');
     const smallModel = ollama.getModel('small');
 
+    // Load prompts from prompt files based on configured language
+    const titlePrompt = yield* promptService.getPrompt('title');
+    const titleConfirmationPrompt = yield* promptService.getPrompt('title_confirmation');
+
+    const analysisSystemPrompt = extractSystemPrompt(titlePrompt.content, true);
+    const confirmationSystemPrompt = extractSystemPrompt(titleConfirmationPrompt.content, false);
+
     const tools = createAgentTools({
       paperless,
       qdrant,
@@ -122,8 +116,8 @@ export const TitleAgentGraphServiceLive = Layer.effect(
     const graphConfig: ConfirmationLoopConfig<TitleAnalysis> = {
       agentName: 'title',
       analysisSchema: TitleAnalysisSchema,
-      analysisSystemPrompt: ANALYSIS_SYSTEM_PROMPT,
-      confirmationSystemPrompt: CONFIRMATION_SYSTEM_PROMPT,
+      analysisSystemPrompt,
+      confirmationSystemPrompt,
       tools,
       largeModelUrl: ollamaUrl,
       largeModelName: largeModel,
