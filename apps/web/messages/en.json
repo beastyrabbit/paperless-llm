@@ -483,7 +483,9 @@
       "correspondentsCount": "Correspondents",
       "typesCount": "Types",
       "tagsCount": "Tags",
-      "eta": "ETA"
+      "eta": "ETA",
+      "phase": "Phase",
+      "coveringDocs": "covering {count} documents"
     },
     "bulkOCR": {
       "title": "Bulk OCR",

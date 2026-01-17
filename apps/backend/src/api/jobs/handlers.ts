@@ -147,8 +147,11 @@ export const getBootstrapStatus = Effect.gen(function* () {
     started_at: progress.startedAt,
     completed_at: progress.completedAt,
     error_message: progress.errorMessage,
-    avg_seconds_per_doc: null, // Not implemented yet
-    estimated_remaining_seconds: null, // Not implemented yet
+    // Enhanced progress tracking
+    total_documents: progress.totalDocuments,
+    current_entity_count: progress.currentEntityCount,
+    avg_seconds_per_category: progress.avgSecondsPerCategory,
+    estimated_remaining_seconds: progress.estimatedRemainingSeconds,
   };
 });
 

@@ -481,7 +481,9 @@
       "correspondentsCount": "Korrespondenten",
       "typesCount": "Typen",
       "tagsCount": "Tags",
-      "eta": "Verbleibend"
+      "eta": "Verbleibend",
+      "phase": "Phase",
+      "coveringDocs": "umfasst {count} Dokumente"
     },
     "bulkOCR": {
       "title": "Massen-OCR",

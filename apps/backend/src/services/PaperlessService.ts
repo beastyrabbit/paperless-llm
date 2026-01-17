@@ -70,6 +70,7 @@ export interface PaperlessService {
 
   // Queue operations
   readonly getQueueStats: () => Effect.Effect<QueueStats, PaperlessErrorType>;
+  readonly getTotalDocumentCount: () => Effect.Effect<number, PaperlessErrorType>;
 
   // Connection test
   readonly testConnection: () => Effect.Effect<boolean, PaperlessErrorType>;
@@ -626,6 +627,12 @@ export const PaperlessServiceLive = Layer.effect(
               manualReview,
           };
         }),
+
+      getTotalDocumentCount: () =>
+        pipe(
+          request<PaginatedResponse<Document>>('GET', '/documents/', undefined, { page_size: 1 }),
+          Effect.map((response) => response.count)
+        ),
 
       // =====================================================================
       // Connection test
