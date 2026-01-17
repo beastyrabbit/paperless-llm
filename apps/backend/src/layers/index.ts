@@ -10,6 +10,7 @@ import {
   MistralServiceLive,
   PromptServiceLive,
   QdrantServiceLive,
+  AutoProcessingServiceLive,
 } from '../services/index.js';
 import {
   BootstrapJobServiceLive,
@@ -115,10 +116,15 @@ const PipelineLayer = Layer.provideMerge(
 
 /**
  * Full application layer with all services including jobs and agents.
+ * AutoProcessingServiceLive depends on ProcessingPipelineService, so it must be
+ * provided after PipelineLayer is resolved.
  */
 export const AppLayer = Layer.provideMerge(
-  Layer.mergeAll(JobsLayer, PipelineLayer),
-  Layer.provideMerge(CoreServicesLayer, ConfigLayer)
+  AutoProcessingServiceLive,
+  Layer.provideMerge(
+    Layer.mergeAll(JobsLayer, PipelineLayer),
+    Layer.provideMerge(CoreServicesLayer, ConfigLayer)
+  )
 );
 
 /**

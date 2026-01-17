@@ -305,6 +305,11 @@ addRoute('DELETE', '/api/processing/:docId/logs', (params) =>
   processingHandlers.clearProcessingLogs(parseInt(params.docId!, 10))
 );
 
+// Auto Processing
+addRoute('GET', '/api/processing/auto/status', () => processingHandlers.getAutoProcessingStatus);
+
+addRoute('POST', '/api/processing/auto/trigger', () => processingHandlers.triggerAutoProcessing);
+
 // ===========================================================================
 // Prompts API - /api/prompts
 // ===========================================================================

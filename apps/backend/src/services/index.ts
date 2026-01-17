@@ -48,3 +48,9 @@ export {
   type DocumentVector,
   type SearchResult,
 } from './QdrantService.js';
+
+export {
+  AutoProcessingService,
+  AutoProcessingServiceLive,
+  type AutoProcessingStatus,
+} from './AutoProcessingService.js';
