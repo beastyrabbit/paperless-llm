@@ -490,6 +490,15 @@ export const createHttpServer = (port: number) =>
 
     // Return cleanup function
     return () => {
+      // Stop AutoProcessingService gracefully
+      runWithRuntime(
+        Effect.gen(function* () {
+          const autoProcessing = yield* AutoProcessingService;
+          yield* autoProcessing.stop();
+        })
+      ).catch(() => {
+        // Ignore errors during shutdown
+      });
       server.close();
     };
   });

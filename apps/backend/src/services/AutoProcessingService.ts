@@ -63,12 +63,18 @@ export const AutoProcessingServiceLive = Layer.effect(
 
     // Get auto processing settings from TinyBase (runtime configurable)
     const getSettings = Effect.gen(function* () {
-      const enabledStr = yield* tinybase.getSetting('autoProcessingEnabled');
-      const intervalStr = yield* tinybase.getSetting('autoProcessingInterval');
+      const enabledStr = yield* tinybase.getSetting('auto_processing.enabled');
+      const intervalStr = yield* tinybase.getSetting('auto_processing.interval_minutes');
+
+      // Parse and validate interval - fall back to config default if invalid
+      const parsedInterval = intervalStr ? parseInt(intervalStr, 10) : NaN;
+      const intervalMinutes = Number.isFinite(parsedInterval) && parsedInterval > 0
+        ? parsedInterval
+        : config.config.autoProcessing.intervalMinutes;
 
       return {
         enabled: enabledStr === 'true' ? true : enabledStr === 'false' ? false : config.config.autoProcessing.enabled,
-        intervalMinutes: intervalStr ? parseInt(intervalStr, 10) : config.config.autoProcessing.intervalMinutes,
+        intervalMinutes,
       };
     });
 
@@ -94,6 +100,9 @@ export const AutoProcessingServiceLive = Layer.effect(
             return Effect.succeed([]);
           })
         );
+
+        // Update last check time on every poll
+        yield* Ref.set(lastCheckRef, new Date().toISOString());
 
         if (pendingDocs.length > 0) {
           const doc = pendingDocs[0]!;
@@ -127,8 +136,7 @@ export const AutoProcessingServiceLive = Layer.effect(
           continue;
         }
 
-        // No work found - update last check time and wait for interval
-        yield* Ref.set(lastCheckRef, new Date().toISOString());
+        // No work found - wait for interval
         console.log(`[AutoProcessing] No pending documents. Waiting ${settings.intervalMinutes} minutes...`);
 
         // Create a deferred for manual trigger interruption
