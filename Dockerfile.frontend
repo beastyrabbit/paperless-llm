@@ -1,5 +1,8 @@
 # Stage 1: Base with pnpm
 FROM node:22-alpine AS base
+
+# Build argument for version (passed from build script)
+ARG APP_VERSION=dev
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
@@ -7,6 +10,10 @@ RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 # Stage 2: Builder (install deps + build in same stage for workspace symlinks)
 FROM base AS builder
 WORKDIR /app
+
+# Pass version to Next.js build (NEXT_PUBLIC_ vars are inlined at build time)
+ARG APP_VERSION=dev
+ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
 
 # Copy workspace root files
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json ./

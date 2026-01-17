@@ -91,6 +91,10 @@ export function Sidebar() {
             {tCommon("idle")} - {tCommon("inQueue", { count: 0 })}
           </p>
         </div>
+        {/* Version */}
+        <p className="mt-3 text-center text-xs text-zinc-400 dark:text-zinc-600">
+          {process.env.NEXT_PUBLIC_APP_VERSION || "dev"}
+        </p>
       </div>
     </aside>
   );
