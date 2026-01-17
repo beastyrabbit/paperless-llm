@@ -178,8 +178,7 @@ export const BootstrapJobServiceLive = Layer.effect(
     const skipCountRef = yield* Ref.make(0);
     const cancelledRef = yield* Ref.make(false);
 
-    const analyzeCorrespondents = Effect.gen(function* () {
-      const correspondents = yield* paperless.getCorrespondents();
+    const analyzeCorrespondents = (correspondents: Entity[]): SchemaSuggestion[] => {
       const suggestions: SchemaSuggestion[] = [];
 
       // Find similar correspondents
@@ -210,10 +209,9 @@ export const BootstrapJobServiceLive = Layer.effect(
       }
 
       return suggestions;
-    });
+    };
 
-    const analyzeDocumentTypes = Effect.gen(function* () {
-      const types = yield* paperless.getDocumentTypes();
+    const analyzeDocumentTypes = (types: Entity[]): SchemaSuggestion[] => {
       const suggestions: SchemaSuggestion[] = [];
 
       const similar = findSimilarEntities(types);
@@ -242,10 +240,9 @@ export const BootstrapJobServiceLive = Layer.effect(
       }
 
       return suggestions;
-    });
+    };
 
-    const analyzeTags = Effect.gen(function* () {
-      const tags = yield* paperless.getTags();
+    const analyzeTags = (tags: Entity[]): SchemaSuggestion[] => {
       const suggestions: SchemaSuggestion[] = [];
 
       const similar = findSimilarEntities(tags);
@@ -263,7 +260,7 @@ export const BootstrapJobServiceLive = Layer.effect(
 
       // Don't suggest deleting tags with no documents - they may be workflow tags
       return suggestions;
-    });
+    };
 
     return {
       start: (analysisType) =>
@@ -338,7 +335,7 @@ export const BootstrapJobServiceLive = Layer.effect(
                 }));
 
                 const categoryStartTime = Date.now();
-                const corrSuggestions = yield* analyzeCorrespondents;
+                const corrSuggestions = analyzeCorrespondents(correspondents);
                 const categoryDuration = (Date.now() - categoryStartTime) / 1000;
                 categoryDurations.push(categoryDuration);
 
@@ -373,7 +370,7 @@ export const BootstrapJobServiceLive = Layer.effect(
                 }));
 
                 const categoryStartTime = Date.now();
-                const typeSuggestions = yield* analyzeDocumentTypes;
+                const typeSuggestions = analyzeDocumentTypes(types);
                 const categoryDuration = (Date.now() - categoryStartTime) / 1000;
                 categoryDurations.push(categoryDuration);
 
@@ -408,7 +405,7 @@ export const BootstrapJobServiceLive = Layer.effect(
                 }));
 
                 const categoryStartTime = Date.now();
-                const tagSuggestions = yield* analyzeTags;
+                const tagSuggestions = analyzeTags(tags);
                 const categoryDuration = (Date.now() - categoryStartTime) / 1000;
                 categoryDurations.push(categoryDuration);
 
