@@ -317,7 +317,17 @@
       "every5Minutes": "Every 5 minutes",
       "every10Minutes": "Every 10 minutes",
       "every30Minutes": "Every 30 minutes",
-      "everyHour": "Every hour"
+      "everyHour": "Every hour",
+      "status": "Status",
+      "lastCheck": "Last check",
+      "neverChecked": "Never",
+      "justNow": "Just now",
+      "minutesAgo": "{count} min ago",
+      "processing": "Processing",
+      "processed": "Processed",
+      "errors": "errors",
+      "checkNow": "Check Now",
+      "serviceNotRunning": "Auto processing service is not running"
     },
     "confirmation": {
       "title": "Confirmation Loop",

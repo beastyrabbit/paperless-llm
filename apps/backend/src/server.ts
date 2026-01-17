@@ -6,7 +6,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { AppLayer } from './layers/index.js';
 import { handleRequest } from './api/index.js';
 import { ProcessingPipelineService, type PipelineStreamEvent } from './agents/index.js';
-import { PaperlessService, ConfigService, QdrantService } from './services/index.js';
+import { PaperlessService, ConfigService, QdrantService, AutoProcessingService } from './services/index.js';
 
 // ===========================================================================
 // Security Configuration
@@ -466,6 +466,22 @@ export const createHttpServer = (port: number) =>
       })
     ).catch((e) => {
       console.warn('[Qdrant] Service initialization failed:', e);
+    });
+
+    // Start Auto Processing Service on startup
+    runWithRuntime(
+      Effect.gen(function* () {
+        const autoProcessing = yield* AutoProcessingService;
+        yield* autoProcessing.start().pipe(
+          Effect.tap(() => Effect.sync(() => console.log('[AutoProcessing] Service initialized'))),
+          Effect.catchAll((e) => {
+            console.warn('[AutoProcessing] Service initialization failed:', e);
+            return Effect.void;
+          })
+        );
+      })
+    ).catch((e) => {
+      console.warn('[AutoProcessing] Service initialization failed:', e);
     });
 
     server.listen(port, () => {

@@ -4,7 +4,7 @@
  * Document processing endpoints that invoke the processing pipeline.
  */
 import { Effect } from 'effect';
-import { TinyBaseService } from '../../services/index.js';
+import { TinyBaseService, AutoProcessingService } from '../../services/index.js';
 import { ProcessingPipelineService } from '../../agents/ProcessingPipeline.js';
 
 // ===========================================================================
@@ -77,3 +77,33 @@ export const clearProcessingLogs = (docId: number) =>
     yield* tinybase.clearProcessingLogs(docId);
     return { success: true };
   });
+
+// ===========================================================================
+// Auto Processing
+// ===========================================================================
+
+export const getAutoProcessingStatus = Effect.gen(function* () {
+  const autoProcessing = yield* AutoProcessingService;
+  const status = yield* autoProcessing.getStatus();
+  return {
+    running: status.running,
+    enabled: status.enabled,
+    interval_minutes: status.intervalMinutes,
+    last_check_at: status.lastCheckAt,
+    currently_processing_doc_id: status.currentlyProcessingDocId,
+    processed_since_start: status.processedSinceStart,
+    errors_since_start: status.errorsSinceStart,
+  };
+});
+
+export const triggerAutoProcessing = Effect.gen(function* () {
+  const autoProcessing = yield* AutoProcessingService;
+  yield* autoProcessing.trigger();
+  const status = yield* autoProcessing.getStatus();
+  return {
+    message: 'Triggered auto processing check',
+    running: status.running,
+    enabled: status.enabled,
+    currently_processing_doc_id: status.currentlyProcessingDocId,
+  };
+});

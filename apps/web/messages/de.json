@@ -317,7 +317,17 @@
       "every5Minutes": "Alle 5 Minuten",
       "every10Minutes": "Alle 10 Minuten",
       "every30Minutes": "Alle 30 Minuten",
-      "everyHour": "Jede Stunde"
+      "everyHour": "Jede Stunde",
+      "status": "Status",
+      "lastCheck": "Letzte Prüfung",
+      "neverChecked": "Nie",
+      "justNow": "Gerade eben",
+      "minutesAgo": "vor {count} Min.",
+      "processing": "Verarbeite",
+      "processed": "Verarbeitet",
+      "errors": "Fehler",
+      "checkNow": "Jetzt prüfen",
+      "serviceNotRunning": "Auto-Verarbeitungsdienst läuft nicht"
     },
     "confirmation": {
       "title": "Bestätigungs-Schleife",
