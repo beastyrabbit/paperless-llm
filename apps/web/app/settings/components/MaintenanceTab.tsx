@@ -410,11 +410,20 @@ export function MaintenanceTab() {
                 </div>
               )}
 
-              {/* Current Document */}
+              {/* Current Phase with Entity Count and Document Coverage */}
               {bootstrapProgress.current_doc_title && isBootstrapRunning && (
                 <div className="text-sm">
-                  <span className="text-zinc-500">{tMaint("bootstrap.currentDoc")}:</span>{" "}
-                  <span className="font-medium">{bootstrapProgress.current_doc_title}</span>
+                  <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                    {tMaint("bootstrap.phase")} {bootstrapProgress.processed + 1}/{bootstrapProgress.total}:
+                  </span>{" "}
+                  <span className="text-zinc-600 dark:text-zinc-400">
+                    {bootstrapProgress.current_doc_title}
+                  </span>
+                  {bootstrapProgress.total_documents && (
+                    <span className="text-zinc-500 ml-1">
+                      ({tMaint("bootstrap.coveringDocs", { count: bootstrapProgress.total_documents.toLocaleString() })})
+                    </span>
+                  )}
                 </div>
               )}
 

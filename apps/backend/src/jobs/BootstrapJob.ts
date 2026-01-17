@@ -30,6 +30,11 @@ export interface BootstrapProgress {
   startedAt: string | null;
   completedAt: string | null;
   errorMessage: string | null;
+  // Enhanced progress tracking
+  totalDocuments: number | null;           // Total docs in Paperless (for "covering X documents")
+  currentEntityCount: number | null;       // Count of entities in current phase (e.g., 47 correspondents)
+  avgSecondsPerCategory: number | null;    // For time estimation
+  estimatedRemainingSeconds: number | null; // ETA calculation
 }
 
 export interface SchemaSuggestion {
@@ -163,6 +168,10 @@ export const BootstrapJobServiceLive = Layer.effect(
       startedAt: null,
       completedAt: null,
       errorMessage: null,
+      totalDocuments: null,
+      currentEntityCount: null,
+      avgSecondsPerCategory: null,
+      estimatedRemainingSeconds: null,
     });
 
     const fiberRef = yield* Ref.make<Fiber.RuntimeFiber<void, JobError> | null>(null);
@@ -280,12 +289,17 @@ export const BootstrapJobServiceLive = Layer.effect(
             startedAt: new Date().toISOString(),
             completedAt: null,
             errorMessage: null,
+            totalDocuments: null,
+            currentEntityCount: null,
+            avgSecondsPerCategory: null,
+            estimatedRemainingSeconds: null,
           });
 
           const runAnalysis = Effect.gen(function* () {
             try {
               let allSuggestions: SchemaSuggestion[] = [];
-              let processedEntities = 0;
+              let processedCategories = 0;
+              const categoryDurations: number[] = [];
 
               // Calculate how many entity categories we'll process (for progress tracking)
               let totalCategories = 0;
@@ -293,33 +307,55 @@ export const BootstrapJobServiceLive = Layer.effect(
               if (analysisType === 'all' || analysisType === 'document_types') totalCategories++;
               if (analysisType === 'all' || analysisType === 'tags') totalCategories++;
 
+              // Fetch total document count for context display
+              const totalDocs = yield* paperless.getTotalDocumentCount();
+
               yield* Ref.update(progressRef, (p) => ({
                 ...p,
                 total: totalCategories,
+                totalDocuments: totalDocs,
               }));
+
+              // Helper to update timing estimates
+              const updateTimingEstimates = (categoriesRemaining: number) => {
+                if (categoryDurations.length === 0) return;
+                const avgSeconds = categoryDurations.reduce((a, b) => a + b, 0) / categoryDurations.length;
+                const estimatedRemaining = Math.ceil(categoriesRemaining * avgSeconds);
+                return { avgSecondsPerCategory: avgSeconds, estimatedRemainingSeconds: estimatedRemaining };
+              };
 
               if (analysisType === 'all' || analysisType === 'correspondents') {
                 const cancelled = yield* Ref.get(cancelledRef);
                 if (cancelled) return;
 
+                // Fetch correspondents first to get count
+                const correspondents = yield* paperless.getCorrespondents();
+
                 yield* Ref.update(progressRef, (p) => ({
                   ...p,
-                  currentDocTitle: 'Analyzing correspondents...',
+                  currentDocTitle: `Analyzing ${correspondents.length} correspondents...`,
+                  currentEntityCount: correspondents.length,
                 }));
 
+                const categoryStartTime = Date.now();
                 const corrSuggestions = yield* analyzeCorrespondents;
+                const categoryDuration = (Date.now() - categoryStartTime) / 1000;
+                categoryDurations.push(categoryDuration);
+
                 const corrCount = corrSuggestions.length;
                 allSuggestions = [...allSuggestions, ...corrSuggestions];
-                processedEntities++;
+                processedCategories++;
 
-                // Update suggestions by type and processed count
+                // Update suggestions by type, processed count, and timing estimates
+                const timingEstimates = updateTimingEstimates(totalCategories - processedCategories);
                 yield* Ref.update(progressRef, (p) => ({
                   ...p,
-                  processed: processedEntities,
+                  processed: processedCategories,
                   suggestionsByType: {
                     ...p.suggestionsByType,
                     correspondents: corrCount,
                   },
+                  ...(timingEstimates || {}),
                 }));
               }
 
@@ -327,24 +363,34 @@ export const BootstrapJobServiceLive = Layer.effect(
                 const cancelled = yield* Ref.get(cancelledRef);
                 if (cancelled) return;
 
+                // Fetch document types first to get count
+                const types = yield* paperless.getDocumentTypes();
+
                 yield* Ref.update(progressRef, (p) => ({
                   ...p,
-                  currentDocTitle: 'Analyzing document types...',
+                  currentDocTitle: `Analyzing ${types.length} document types...`,
+                  currentEntityCount: types.length,
                 }));
 
+                const categoryStartTime = Date.now();
                 const typeSuggestions = yield* analyzeDocumentTypes;
+                const categoryDuration = (Date.now() - categoryStartTime) / 1000;
+                categoryDurations.push(categoryDuration);
+
                 const typeCount = typeSuggestions.length;
                 allSuggestions = [...allSuggestions, ...typeSuggestions];
-                processedEntities++;
+                processedCategories++;
 
-                // Update suggestions by type and processed count
+                // Update suggestions by type, processed count, and timing estimates
+                const timingEstimates = updateTimingEstimates(totalCategories - processedCategories);
                 yield* Ref.update(progressRef, (p) => ({
                   ...p,
-                  processed: processedEntities,
+                  processed: processedCategories,
                   suggestionsByType: {
                     ...p.suggestionsByType,
                     documentTypes: typeCount,
                   },
+                  ...(timingEstimates || {}),
                 }));
               }
 
@@ -352,24 +398,34 @@ export const BootstrapJobServiceLive = Layer.effect(
                 const cancelled = yield* Ref.get(cancelledRef);
                 if (cancelled) return;
 
+                // Fetch tags first to get count
+                const tags = yield* paperless.getTags();
+
                 yield* Ref.update(progressRef, (p) => ({
                   ...p,
-                  currentDocTitle: 'Analyzing tags...',
+                  currentDocTitle: `Analyzing ${tags.length} tags...`,
+                  currentEntityCount: tags.length,
                 }));
 
+                const categoryStartTime = Date.now();
                 const tagSuggestions = yield* analyzeTags;
+                const categoryDuration = (Date.now() - categoryStartTime) / 1000;
+                categoryDurations.push(categoryDuration);
+
                 const tagCount = tagSuggestions.length;
                 allSuggestions = [...allSuggestions, ...tagSuggestions];
-                processedEntities++;
+                processedCategories++;
 
-                // Update suggestions by type and processed count
+                // Update suggestions by type, processed count, and timing estimates
+                const timingEstimates = updateTimingEstimates(totalCategories - processedCategories);
                 yield* Ref.update(progressRef, (p) => ({
                   ...p,
-                  processed: processedEntities,
+                  processed: processedCategories,
                   suggestionsByType: {
                     ...p.suggestionsByType,
                     tags: tagCount,
                   },
+                  ...(timingEstimates || {}),
                 }));
               }
 

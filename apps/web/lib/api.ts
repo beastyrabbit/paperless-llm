@@ -727,8 +727,11 @@ export interface BootstrapProgress {
   started_at: string | null;
   completed_at: string | null;
   error_message: string | null;
-  avg_seconds_per_doc: number | null;
-  estimated_remaining_seconds: number | null;
+  // Enhanced progress tracking
+  total_documents: number | null;           // Total docs in Paperless (for "covering X documents")
+  current_entity_count: number | null;      // Count of entities in current phase (e.g., 47 correspondents)
+  avg_seconds_per_category: number | null;  // For time estimation
+  estimated_remaining_seconds: number | null; // ETA calculation
 }
 
 export interface BootstrapStartResponse {
