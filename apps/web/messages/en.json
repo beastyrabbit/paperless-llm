@@ -17,6 +17,7 @@
     "connected": "connected",
     "disconnected": "disconnected",
     "idle": "Idle",
+    "processing": "Processing",
     "inQueue": "{count} in queue",
     "retry": "Retry",
     "discard": "Discard",

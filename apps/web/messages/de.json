@@ -17,6 +17,7 @@
     "connected": "verbunden",
     "disconnected": "getrennt",
     "idle": "Inaktiv",
+    "processing": "Verarbeitung",
     "inQueue": "{count} in Warteschlange",
     "retry": "Wiederholen",
     "discard": "Verwerfen",

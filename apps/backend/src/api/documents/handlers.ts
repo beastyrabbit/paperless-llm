@@ -14,23 +14,30 @@ import { ConfigService } from '../../config/index.js';
 export const getQueueStats = Effect.gen(function* () {
   const paperless = yield* PaperlessService;
 
-  const stats = yield* pipe(
-    paperless.getQueueStats(),
-    Effect.catchAll(() =>
-      Effect.succeed({
-        pending: 0,
-        ocrDone: 0,
-        titleDone: 0,
-        correspondentDone: 0,
-        documentTypeDone: 0,
-        tagsDone: 0,
-        processed: 0,
-        failed: 0,
-        manualReview: 0,
-        total: 0,
-      })
-    )
-  );
+  // Fetch queue stats and total document count in parallel
+  const [stats, totalDocuments] = yield* Effect.all([
+    pipe(
+      paperless.getQueueStats(),
+      Effect.catchAll(() =>
+        Effect.succeed({
+          pending: 0,
+          ocrDone: 0,
+          titleDone: 0,
+          correspondentDone: 0,
+          documentTypeDone: 0,
+          tagsDone: 0,
+          processed: 0,
+          failed: 0,
+          manualReview: 0,
+          total: 0,
+        })
+      )
+    ),
+    pipe(
+      paperless.getTotalDocumentCount(),
+      Effect.catchAll(() => Effect.succeed(0))
+    ),
+  ], { concurrency: 'unbounded' });
 
   // Calculate pipeline total (all stages except processed)
   const totalInPipeline = stats.pending + stats.ocrDone + stats.titleDone +
@@ -47,7 +54,7 @@ export const getQueueStats = Effect.gen(function* () {
     tags_done: stats.tagsDone,
     processed: stats.processed,
     total_in_pipeline: totalInPipeline,
-    total_documents: stats.total + stats.processed, // Total includes processed docs
+    total_documents: totalDocuments, // Actual total from Paperless
     // Additional fields for compatibility
     failed: stats.failed,
     manual_review: stats.manualReview,

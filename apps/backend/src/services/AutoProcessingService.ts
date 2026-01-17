@@ -93,19 +93,38 @@ export const AutoProcessingServiceLive = Layer.effect(
           continue;
         }
 
-        // Check for pending documents
-        const pendingDocs = yield* paperless.getDocumentsByTag(tagConfig.pending, 1).pipe(
-          Effect.catchAll((e) => {
-            console.error('[AutoProcessing] Error fetching pending documents:', e);
-            return Effect.succeed([]);
-          })
-        );
+        // Check for documents at any pipeline stage (not just pending)
+        // Priority order: pending first, then intermediate stages
+        const pipelineTags = [
+          tagConfig.pending,
+          tagConfig.ocrDone,
+          tagConfig.correspondentDone,
+          tagConfig.documentTypeDone,
+          tagConfig.titleDone,
+          tagConfig.tagsDone,
+        ];
+
+        let docToProcess: { id: number; title: string } | null = null;
+
+        for (const tag of pipelineTags) {
+          const docs = yield* paperless.getDocumentsByTag(tag, 1).pipe(
+            Effect.catchAll((e) => {
+              console.error(`[AutoProcessing] Error fetching documents with tag ${tag}:`, e);
+              return Effect.succeed([]);
+            })
+          );
+          if (docs.length > 0) {
+            docToProcess = docs[0]!;
+            console.log(`[AutoProcessing] Found document at stage "${tag}"`);
+            break;
+          }
+        }
 
         // Update last check time on every poll
         yield* Ref.set(lastCheckRef, new Date().toISOString());
 
-        if (pendingDocs.length > 0) {
-          const doc = pendingDocs[0]!;
+        if (docToProcess) {
+          const doc = docToProcess;
           console.log(`[AutoProcessing] Processing document ${doc.id}: ${doc.title}`);
 
           yield* Ref.set(currentDocRef, doc.id);
@@ -137,7 +156,7 @@ export const AutoProcessingServiceLive = Layer.effect(
         }
 
         // No work found - wait for interval
-        console.log(`[AutoProcessing] No pending documents. Waiting ${settings.intervalMinutes} minutes...`);
+        console.log(`[AutoProcessing] No documents in pipeline. Waiting ${settings.intervalMinutes} minutes...`);
 
         // Create a deferred for manual trigger interruption
         const triggerDeferred = yield* Deferred.make<void, never>();
