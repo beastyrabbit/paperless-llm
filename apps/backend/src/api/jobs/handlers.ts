@@ -127,7 +127,29 @@ export const startBootstrap = (analysisType: string) =>
 
 export const getBootstrapStatus = Effect.gen(function* () {
   const job = yield* BootstrapJobService;
-  return yield* job.getProgress();
+  const progress = yield* job.getProgress();
+
+  // Transform camelCase to snake_case for API response
+  return {
+    status: progress.status,
+    total: progress.total,
+    processed: progress.processed,
+    skipped: 0, // Not implemented yet
+    current_doc_id: progress.currentDocId,
+    current_doc_title: progress.currentDocTitle,
+    suggestions_found: progress.suggestionsFound,
+    suggestions_by_type: {
+      correspondents: progress.suggestionsByType.correspondents,
+      document_types: progress.suggestionsByType.documentTypes,
+      tags: progress.suggestionsByType.tags,
+    },
+    errors: progress.errors,
+    started_at: progress.startedAt,
+    completed_at: progress.completedAt,
+    error_message: progress.errorMessage,
+    avg_seconds_per_doc: null, // Not implemented yet
+    estimated_remaining_seconds: null, // Not implemented yet
+  };
 });
 
 export const cancelBootstrap = Effect.gen(function* () {

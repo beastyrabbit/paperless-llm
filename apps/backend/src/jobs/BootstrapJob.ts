@@ -11,17 +11,25 @@ import { JobError } from '../errors/index.js';
 
 export type AnalysisType = 'all' | 'correspondents' | 'document_types' | 'tags';
 
+export interface SuggestionsByType {
+  correspondents: number;
+  documentTypes: number;
+  tags: number;
+}
+
 export interface BootstrapProgress {
   status: 'idle' | 'running' | 'completed' | 'cancelled' | 'error';
   analysisType: AnalysisType;
   total: number;
   processed: number;
   suggestionsFound: number;
+  suggestionsByType: SuggestionsByType;
   errors: number;
   currentDocId: number | null;
   currentDocTitle: string | null;
   startedAt: string | null;
   completedAt: string | null;
+  errorMessage: string | null;
 }
 
 export interface SchemaSuggestion {
@@ -148,11 +156,13 @@ export const BootstrapJobServiceLive = Layer.effect(
       total: 0,
       processed: 0,
       suggestionsFound: 0,
+      suggestionsByType: { correspondents: 0, documentTypes: 0, tags: 0 },
       errors: 0,
       currentDocId: null,
       currentDocTitle: null,
       startedAt: null,
       completedAt: null,
+      errorMessage: null,
     });
 
     const fiberRef = yield* Ref.make<Fiber.RuntimeFiber<void, JobError> | null>(null);
@@ -263,16 +273,30 @@ export const BootstrapJobServiceLive = Layer.effect(
             total: 0,
             processed: 0,
             suggestionsFound: 0,
+            suggestionsByType: { correspondents: 0, documentTypes: 0, tags: 0 },
             errors: 0,
             currentDocId: null,
             currentDocTitle: null,
             startedAt: new Date().toISOString(),
             completedAt: null,
+            errorMessage: null,
           });
 
           const runAnalysis = Effect.gen(function* () {
             try {
               let allSuggestions: SchemaSuggestion[] = [];
+              let processedEntities = 0;
+
+              // Calculate how many entity categories we'll process (for progress tracking)
+              let totalCategories = 0;
+              if (analysisType === 'all' || analysisType === 'correspondents') totalCategories++;
+              if (analysisType === 'all' || analysisType === 'document_types') totalCategories++;
+              if (analysisType === 'all' || analysisType === 'tags') totalCategories++;
+
+              yield* Ref.update(progressRef, (p) => ({
+                ...p,
+                total: totalCategories,
+              }));
 
               if (analysisType === 'all' || analysisType === 'correspondents') {
                 const cancelled = yield* Ref.get(cancelledRef);
@@ -284,7 +308,19 @@ export const BootstrapJobServiceLive = Layer.effect(
                 }));
 
                 const corrSuggestions = yield* analyzeCorrespondents;
+                const corrCount = corrSuggestions.length;
                 allSuggestions = [...allSuggestions, ...corrSuggestions];
+                processedEntities++;
+
+                // Update suggestions by type and processed count
+                yield* Ref.update(progressRef, (p) => ({
+                  ...p,
+                  processed: processedEntities,
+                  suggestionsByType: {
+                    ...p.suggestionsByType,
+                    correspondents: corrCount,
+                  },
+                }));
               }
 
               if (analysisType === 'all' || analysisType === 'document_types') {
@@ -297,7 +333,19 @@ export const BootstrapJobServiceLive = Layer.effect(
                 }));
 
                 const typeSuggestions = yield* analyzeDocumentTypes;
+                const typeCount = typeSuggestions.length;
                 allSuggestions = [...allSuggestions, ...typeSuggestions];
+                processedEntities++;
+
+                // Update suggestions by type and processed count
+                yield* Ref.update(progressRef, (p) => ({
+                  ...p,
+                  processed: processedEntities,
+                  suggestionsByType: {
+                    ...p.suggestionsByType,
+                    documentTypes: typeCount,
+                  },
+                }));
               }
 
               if (analysisType === 'all' || analysisType === 'tags') {
@@ -310,7 +358,19 @@ export const BootstrapJobServiceLive = Layer.effect(
                 }));
 
                 const tagSuggestions = yield* analyzeTags;
+                const tagCount = tagSuggestions.length;
                 allSuggestions = [...allSuggestions, ...tagSuggestions];
+                processedEntities++;
+
+                // Update suggestions by type and processed count
+                yield* Ref.update(progressRef, (p) => ({
+                  ...p,
+                  processed: processedEntities,
+                  suggestionsByType: {
+                    ...p.suggestionsByType,
+                    tags: tagCount,
+                  },
+                }));
               }
 
               // Add suggestions to pending reviews
@@ -351,10 +411,12 @@ export const BootstrapJobServiceLive = Layer.effect(
                 currentDocTitle: null,
               }));
             } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
               yield* Ref.update(progressRef, (p) => ({
                 ...p,
                 status: 'error' as const,
                 errors: p.errors + 1,
+                errorMessage,
                 completedAt: new Date().toISOString(),
               }));
               throw error;
