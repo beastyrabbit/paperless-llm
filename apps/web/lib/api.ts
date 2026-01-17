@@ -105,6 +105,11 @@ export const processingApi = {
     fetchApi<{ success: boolean }>(`/api/processing/${docId}/logs`, {
       method: "DELETE",
     }),
+  // Auto Processing
+  getAutoStatus: () => fetchApi<AutoProcessingStatus>("/api/processing/auto/status"),
+  triggerAuto: () => fetchApi<AutoProcessingTriggerResponse>("/api/processing/auto/trigger", {
+    method: "POST",
+  }),
 };
 
 // Prompts API
@@ -383,6 +388,23 @@ export interface ProcessingStatus {
   interval_minutes: number;
   currently_processing: number | null;
   queue_position: number;
+}
+
+export interface AutoProcessingStatus {
+  running: boolean;
+  enabled: boolean;
+  interval_minutes: number;
+  last_check_at: string | null;
+  currently_processing_doc_id: number | null;
+  processed_since_start: number;
+  errors_since_start: number;
+}
+
+export interface AutoProcessingTriggerResponse {
+  message: string;
+  running: boolean;
+  enabled: boolean;
+  currently_processing_doc_id: number | null;
 }
 
 export interface PromptInfo {
