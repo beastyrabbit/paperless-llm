@@ -91,6 +91,8 @@ export const getAutoProcessingStatus = Effect.gen(function* () {
     interval_minutes: status.intervalMinutes,
     last_check_at: status.lastCheckAt,
     currently_processing_doc_id: status.currentlyProcessingDocId,
+    currently_processing_doc_title: status.currentlyProcessingDocTitle,
+    current_step: status.currentStep,
     processed_since_start: status.processedSinceStart,
     errors_since_start: status.errorsSinceStart,
   };

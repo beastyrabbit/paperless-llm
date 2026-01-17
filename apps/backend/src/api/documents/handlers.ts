@@ -249,3 +249,59 @@ export const getDocumentPdf = (id: number) =>
     const paperless = yield* PaperlessService;
     return yield* paperless.downloadPdf(id);
   });
+
+// ===========================================================================
+// Admin: Clean up document tags
+// ===========================================================================
+
+export const cleanupDocumentTags = (id: number, keepLlmTag?: string) =>
+  Effect.gen(function* () {
+    const paperless = yield* PaperlessService;
+    const config = yield* ConfigService;
+    const tagConfig = config.config.tags;
+
+    // Get the document and all tags
+    const [doc, allTags] = yield* Effect.all([
+      paperless.getDocument(id),
+      paperless.getTags(),
+    ], { concurrency: 'unbounded' });
+
+    const tagNameById = new Map(allTags.map((t) => [t.id, t.name]));
+    const tagIdByName = new Map(allTags.map((t) => [t.name, t.id]));
+
+    // Get current tag names
+    const currentTagNames = doc.tags.map((id) => tagNameById.get(id)).filter((n): n is string => n !== undefined);
+    const llmTags = currentTagNames.filter((n) => n.startsWith('llm-'));
+
+    // Determine which llm tag to keep (default: llm-processed if present, otherwise none)
+    const targetTagName = keepLlmTag ?? (currentTagNames.includes(tagConfig.processed) ? tagConfig.processed : null);
+    const targetTagId = targetTagName ? tagIdByName.get(targetTagName) : null;
+
+    // Filter: keep non-llm tags + optionally the target llm tag
+    const newTagIds = doc.tags.filter((id) => {
+      const name = tagNameById.get(id);
+      if (!name?.startsWith('llm-')) return true; // Keep non-llm tags
+      return targetTagId !== null && id === targetTagId; // Keep only target llm tag
+    });
+
+    // Update if changed
+    if (newTagIds.length !== doc.tags.length) {
+      yield* paperless.updateDocument(id, { tags: newTagIds });
+      const removedTags = llmTags.filter((n) => n !== targetTagName);
+      return {
+        success: true,
+        docId: id,
+        removedTags,
+        keptLlmTag: targetTagName,
+        message: `Removed ${removedTags.length} extra llm tags`,
+      };
+    }
+
+    return {
+      success: true,
+      docId: id,
+      removedTags: [],
+      keptLlmTag: targetTagName,
+      message: 'No changes needed',
+    };
+  });

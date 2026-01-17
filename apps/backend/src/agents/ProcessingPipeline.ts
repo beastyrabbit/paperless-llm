@@ -136,9 +136,33 @@ export const ProcessingPipelineServiceLive = Layer.effect(
         };
       });
 
+    // Build tag ID -> name map for efficient lookups
+    // We cache this at service creation time
+    const tagMapRef = { current: new Map<number, string>() };
+
+    const refreshTagMap = Effect.gen(function* () {
+      const tags = yield* paperless.getTags().pipe(
+        Effect.catchAll(() => Effect.succeed([]))
+      );
+      tagMapRef.current = new Map(tags.map(t => [t.id, t.name]));
+    });
+
+    // Initialize tag map
+    yield* refreshTagMap;
+
     // Determine current state from document tags
+    // Handles both tag_names (if populated) and tag IDs (via lookup)
     const getCurrentState = (doc: Document): ProcessingState => {
-      const tagNames = doc.tag_names ?? [];
+      // Build tag names array from either tag_names or by resolving tag IDs
+      let tagNames = doc.tag_names ?? [];
+      if (tagNames.length === 0 && doc.tags.length > 0) {
+        // Resolve tag IDs to names using cached map
+        tagNames = doc.tags
+          .map(id => tagMapRef.current.get(id))
+          .filter((name): name is string => name !== undefined);
+      }
+
+      console.log(`[Pipeline] Document ${doc.id} - tag IDs: ${doc.tags.join(',')}, resolved names: ${tagNames.join(',')}, map size: ${tagMapRef.current.size}`);
 
       if (tagNames.includes(tagConfig.processed)) return 'processed';
       if (tagNames.includes(tagConfig.tagsDone)) return 'tags_done';

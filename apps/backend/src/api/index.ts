@@ -101,6 +101,8 @@ addRoute('POST', '/api/settings/test-connection/:service', (params) => {
 
 addRoute('GET', '/api/settings/ollama/models', () => settingsHandlers.getOllamaModels);
 
+addRoute('GET', '/api/settings/ollama/status', () => settingsHandlers.getOllamaStatus);
+
 addRoute('GET', '/api/settings/mistral/models', () => settingsHandlers.getMistralModels);
 
 addRoute('GET', '/api/settings/tags/status', () => settingsHandlers.getTagsStatus);
@@ -279,6 +281,11 @@ addRoute('GET', '/api/documents/:id/content', (params) =>
 addRoute('GET', '/api/documents/:id/pdf', (params) =>
   documentsHandlers.getDocumentPdf(parseInt(params.id!, 10))
 );
+
+addRoute('POST', '/api/documents/:id/cleanup-tags', (params, body) => {
+  const { keep_llm_tag } = body as { keep_llm_tag?: string };
+  return documentsHandlers.cleanupDocumentTags(parseInt(params.id!, 10), keep_llm_tag);
+});
 
 // ===========================================================================
 // Processing API - /api/processing

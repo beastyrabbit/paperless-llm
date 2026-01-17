@@ -3,7 +3,7 @@
  *
  * Continuously checks for pending documents and processes them through the pipeline.
  */
-import { Effect, Context, Layer, Ref, Fiber, Duration, Deferred } from 'effect';
+import { Effect, Context, Layer, Ref, Fiber, Duration, Deferred, Option } from 'effect';
 import { ConfigService } from '../config/index.js';
 import { PaperlessService } from './PaperlessService.js';
 import { TinyBaseService } from './TinyBaseService.js';
@@ -19,6 +19,8 @@ export interface AutoProcessingStatus {
   intervalMinutes: number;
   lastCheckAt: string | null;
   currentlyProcessingDocId: number | null;
+  currentlyProcessingDocTitle: string | null;
+  currentStep: string | null;
   processedSinceStart: number;
   errorsSinceStart: number;
 }
@@ -51,6 +53,8 @@ export const AutoProcessingServiceLive = Layer.effect(
     // State refs
     const runningRef = yield* Ref.make(false);
     const currentDocRef = yield* Ref.make<number | null>(null);
+    const currentDocTitleRef = yield* Ref.make<string | null>(null);
+    const currentStepRef = yield* Ref.make<string | null>(null);
     const lastCheckRef = yield* Ref.make<string | null>(null);
     const processedCountRef = yield* Ref.make(0);
     const errorCountRef = yield* Ref.make(0);
@@ -95,28 +99,48 @@ export const AutoProcessingServiceLive = Layer.effect(
 
         // Check for documents at any pipeline stage (not just pending)
         // Priority order: pending first, then intermediate stages
-        const pipelineTags = [
-          tagConfig.pending,
-          tagConfig.ocrDone,
-          tagConfig.correspondentDone,
-          tagConfig.documentTypeDone,
-          tagConfig.titleDone,
-          tagConfig.tagsDone,
+        // Map tag -> what step will be processed next
+        // Pipeline order: OCR -> Summary -> Title -> Correspondent -> DocType -> Tags
+        const pipelineStages: Array<{ tag: string; processingStep: string }> = [
+          { tag: tagConfig.pending, processingStep: 'ocr' },
+          { tag: tagConfig.ocrDone, processingStep: 'summary' },
+          { tag: tagConfig.summaryDone, processingStep: 'title' },
+          { tag: tagConfig.titleDone, processingStep: 'correspondent' },
+          { tag: tagConfig.correspondentDone, processingStep: 'document_type' },
+          { tag: tagConfig.documentTypeDone, processingStep: 'tags' },
+          { tag: tagConfig.tagsDone, processingStep: 'finalizing' },
         ];
 
-        let docToProcess: { id: number; title: string } | null = null;
+        let docToProcess: { id: number; title: string; tags: readonly number[] } | null = null;
+        let currentStep: string | null = null;
 
-        for (const tag of pipelineTags) {
-          const docs = yield* paperless.getDocumentsByTag(tag, 1).pipe(
+        // Get the processed tag ID so we can filter it out
+        const processedTagOption = yield* paperless.getTagByName(tagConfig.processed).pipe(
+          Effect.catchAll(() => Effect.succeed(Option.none<{ id: number }>()))
+        );
+        const processedTagId = Option.isSome(processedTagOption) ? processedTagOption.value.id : null;
+
+        for (const stage of pipelineStages) {
+          // Fetch more docs so we can filter, then take first valid one
+          const docs = yield* paperless.getDocumentsByTag(stage.tag, 10).pipe(
             Effect.catchAll((e) => {
-              console.error(`[AutoProcessing] Error fetching documents with tag ${tag}:`, e);
+              console.error(`[AutoProcessing] Error fetching documents with tag ${stage.tag}:`, e);
               return Effect.succeed([]);
             })
           );
-          if (docs.length > 0) {
-            docToProcess = docs[0]!;
-            console.log(`[AutoProcessing] Found document at stage "${tag}"`);
+
+          // Filter out documents that already have the processed tag
+          const eligibleDocs = processedTagId !== null
+            ? docs.filter(d => !d.tags.includes(processedTagId))
+            : docs;
+
+          if (eligibleDocs.length > 0) {
+            docToProcess = eligibleDocs[0]!;
+            currentStep = stage.processingStep;
+            console.log(`[AutoProcessing] Found document at stage "${stage.tag}" - processing: ${stage.processingStep}`);
             break;
+          } else if (docs.length > 0 && eligibleDocs.length === 0) {
+            console.log(`[AutoProcessing] Documents at "${stage.tag}" already have processed tag - skipping`);
           }
         }
 
@@ -128,6 +152,8 @@ export const AutoProcessingServiceLive = Layer.effect(
           console.log(`[AutoProcessing] Processing document ${doc.id}: ${doc.title}`);
 
           yield* Ref.set(currentDocRef, doc.id);
+          yield* Ref.set(currentDocTitleRef, doc.title);
+          yield* Ref.set(currentStepRef, currentStep);
 
           // Process the document
           yield* pipeline.processDocument({ docId: doc.id }).pipe(
@@ -150,6 +176,8 @@ export const AutoProcessingServiceLive = Layer.effect(
           );
 
           yield* Ref.set(currentDocRef, null);
+          yield* Ref.set(currentDocTitleRef, null);
+          yield* Ref.set(currentStepRef, null);
 
           // Immediately check for more work (no wait)
           continue;
@@ -218,6 +246,8 @@ export const AutoProcessingServiceLive = Layer.effect(
         Effect.gen(function* () {
           const running = yield* Ref.get(runningRef);
           const currentDocId = yield* Ref.get(currentDocRef);
+          const currentDocTitle = yield* Ref.get(currentDocTitleRef);
+          const currentStep = yield* Ref.get(currentStepRef);
           const lastCheckAt = yield* Ref.get(lastCheckRef);
           const processed = yield* Ref.get(processedCountRef);
           const errors = yield* Ref.get(errorCountRef);
@@ -231,6 +261,8 @@ export const AutoProcessingServiceLive = Layer.effect(
             intervalMinutes: settings.intervalMinutes,
             lastCheckAt,
             currentlyProcessingDocId: currentDocId,
+            currentlyProcessingDocTitle: currentDocTitle,
+            currentStep,
             processedSinceStart: processed,
             errorsSinceStart: errors,
           };
