@@ -187,8 +187,8 @@ export const AutoProcessingServiceLive = Layer.effect(
           yield* Ref.set(processedCountRef, 0);
           yield* Ref.set(errorCountRef, 0);
 
-          // Fork the loop
-          const fiber = yield* Effect.fork(runLoop);
+          // Fork the loop as a daemon (runs independently of parent scope)
+          const fiber = yield* Effect.forkDaemon(runLoop);
           yield* Ref.set(fiberRef, fiber as Fiber.RuntimeFiber<void, never>);
 
           console.log('[AutoProcessing] Service started');
