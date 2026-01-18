@@ -56,6 +56,16 @@ interface ServiceInfo {
   url: string;
 }
 
+/**
+ * Render the main dashboard UI that displays queue statistics, pending review counts,
+ * automatic processing and Ollama statuses, and the connectivity status of external services.
+ *
+ * The component performs an initial full data load and continues periodic light refreshes
+ * to keep counts and statuses up to date. It surfaces errors, a currently-processing card
+ * when applicable, a pipeline visualization, pending review summaries, and per-service status rows.
+ *
+ * @returns A React element representing the Dashboard user interface.
+ */
 export default function Dashboard() {
   const t = useTranslations("dashboard");
   const tCommon = useTranslations("common");

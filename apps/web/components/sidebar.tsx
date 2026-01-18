@@ -25,6 +25,13 @@ const navigation = [
   { key: "settings", href: "/settings", icon: Settings },
 ] as const;
 
+/**
+ * Render the application sidebar with logo, navigation links, and an auto-processing status footer.
+ *
+ * The footer displays current auto-processing state and queue counts and refreshes that data periodically.
+ *
+ * @returns The sidebar React element containing the logo, navigation links, and a status footer that shows auto-processing state and queue information.
+ */
 export function Sidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
