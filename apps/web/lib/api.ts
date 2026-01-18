@@ -37,6 +37,7 @@ async function fetchApi<T>(
 // Settings API
 export const settingsApi = {
   get: () => fetchApi<Settings>("/api/settings"),
+  getOllamaStatus: () => fetchApi<OllamaStatus>("/api/settings/ollama/status"),
   update: (data: Partial<Settings>) =>
     fetchApi("/api/settings", {
       method: "PATCH",
@@ -396,6 +397,8 @@ export interface AutoProcessingStatus {
   interval_minutes: number;
   last_check_at: string | null;
   currently_processing_doc_id: number | null;
+  currently_processing_doc_title: string | null;
+  current_step: string | null;
   processed_since_start: number;
   errors_since_start: number;
 }
@@ -405,6 +408,21 @@ export interface AutoProcessingTriggerResponse {
   running: boolean;
   enabled: boolean;
   currently_processing_doc_id: number | null;
+}
+
+export interface OllamaRunningModel {
+  name: string;
+  model: string;
+  size: number;
+  size_vram: number;
+  expires_at: string;
+  parameter_size: string | null;
+  quantization: string | null;
+}
+
+export interface OllamaStatus {
+  running: boolean;
+  models: OllamaRunningModel[];
 }
 
 export interface PromptInfo {

@@ -371,6 +371,29 @@ export const getOllamaModels = Effect.gen(function* () {
   };
 });
 
+export const getOllamaStatus = Effect.gen(function* () {
+  const ollama = yield* OllamaService;
+
+  const runningModels = yield* pipe(
+    ollama.getRunningModels(),
+    Effect.catchAll(() => Effect.succeed([]))
+  );
+
+  // Return running status and model details
+  return {
+    running: runningModels.length > 0,
+    models: runningModels.map((m) => ({
+      name: m.name,
+      model: m.model,
+      size: m.size,
+      size_vram: m.size_vram,
+      expires_at: m.expires_at,
+      parameter_size: m.details?.parameter_size ?? null,
+      quantization: m.details?.quantization_level ?? null,
+    })),
+  };
+});
+
 export const getMistralModels = Effect.gen(function* () {
   const mistral = yield* MistralService;
 

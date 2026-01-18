@@ -14,23 +14,30 @@ import { ConfigService } from '../../config/index.js';
 export const getQueueStats = Effect.gen(function* () {
   const paperless = yield* PaperlessService;
 
-  const stats = yield* pipe(
-    paperless.getQueueStats(),
-    Effect.catchAll(() =>
-      Effect.succeed({
-        pending: 0,
-        ocrDone: 0,
-        titleDone: 0,
-        correspondentDone: 0,
-        documentTypeDone: 0,
-        tagsDone: 0,
-        processed: 0,
-        failed: 0,
-        manualReview: 0,
-        total: 0,
-      })
-    )
-  );
+  // Fetch queue stats and total document count in parallel
+  const [stats, totalDocuments] = yield* Effect.all([
+    pipe(
+      paperless.getQueueStats(),
+      Effect.catchAll(() =>
+        Effect.succeed({
+          pending: 0,
+          ocrDone: 0,
+          titleDone: 0,
+          correspondentDone: 0,
+          documentTypeDone: 0,
+          tagsDone: 0,
+          processed: 0,
+          failed: 0,
+          manualReview: 0,
+          total: 0,
+        })
+      )
+    ),
+    pipe(
+      paperless.getTotalDocumentCount(),
+      Effect.catchAll(() => Effect.succeed(0))
+    ),
+  ], { concurrency: 'unbounded' });
 
   // Calculate pipeline total (all stages except processed)
   const totalInPipeline = stats.pending + stats.ocrDone + stats.titleDone +
@@ -47,7 +54,7 @@ export const getQueueStats = Effect.gen(function* () {
     tags_done: stats.tagsDone,
     processed: stats.processed,
     total_in_pipeline: totalInPipeline,
-    total_documents: stats.total + stats.processed, // Total includes processed docs
+    total_documents: totalDocuments, // Actual total from Paperless
     // Additional fields for compatibility
     failed: stats.failed,
     manual_review: stats.manualReview,
@@ -241,4 +248,63 @@ export const getDocumentPdf = (id: number) =>
   Effect.gen(function* () {
     const paperless = yield* PaperlessService;
     return yield* paperless.downloadPdf(id);
+  });
+
+// ===========================================================================
+// Admin: Clean up document tags
+// ===========================================================================
+
+export const cleanupDocumentTags = (id: number, keepLlmTag?: string) =>
+  Effect.gen(function* () {
+    const paperless = yield* PaperlessService;
+    const config = yield* ConfigService;
+    const tagConfig = config.config.tags;
+
+    // Get the document and all tags
+    const [doc, allTags] = yield* Effect.all([
+      paperless.getDocument(id),
+      paperless.getTags(),
+    ], { concurrency: 'unbounded' });
+
+    const tagNameById = new Map(allTags.map((t) => [t.id, t.name]));
+    const tagIdByName = new Map(allTags.map((t) => [t.name, t.id]));
+
+    // Get current tag names
+    const currentTagNames = doc.tags.map((id) => tagNameById.get(id)).filter((n): n is string => n !== undefined);
+    const llmTags = currentTagNames.filter((n) => n.startsWith('llm-'));
+
+    // Determine which llm tag to keep (default: llm-processed if present, otherwise none)
+    const targetTagName = keepLlmTag ?? (currentTagNames.includes(tagConfig.processed) ? tagConfig.processed : null);
+    const targetTagId = targetTagName ? tagIdByName.get(targetTagName) : null;
+
+    // Filter: keep non-llm tags + optionally the target llm tag
+    const newTagIds = doc.tags.filter((id) => {
+      const name = tagNameById.get(id);
+      if (!name?.startsWith('llm-')) return true; // Keep non-llm tags
+      return targetTagId != null && id === targetTagId; // Keep only target llm tag
+    });
+
+    // Compute actual kept llm tag based on what's in the result
+    const actualKeptLlmTag = targetTagId != null && newTagIds.includes(targetTagId) ? targetTagName : null;
+    const removedTags = llmTags.filter((n) => n !== actualKeptLlmTag);
+
+    // Update if changed
+    if (newTagIds.length !== doc.tags.length) {
+      yield* paperless.updateDocument(id, { tags: newTagIds });
+      return {
+        success: true,
+        docId: id,
+        removedTags,
+        keptLlmTag: actualKeptLlmTag,
+        message: `Removed ${removedTags.length} extra llm tags`,
+      };
+    }
+
+    return {
+      success: true,
+      docId: id,
+      removedTags: [],
+      keptLlmTag: actualKeptLlmTag,
+      message: 'No changes needed',
+    };
   });

@@ -17,6 +17,7 @@
     "connected": "connected",
     "disconnected": "disconnected",
     "idle": "Idle",
+    "processing": "Processing",
     "inQueue": "{count} in queue",
     "retry": "Retry",
     "discard": "Discard",
@@ -74,7 +75,12 @@
     "correspondents": "Correspondents",
     "documentTypes": "Document Types",
     "failedToFetchQueue": "Failed to fetch queue statistics",
-    "unableToConnect": "Unable to connect to backend"
+    "unableToConnect": "Unable to connect to backend",
+    "currentlyProcessing": "Currently Processing",
+    "step": "Step",
+    "model": "Model",
+    "ollamaActive": "Ollama Active",
+    "viewDocument": "View Document"
   },
   "documents": {
     "title": "Documents",

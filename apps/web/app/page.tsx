@@ -16,6 +16,9 @@ import {
   FolderOpen,
   Tags,
   Sparkles,
+  Loader2,
+  PlayCircle,
+  Brain,
 } from "lucide-react";
 import {
   Card,
@@ -26,7 +29,7 @@ import {
   Badge,
 } from "@repo/ui";
 import Link from "next/link";
-import { pendingApi, PendingCounts } from "@/lib/api";
+import { pendingApi, processingApi, settingsApi, PendingCounts, AutoProcessingStatus, OllamaStatus } from "@/lib/api";
 
 interface QueueStats {
   pending: number;
@@ -59,6 +62,8 @@ export default function Dashboard() {
   const tServices = useTranslations("services");
   const [stats, setStats] = useState<QueueStats | null>(null);
   const [pendingCounts, setPendingCounts] = useState<PendingCounts | null>(null);
+  const [autoStatus, setAutoStatus] = useState<AutoProcessingStatus | null>(null);
+  const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
   const [connections, setConnections] = useState<ConnectionStatus>({
     paperless: "checking",
     ollama: "checking",
@@ -109,6 +114,20 @@ export default function Dashboard() {
     }
   }, []);
 
+  const fetchAutoProcessingStatus = useCallback(async () => {
+    const result = await processingApi.getAutoStatus();
+    if (result.data) {
+      setAutoStatus(result.data);
+    }
+  }, []);
+
+  const fetchOllamaStatus = useCallback(async () => {
+    const result = await settingsApi.getOllamaStatus();
+    if (result.data) {
+      setOllamaStatus(result.data);
+    }
+  }, []);
+
   const testConnections = useCallback(async () => {
     const serviceKeys: (keyof ConnectionStatus)[] = ["paperless", "ollama", "qdrant", "mistral"];
 
@@ -132,6 +151,12 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Light refresh - just fetch data that changes frequently (no connection tests)
+  const lightRefresh = useCallback(async () => {
+    await Promise.all([fetchQueueStats(), fetchPendingCounts(), fetchAutoProcessingStatus(), fetchOllamaStatus()]);
+  }, [fetchQueueStats, fetchPendingCounts, fetchAutoProcessingStatus, fetchOllamaStatus]);
+
+  // Full refresh - includes connection tests (slower)
   const refresh = useCallback(async () => {
     setLoading(true);
     setConnections({
@@ -140,14 +165,18 @@ export default function Dashboard() {
       qdrant: "checking",
       mistral: "checking",
     });
-    await Promise.all([fetchSettings(), fetchQueueStats(), fetchPendingCounts(), testConnections()]);
+    await Promise.all([fetchSettings(), fetchQueueStats(), fetchPendingCounts(), fetchAutoProcessingStatus(), fetchOllamaStatus(), testConnections()]);
     setLoading(false);
-  }, [fetchSettings, fetchQueueStats, fetchPendingCounts, testConnections]);
+  }, [fetchSettings, fetchQueueStats, fetchPendingCounts, fetchAutoProcessingStatus, fetchOllamaStatus, testConnections]);
 
   useEffect(() => {
-    // Initial load - intentionally calling refresh on mount
+    // Initial full load
     refresh();
-  }, [refresh]);
+
+    // Auto-refresh every 5 seconds (light refresh - no connection tests)
+    const interval = setInterval(lightRefresh, 5000);
+    return () => clearInterval(interval);
+  }, [refresh, lightRefresh]);
 
   const pipelineSteps = [
     { name: t("pending"), count: stats?.pending ?? 0, color: "bg-amber-500" },
@@ -206,6 +235,53 @@ export default function Dashboard() {
               {error}
             </div>
           </div>
+        )}
+
+        {/* Currently Processing Card */}
+        {autoStatus?.currently_processing_doc_id && (
+          <Card className="mb-6 border-emerald-500/50 bg-emerald-50/50 dark:bg-emerald-950/20">
+            <CardContent className="py-4">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center justify-center h-12 w-12 rounded-full bg-emerald-100 dark:bg-emerald-900/50">
+                  <Loader2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400 animate-spin" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <PlayCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                      {t("currentlyProcessing")}
+                    </span>
+                    {ollamaStatus?.running && (
+                      <Badge variant="secondary" className="gap-1 ml-2">
+                        <Brain className="h-3 w-3" />
+                        {t("ollamaActive")}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-base font-semibold truncate" title={autoStatus.currently_processing_doc_title ?? undefined}>
+                    {autoStatus.currently_processing_doc_title || `Document #${autoStatus.currently_processing_doc_id}`}
+                  </p>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    {autoStatus.current_step && (
+                      <span className="text-sm text-zinc-500 flex items-center">
+                        {t("step")}: <Badge variant="secondary" className="ml-1">{autoStatus.current_step}</Badge>
+                      </span>
+                    )}
+                    {ollamaStatus?.running && ollamaStatus.models[0] && (
+                      <span className="text-sm text-zinc-500 flex items-center">
+                        {t("model")}: <Badge variant="outline" className="ml-1">{ollamaStatus.models[0].name}</Badge>
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <Link href={`/documents/${autoStatus.currently_processing_doc_id}`}>
+                  <Button variant="outline" size="sm">
+                    {t("viewDocument")}
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Stats Grid */}

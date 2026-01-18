@@ -395,23 +395,30 @@ export const PaperlessServiceLive = Layer.effect(
 
       transitionDocumentTag: (docId, fromTagName, toTagName) =>
         Effect.gen(function* () {
-          // Get both tag IDs first
-          const fromTagId = yield* getTagId(fromTagName);
+          // Get ALL tags to build a map of llm- tags
+          const allTags = yield* request<{ results: Tag[] }>('GET', '/tags/?page_size=1000').pipe(
+            Effect.map((r) => r.results)
+          );
+          const tagNameById = new Map(allTags.map((t) => [t.id, t.name]));
+
+          // Get the target tag ID (create if needed)
           const toTagId = yield* Effect.flatMap(
             getTagId(toTagName),
             (id) => id !== null ? Effect.succeed(id) : request<Tag>('POST', '/tags/', { name: toTagName }).pipe(Effect.map((t) => t.id))
           );
 
-          // Fetch document once, modify tags atomically, save once
+          // Fetch document once
           const doc = yield* request<Document>('GET', `/documents/${docId}/`);
-          let newTags = doc.tags;
 
-          // Remove from tag if present
-          if (fromTagId !== null) {
-            newTags = newTags.filter((id) => id !== fromTagId);
-          }
+          // Remove ALL llm- prefixed tags (except the target tag) to ensure clean state
+          // This prevents accumulation of multiple intermediate tags
+          let newTags = doc.tags.filter((id) => {
+            const name = tagNameById.get(id);
+            // Keep non-llm tags and keep the target tag
+            return !name?.startsWith('llm-') || id === toTagId;
+          });
 
-          // Add to tag if not present
+          // Add target tag if not present
           if (!newTags.includes(toTagId)) {
             newTags = [...newTags, toTagId];
           }

@@ -46,12 +46,30 @@ export interface OllamaStreamChunk {
   done: boolean;
 }
 
+export interface OllamaRunningModel {
+  name: string;
+  model: string;
+  size: number;
+  digest: string;
+  details: {
+    parent_model: string;
+    format: string;
+    family: string;
+    families: string[];
+    parameter_size: string;
+    quantization_level: string;
+  };
+  expires_at: string;
+  size_vram: number;
+}
+
 // ===========================================================================
 // Service Interface
 // ===========================================================================
 
 export interface OllamaService {
   readonly listModels: () => Effect.Effect<OllamaModel[], OllamaError>;
+  readonly getRunningModels: () => Effect.Effect<OllamaRunningModel[], OllamaError>;
   readonly chat: (
     model: string,
     messages: OllamaChatMessage[],
@@ -162,6 +180,12 @@ export const OllamaServiceLive = Layer.effect(
         pipe(
           request<{ models: OllamaModel[] }>('GET', '/api/tags'),
           Effect.map((response) => response.models)
+        ),
+
+      getRunningModels: () =>
+        pipe(
+          request<{ models: OllamaRunningModel[] }>('GET', '/api/ps'),
+          Effect.map((response) => response.models ?? [])
         ),
 
       chat: (model, messages, options = {}) =>

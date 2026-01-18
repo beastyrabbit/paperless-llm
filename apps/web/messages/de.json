@@ -17,6 +17,7 @@
     "connected": "verbunden",
     "disconnected": "getrennt",
     "idle": "Inaktiv",
+    "processing": "Verarbeitung",
     "inQueue": "{count} in Warteschlange",
     "retry": "Wiederholen",
     "discard": "Verwerfen",
@@ -74,7 +75,12 @@
     "correspondents": "Korrespondenten",
     "documentTypes": "Dokumenttypen",
     "failedToFetchQueue": "Fehler beim Abrufen der Warteschlangen-Statistik",
-    "unableToConnect": "Verbindung zum Backend nicht möglich"
+    "unableToConnect": "Verbindung zum Backend nicht möglich",
+    "currentlyProcessing": "Wird gerade verarbeitet",
+    "step": "Schritt",
+    "model": "Modell",
+    "ollamaActive": "Ollama aktiv",
+    "viewDocument": "Dokument anzeigen"
   },
   "documents": {
     "title": "Dokumente",

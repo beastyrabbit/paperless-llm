@@ -3,7 +3,7 @@
  *
  * Continuously checks for pending documents and processes them through the pipeline.
  */
-import { Effect, Context, Layer, Ref, Fiber, Duration, Deferred } from 'effect';
+import { Effect, Context, Layer, Ref, Fiber, Duration, Deferred, Option } from 'effect';
 import { ConfigService } from '../config/index.js';
 import { PaperlessService } from './PaperlessService.js';
 import { TinyBaseService } from './TinyBaseService.js';
@@ -19,6 +19,8 @@ export interface AutoProcessingStatus {
   intervalMinutes: number;
   lastCheckAt: string | null;
   currentlyProcessingDocId: number | null;
+  currentlyProcessingDocTitle: string | null;
+  currentStep: string | null;
   processedSinceStart: number;
   errorsSinceStart: number;
 }
@@ -51,6 +53,8 @@ export const AutoProcessingServiceLive = Layer.effect(
     // State refs
     const runningRef = yield* Ref.make(false);
     const currentDocRef = yield* Ref.make<number | null>(null);
+    const currentDocTitleRef = yield* Ref.make<string | null>(null);
+    const currentStepRef = yield* Ref.make<string | null>(null);
     const lastCheckRef = yield* Ref.make<string | null>(null);
     const processedCountRef = yield* Ref.make(0);
     const errorCountRef = yield* Ref.make(0);
@@ -93,22 +97,63 @@ export const AutoProcessingServiceLive = Layer.effect(
           continue;
         }
 
-        // Check for pending documents
-        const pendingDocs = yield* paperless.getDocumentsByTag(tagConfig.pending, 1).pipe(
-          Effect.catchAll((e) => {
-            console.error('[AutoProcessing] Error fetching pending documents:', e);
-            return Effect.succeed([]);
-          })
+        // Check for documents at any pipeline stage (not just pending)
+        // Priority order: pending first, then intermediate stages
+        // Map tag -> what step will be processed next
+        // Pipeline order: OCR -> Summary -> Title -> Correspondent -> DocType -> Tags
+        const pipelineStages: Array<{ tag: string; processingStep: string }> = [
+          { tag: tagConfig.pending, processingStep: 'ocr' },
+          { tag: tagConfig.ocrDone, processingStep: 'summary' },
+          { tag: tagConfig.summaryDone, processingStep: 'title' },
+          { tag: tagConfig.titleDone, processingStep: 'correspondent' },
+          { tag: tagConfig.correspondentDone, processingStep: 'document_type' },
+          { tag: tagConfig.documentTypeDone, processingStep: 'tags' },
+          { tag: tagConfig.tagsDone, processingStep: 'finalizing' },
+        ];
+
+        let docToProcess: { id: number; title: string; tags: readonly number[] } | null = null;
+        let currentStep: string | null = null;
+
+        // Get the processed tag ID so we can filter it out
+        const processedTagOption = yield* paperless.getTagByName(tagConfig.processed).pipe(
+          Effect.catchAll(() => Effect.succeed(Option.none<{ id: number }>()))
         );
+        const processedTagId = Option.isSome(processedTagOption) ? processedTagOption.value.id : null;
+
+        for (const stage of pipelineStages) {
+          // Fetch more docs so we can filter, then take first valid one
+          const docs = yield* paperless.getDocumentsByTag(stage.tag, 10).pipe(
+            Effect.catchAll((e) => {
+              console.error(`[AutoProcessing] Error fetching documents with tag ${stage.tag}:`, e);
+              return Effect.succeed([]);
+            })
+          );
+
+          // Filter out documents that already have the processed tag
+          const eligibleDocs = processedTagId !== null
+            ? docs.filter(d => !d.tags.includes(processedTagId))
+            : docs;
+
+          if (eligibleDocs.length > 0) {
+            docToProcess = eligibleDocs[0]!;
+            currentStep = stage.processingStep;
+            console.log(`[AutoProcessing] Found document at stage "${stage.tag}" - processing: ${stage.processingStep}`);
+            break;
+          } else if (docs.length > 0 && eligibleDocs.length === 0) {
+            console.log(`[AutoProcessing] Documents at "${stage.tag}" already have processed tag - skipping`);
+          }
+        }
 
         // Update last check time on every poll
         yield* Ref.set(lastCheckRef, new Date().toISOString());
 
-        if (pendingDocs.length > 0) {
-          const doc = pendingDocs[0]!;
+        if (docToProcess) {
+          const doc = docToProcess;
           console.log(`[AutoProcessing] Processing document ${doc.id}: ${doc.title}`);
 
           yield* Ref.set(currentDocRef, doc.id);
+          yield* Ref.set(currentDocTitleRef, doc.title);
+          yield* Ref.set(currentStepRef, currentStep);
 
           // Process the document
           yield* pipeline.processDocument({ docId: doc.id }).pipe(
@@ -131,13 +176,15 @@ export const AutoProcessingServiceLive = Layer.effect(
           );
 
           yield* Ref.set(currentDocRef, null);
+          yield* Ref.set(currentDocTitleRef, null);
+          yield* Ref.set(currentStepRef, null);
 
           // Immediately check for more work (no wait)
           continue;
         }
 
         // No work found - wait for interval
-        console.log(`[AutoProcessing] No pending documents. Waiting ${settings.intervalMinutes} minutes...`);
+        console.log(`[AutoProcessing] No documents in pipeline. Waiting ${settings.intervalMinutes} minutes...`);
 
         // Create a deferred for manual trigger interruption
         const triggerDeferred = yield* Deferred.make<void, never>();
@@ -168,8 +215,8 @@ export const AutoProcessingServiceLive = Layer.effect(
           yield* Ref.set(processedCountRef, 0);
           yield* Ref.set(errorCountRef, 0);
 
-          // Fork the loop
-          const fiber = yield* Effect.fork(runLoop);
+          // Fork the loop as a daemon (runs independently of parent scope)
+          const fiber = yield* Effect.forkDaemon(runLoop);
           yield* Ref.set(fiberRef, fiber as Fiber.RuntimeFiber<void, never>);
 
           console.log('[AutoProcessing] Service started');
@@ -199,6 +246,8 @@ export const AutoProcessingServiceLive = Layer.effect(
         Effect.gen(function* () {
           const running = yield* Ref.get(runningRef);
           const currentDocId = yield* Ref.get(currentDocRef);
+          const currentDocTitle = yield* Ref.get(currentDocTitleRef);
+          const currentStep = yield* Ref.get(currentStepRef);
           const lastCheckAt = yield* Ref.get(lastCheckRef);
           const processed = yield* Ref.get(processedCountRef);
           const errors = yield* Ref.get(errorCountRef);
@@ -212,6 +261,8 @@ export const AutoProcessingServiceLive = Layer.effect(
             intervalMinutes: settings.intervalMinutes,
             lastCheckAt,
             currentlyProcessingDocId: currentDocId,
+            currentlyProcessingDocTitle: currentDocTitle,
+            currentStep,
             processedSinceStart: processed,
             errorsSinceStart: errors,
           };
