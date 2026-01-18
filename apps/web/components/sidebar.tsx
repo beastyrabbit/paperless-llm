@@ -51,8 +51,8 @@ export function Sidebar() {
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
-  // Determine status display
-  const isProcessing = autoStatus?.currently_processing_doc_id !== null;
+  // Determine status display (check for both null and undefined)
+  const isProcessing = autoStatus?.currently_processing_doc_id != null;
   const isEnabled = autoStatus?.enabled ?? false;
   const queueCount = queueStats?.total_in_pipeline ?? 0;
 

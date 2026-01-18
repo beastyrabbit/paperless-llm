@@ -281,18 +281,21 @@ export const cleanupDocumentTags = (id: number, keepLlmTag?: string) =>
     const newTagIds = doc.tags.filter((id) => {
       const name = tagNameById.get(id);
       if (!name?.startsWith('llm-')) return true; // Keep non-llm tags
-      return targetTagId !== null && id === targetTagId; // Keep only target llm tag
+      return targetTagId != null && id === targetTagId; // Keep only target llm tag
     });
+
+    // Compute actual kept llm tag based on what's in the result
+    const actualKeptLlmTag = targetTagId != null && newTagIds.includes(targetTagId) ? targetTagName : null;
+    const removedTags = llmTags.filter((n) => n !== actualKeptLlmTag);
 
     // Update if changed
     if (newTagIds.length !== doc.tags.length) {
       yield* paperless.updateDocument(id, { tags: newTagIds });
-      const removedTags = llmTags.filter((n) => n !== targetTagName);
       return {
         success: true,
         docId: id,
         removedTags,
-        keptLlmTag: targetTagName,
+        keptLlmTag: actualKeptLlmTag,
         message: `Removed ${removedTags.length} extra llm tags`,
       };
     }
@@ -301,7 +304,7 @@ export const cleanupDocumentTags = (id: number, keepLlmTag?: string) =>
       success: true,
       docId: id,
       removedTags: [],
-      keptLlmTag: targetTagName,
+      keptLlmTag: actualKeptLlmTag,
       message: 'No changes needed',
     };
   });

@@ -283,8 +283,8 @@ addRoute('GET', '/api/documents/:id/pdf', (params) =>
 );
 
 addRoute('POST', '/api/documents/:id/cleanup-tags', (params, body) => {
-  const { keep_llm_tag } = body as { keep_llm_tag?: string };
-  return documentsHandlers.cleanupDocumentTags(parseInt(params.id!, 10), keep_llm_tag);
+  const safeBody = (body ?? {}) as { keep_llm_tag?: string };
+  return documentsHandlers.cleanupDocumentTags(parseInt(params.id!, 10), safeBody.keep_llm_tag);
 });
 
 // ===========================================================================
