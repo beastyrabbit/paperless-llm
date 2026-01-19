@@ -234,7 +234,7 @@ Review this correspondent identification and provide your confirmation decision.
           const analysis = result.analysis as CorrespondentAnalysis | null;
 
           if (!result.success || !analysis || !analysis.suggested_correspondent) {
-            yield* tinybase.addPendingReview({
+            const pendingId = yield* tinybase.addPendingReview({
               docId: input.docId,
               docTitle: input.docTitle,
               type: 'correspondent',
@@ -258,6 +258,7 @@ Review this correspondent identification and provide your confirmation decision.
               data: {
                 success: false,
                 needsReview: true,
+                pendingReviewCreated: pendingId !== null,
                 reasoning: result.error ?? 'Confirmation failed',
                 attempts: result.attempts,
               },
@@ -445,7 +446,7 @@ Review this correspondent identification and provide your confirmation decision.
               }
 
               if (node === 'queue_review') {
-                yield* tinybase.addPendingReview({
+                const pendingId = yield* tinybase.addPendingReview({
                   docId: input.docId,
                   docTitle: input.docTitle,
                   type: 'correspondent',
@@ -469,6 +470,7 @@ Review this correspondent identification and provide your confirmation decision.
                   data: {
                     success: false,
                     needsReview: true,
+                    pendingReviewCreated: pendingId !== null,
                     reasoning: 'Max retries exceeded',
                   },
                 });

@@ -470,7 +470,7 @@ export const TinyBaseServiceLive = Layer.effect(
             // Skip empty suggestions - don't add items with no actual suggestion
             const trimmedSuggestion = item.suggestion?.trim() ?? '';
             if (!trimmedSuggestion) {
-              console.log(`[TinyBase] Skipping pending review for doc ${item.docId} - empty suggestion`);
+              console.log(`[TinyBase] Skipping pending review for doc ${item.docId} (${item.type}) - empty suggestion`);
               return null;
             }
 

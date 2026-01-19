@@ -185,7 +185,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
     ): Effect.Effect<void, never> =>
       Effect.gen(function* () {
         for (const suggestion of suggestions) {
-          yield* tinybase.addPendingReview({
+          const pendingId = yield* tinybase.addPendingReview({
             docId,
             docTitle,
             type: suggestion.entityType,
@@ -201,6 +201,10 @@ export const ProcessingPipelineServiceLive = Layer.effect(
               isSchema: true,
             }),
           });
+          // Skip if suggestion was empty and not persisted
+          if (pendingId === null) {
+            continue;
+          }
         }
       }).pipe(Effect.catchAll(() => Effect.void));
 

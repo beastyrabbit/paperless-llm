@@ -230,7 +230,7 @@ Review this title suggestion and provide your confirmation decision.`;
           const analysis = result.analysis as TitleAnalysis | null;
 
           if (!result.success || !analysis) {
-            yield* tinybase.addPendingReview({
+            const pendingId = yield* tinybase.addPendingReview({
               docId: input.docId,
               docTitle: input.existingTitle ?? 'Untitled',
               type: 'title',
@@ -254,6 +254,7 @@ Review this title suggestion and provide your confirmation decision.`;
               data: {
                 success: false,
                 needsReview: true,
+                pendingReviewCreated: pendingId !== null,
                 reasoning: result.error ?? 'Confirmation failed',
                 attempts: result.attempts,
               },
@@ -435,7 +436,7 @@ Review this title suggestion and provide your confirmation decision.`;
               }
 
               if (node === 'queue_review' && lastAnalysis) {
-                yield* tinybase.addPendingReview({
+                const pendingId = yield* tinybase.addPendingReview({
                   docId: input.docId,
                   docTitle: input.existingTitle ?? 'Untitled',
                   type: 'title',
@@ -459,6 +460,7 @@ Review this title suggestion and provide your confirmation decision.`;
                   data: {
                     success: false,
                     needsReview: true,
+                    pendingReviewCreated: pendingId !== null,
                     reasoning: 'Max retries exceeded',
                   },
                 });
