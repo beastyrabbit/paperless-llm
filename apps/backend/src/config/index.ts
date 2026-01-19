@@ -57,6 +57,7 @@ const defaultConfig: ResolvedConfig = {
     enableDocumentType: true,
     enableTags: true,
     enableCustomFields: false,
+    enableDocumentLinks: true,
   },
   language: 'en',
   debug: false,

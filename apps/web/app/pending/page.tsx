@@ -23,6 +23,7 @@ import {
   GitMerge,
   ArrowRight,
   Sparkles,
+  Link2,
 } from "lucide-react";
 import {
   Card,
@@ -63,6 +64,7 @@ const sections = [
   { key: "correspondent", labelKey: "correspondents", icon: User },
   { key: "document_type", labelKey: "documentTypes", icon: FileText },
   { key: "tag", labelKey: "tags", icon: Tag },
+  { key: "documentlink", labelKey: "documentLinks", icon: Link2 },
 ] as const;
 
 type SectionKey = (typeof sections)[number]["key"];
@@ -76,6 +78,7 @@ export default function PendingPage() {
     correspondent: 0,
     document_type: 0,
     tag: 0,
+    documentlink: 0,
     total: 0,
     schema_correspondent: 0,
     schema_document_type: 0,
@@ -657,6 +660,8 @@ export default function PendingPage() {
         return t("documentTypes").toLowerCase().replace(/s$/, "");
       case "tag":
         return t("tags").toLowerCase().replace(/s$/, "");
+      case "documentlink":
+        return t("documentLinks").toLowerCase().replace(/s$/, "");
       default:
         return baseType;
     }

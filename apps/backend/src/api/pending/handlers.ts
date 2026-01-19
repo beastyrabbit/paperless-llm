@@ -110,6 +110,42 @@ export const approvePendingItem = (id: string, request: ApproveRequest) =>
         yield* paperless.updateDocument(item.docId, { title: value });
         break;
       }
+      case 'documentlink': {
+        // Parse metadata to get the target document ID and field ID
+        const metadata = item.metadata ? JSON.parse(item.metadata) : {};
+        const targetDocId = metadata.targetDocId as number | undefined;
+        const fieldId = metadata.fieldId as number | undefined;
+
+        if (targetDocId && fieldId) {
+          // Get current document custom fields
+          const doc = yield* paperless.getDocument(item.docId);
+          const currentFields = (doc.custom_fields ?? []) as Array<{
+            field: number;
+            value: unknown;
+          }>;
+
+          // Find or create the field entry
+          const existingField = currentFields.find((cf) => cf.field === fieldId);
+          const existingLinks = Array.isArray(existingField?.value)
+            ? (existingField.value as number[])
+            : [];
+
+          // Add the new link if not already present
+          if (!existingLinks.includes(targetDocId)) {
+            const newLinks = [...existingLinks, targetDocId];
+            const newCustomFields = currentFields.filter((cf) => cf.field !== fieldId);
+            newCustomFields.push({
+              field: fieldId,
+              value: newLinks,
+            });
+
+            yield* paperless.updateDocument(item.docId, {
+              custom_fields: newCustomFields,
+            });
+          }
+        }
+        break;
+      }
       case 'schema_merge':
       case 'schema_delete':
         // These are handled separately
@@ -315,6 +351,39 @@ export const bulkAction = (request: BulkActionRequest) =>
           }
           case 'title': {
             yield* paperless.updateDocument(item.docId, { title: value });
+            break;
+          }
+          case 'documentlink': {
+            // Handle documentlink approval same as single approval
+            const metadata = item.metadata ? JSON.parse(item.metadata) : {};
+            const targetDocId = metadata.targetDocId as number | undefined;
+            const fieldId = metadata.fieldId as number | undefined;
+
+            if (targetDocId && fieldId) {
+              const doc = yield* paperless.getDocument(item.docId);
+              const currentFields = (doc.custom_fields ?? []) as Array<{
+                field: number;
+                value: unknown;
+              }>;
+
+              const existingField = currentFields.find((cf) => cf.field === fieldId);
+              const existingLinks = Array.isArray(existingField?.value)
+                ? (existingField.value as number[])
+                : [];
+
+              if (!existingLinks.includes(targetDocId)) {
+                const newLinks = [...existingLinks, targetDocId];
+                const newCustomFields = currentFields.filter((cf) => cf.field !== fieldId);
+                newCustomFields.push({
+                  field: fieldId,
+                  value: newLinks,
+                });
+
+                yield* paperless.updateDocument(item.docId, {
+                  custom_fields: newCustomFields,
+                });
+              }
+            }
             break;
           }
         }

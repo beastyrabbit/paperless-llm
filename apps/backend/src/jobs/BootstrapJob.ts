@@ -293,193 +293,195 @@ export const BootstrapJobServiceLive = Layer.effect(
           });
 
           const runAnalysis = Effect.gen(function* () {
-            try {
-              let allSuggestions: SchemaSuggestion[] = [];
-              let processedCategories = 0;
-              const categoryDurations: number[] = [];
+            let allSuggestions: SchemaSuggestion[] = [];
+            let processedCategories = 0;
+            const categoryDurations: number[] = [];
 
-              // Calculate how many entity categories we'll process (for progress tracking)
-              let totalCategories = 0;
-              if (analysisType === 'all' || analysisType === 'correspondents') totalCategories++;
-              if (analysisType === 'all' || analysisType === 'document_types') totalCategories++;
-              if (analysisType === 'all' || analysisType === 'tags') totalCategories++;
+            // Calculate how many entity categories we'll process (for progress tracking)
+            let totalCategories = 0;
+            if (analysisType === 'all' || analysisType === 'correspondents') totalCategories++;
+            if (analysisType === 'all' || analysisType === 'document_types') totalCategories++;
+            if (analysisType === 'all' || analysisType === 'tags') totalCategories++;
 
-              // Fetch total document count for context display
-              const totalDocs = yield* paperless.getTotalDocumentCount();
+            // Fetch total document count for context display
+            const totalDocs = yield* paperless.getTotalDocumentCount();
 
-              yield* Ref.update(progressRef, (p) => ({
-                ...p,
-                total: totalCategories,
-                totalDocuments: totalDocs,
-              }));
+            yield* Ref.update(progressRef, (p) => ({
+              ...p,
+              total: totalCategories,
+              totalDocuments: totalDocs,
+            }));
 
-              // Helper to update timing estimates
-              const updateTimingEstimates = (categoriesRemaining: number) => {
-                if (categoryDurations.length === 0) return;
-                const avgSeconds = categoryDurations.reduce((a, b) => a + b, 0) / categoryDurations.length;
-                const estimatedRemaining = Math.ceil(categoriesRemaining * avgSeconds);
-                return { avgSecondsPerCategory: avgSeconds, estimatedRemainingSeconds: estimatedRemaining };
-              };
+            // Helper to update timing estimates
+            const updateTimingEstimates = (categoriesRemaining: number) => {
+              if (categoryDurations.length === 0) return;
+              const avgSeconds = categoryDurations.reduce((a, b) => a + b, 0) / categoryDurations.length;
+              const estimatedRemaining = Math.ceil(categoriesRemaining * avgSeconds);
+              return { avgSecondsPerCategory: avgSeconds, estimatedRemainingSeconds: estimatedRemaining };
+            };
 
-              if (analysisType === 'all' || analysisType === 'correspondents') {
-                const cancelled = yield* Ref.get(cancelledRef);
-                if (cancelled) return;
-
-                // Fetch correspondents first to get count
-                const correspondents = yield* paperless.getCorrespondents();
-
-                yield* Ref.update(progressRef, (p) => ({
-                  ...p,
-                  currentDocTitle: `Analyzing ${correspondents.length} correspondents...`,
-                  currentEntityCount: correspondents.length,
-                }));
-
-                const categoryStartTime = Date.now();
-                const corrSuggestions = analyzeCorrespondents(correspondents);
-                const categoryDuration = (Date.now() - categoryStartTime) / 1000;
-                categoryDurations.push(categoryDuration);
-
-                const corrCount = corrSuggestions.length;
-                allSuggestions = [...allSuggestions, ...corrSuggestions];
-                processedCategories++;
-
-                // Update suggestions by type, processed count, and timing estimates
-                const timingEstimates = updateTimingEstimates(totalCategories - processedCategories);
-                yield* Ref.update(progressRef, (p) => ({
-                  ...p,
-                  processed: processedCategories,
-                  suggestionsByType: {
-                    ...p.suggestionsByType,
-                    correspondents: corrCount,
-                  },
-                  ...(timingEstimates || {}),
-                }));
-              }
-
-              if (analysisType === 'all' || analysisType === 'document_types') {
-                const cancelled = yield* Ref.get(cancelledRef);
-                if (cancelled) return;
-
-                // Fetch document types first to get count
-                const types = yield* paperless.getDocumentTypes();
-
-                yield* Ref.update(progressRef, (p) => ({
-                  ...p,
-                  currentDocTitle: `Analyzing ${types.length} document types...`,
-                  currentEntityCount: types.length,
-                }));
-
-                const categoryStartTime = Date.now();
-                const typeSuggestions = analyzeDocumentTypes(types);
-                const categoryDuration = (Date.now() - categoryStartTime) / 1000;
-                categoryDurations.push(categoryDuration);
-
-                const typeCount = typeSuggestions.length;
-                allSuggestions = [...allSuggestions, ...typeSuggestions];
-                processedCategories++;
-
-                // Update suggestions by type, processed count, and timing estimates
-                const timingEstimates = updateTimingEstimates(totalCategories - processedCategories);
-                yield* Ref.update(progressRef, (p) => ({
-                  ...p,
-                  processed: processedCategories,
-                  suggestionsByType: {
-                    ...p.suggestionsByType,
-                    documentTypes: typeCount,
-                  },
-                  ...(timingEstimates || {}),
-                }));
-              }
-
-              if (analysisType === 'all' || analysisType === 'tags') {
-                const cancelled = yield* Ref.get(cancelledRef);
-                if (cancelled) return;
-
-                // Fetch tags first to get count
-                const tags = yield* paperless.getTags();
-
-                yield* Ref.update(progressRef, (p) => ({
-                  ...p,
-                  currentDocTitle: `Analyzing ${tags.length} tags...`,
-                  currentEntityCount: tags.length,
-                }));
-
-                const categoryStartTime = Date.now();
-                const tagSuggestions = analyzeTags(tags);
-                const categoryDuration = (Date.now() - categoryStartTime) / 1000;
-                categoryDurations.push(categoryDuration);
-
-                const tagCount = tagSuggestions.length;
-                allSuggestions = [...allSuggestions, ...tagSuggestions];
-                processedCategories++;
-
-                // Update suggestions by type, processed count, and timing estimates
-                const timingEstimates = updateTimingEstimates(totalCategories - processedCategories);
-                yield* Ref.update(progressRef, (p) => ({
-                  ...p,
-                  processed: processedCategories,
-                  suggestionsByType: {
-                    ...p.suggestionsByType,
-                    tags: tagCount,
-                  },
-                  ...(timingEstimates || {}),
-                }));
-              }
-
-              // Add suggestions to pending reviews
-              for (const suggestion of allSuggestions) {
-                const cancelled = yield* Ref.get(cancelledRef);
-                if (cancelled) break;
-
-                const pendingId = yield* tinybase.addPendingReview({
-                  docId: suggestion.sourceId ?? 0,
-                  docTitle: suggestion.suggestion,
-                  type: suggestion.type,
-                  suggestion: suggestion.suggestion,
-                  reasoning: suggestion.reasoning,
-                  alternatives: [],
-                  attempts: 0,
-                  lastFeedback: null,
-                  nextTag: null,
-                  metadata: JSON.stringify({
-                    entityType: suggestion.entityType,
-                    sourceId: suggestion.sourceId,
-                    targetId: suggestion.targetId,
-                    documentCount: suggestion.documentCount,
-                  }),
-                });
-
-                // Only count if actually persisted (not skipped due to empty suggestion)
-                if (pendingId === null) {
-                  continue;
-                }
-
-                yield* Ref.update(progressRef, (p) => ({
-                  ...p,
-                  suggestionsFound: p.suggestionsFound + 1,
-                }));
-              }
-
+            if (analysisType === 'all' || analysisType === 'correspondents') {
               const cancelled = yield* Ref.get(cancelledRef);
+              if (cancelled) return;
+
+              // Fetch correspondents first to get count
+              const correspondents = yield* paperless.getCorrespondents();
+
               yield* Ref.update(progressRef, (p) => ({
                 ...p,
-                status: (cancelled ? 'cancelled' : 'completed') as BootstrapProgress['status'],
-                completedAt: new Date().toISOString(),
-                currentDocId: null,
-                currentDocTitle: null,
+                currentDocTitle: `Analyzing ${correspondents.length} correspondents...`,
+                currentEntityCount: correspondents.length,
               }));
-            } catch (error) {
-              const errorMessage = error instanceof Error ? error.message : String(error);
+
+              const categoryStartTime = Date.now();
+              const corrSuggestions = analyzeCorrespondents(correspondents);
+              const categoryDuration = (Date.now() - categoryStartTime) / 1000;
+              categoryDurations.push(categoryDuration);
+
+              const corrCount = corrSuggestions.length;
+              allSuggestions = [...allSuggestions, ...corrSuggestions];
+              processedCategories++;
+
+              // Update suggestions by type, processed count, and timing estimates
+              const timingEstimates = updateTimingEstimates(totalCategories - processedCategories);
               yield* Ref.update(progressRef, (p) => ({
                 ...p,
-                status: 'error' as const,
-                errors: p.errors + 1,
-                errorMessage,
-                completedAt: new Date().toISOString(),
+                processed: processedCategories,
+                suggestionsByType: {
+                  ...p.suggestionsByType,
+                  correspondents: corrCount,
+                },
+                ...(timingEstimates || {}),
               }));
-              throw error;
             }
-          });
+
+            if (analysisType === 'all' || analysisType === 'document_types') {
+              const cancelled = yield* Ref.get(cancelledRef);
+              if (cancelled) return;
+
+              // Fetch document types first to get count
+              const types = yield* paperless.getDocumentTypes();
+
+              yield* Ref.update(progressRef, (p) => ({
+                ...p,
+                currentDocTitle: `Analyzing ${types.length} document types...`,
+                currentEntityCount: types.length,
+              }));
+
+              const categoryStartTime = Date.now();
+              const typeSuggestions = analyzeDocumentTypes(types);
+              const categoryDuration = (Date.now() - categoryStartTime) / 1000;
+              categoryDurations.push(categoryDuration);
+
+              const typeCount = typeSuggestions.length;
+              allSuggestions = [...allSuggestions, ...typeSuggestions];
+              processedCategories++;
+
+              // Update suggestions by type, processed count, and timing estimates
+              const timingEstimates = updateTimingEstimates(totalCategories - processedCategories);
+              yield* Ref.update(progressRef, (p) => ({
+                ...p,
+                processed: processedCategories,
+                suggestionsByType: {
+                  ...p.suggestionsByType,
+                  documentTypes: typeCount,
+                },
+                ...(timingEstimates || {}),
+              }));
+            }
+
+            if (analysisType === 'all' || analysisType === 'tags') {
+              const cancelled = yield* Ref.get(cancelledRef);
+              if (cancelled) return;
+
+              // Fetch tags first to get count
+              const tags = yield* paperless.getTags();
+
+              yield* Ref.update(progressRef, (p) => ({
+                ...p,
+                currentDocTitle: `Analyzing ${tags.length} tags...`,
+                currentEntityCount: tags.length,
+              }));
+
+              const categoryStartTime = Date.now();
+              const tagSuggestions = analyzeTags(tags);
+              const categoryDuration = (Date.now() - categoryStartTime) / 1000;
+              categoryDurations.push(categoryDuration);
+
+              const tagCount = tagSuggestions.length;
+              allSuggestions = [...allSuggestions, ...tagSuggestions];
+              processedCategories++;
+
+              // Update suggestions by type, processed count, and timing estimates
+              const timingEstimates = updateTimingEstimates(totalCategories - processedCategories);
+              yield* Ref.update(progressRef, (p) => ({
+                ...p,
+                processed: processedCategories,
+                suggestionsByType: {
+                  ...p.suggestionsByType,
+                  tags: tagCount,
+                },
+                ...(timingEstimates || {}),
+              }));
+            }
+
+            // Add suggestions to pending reviews
+            for (const suggestion of allSuggestions) {
+              const cancelled = yield* Ref.get(cancelledRef);
+              if (cancelled) break;
+
+              const pendingId = yield* tinybase.addPendingReview({
+                docId: suggestion.sourceId ?? 0,
+                docTitle: suggestion.suggestion,
+                type: suggestion.type,
+                suggestion: suggestion.suggestion,
+                reasoning: suggestion.reasoning,
+                alternatives: [],
+                attempts: 0,
+                lastFeedback: null,
+                nextTag: null,
+                metadata: JSON.stringify({
+                  entityType: suggestion.entityType,
+                  sourceId: suggestion.sourceId,
+                  targetId: suggestion.targetId,
+                  documentCount: suggestion.documentCount,
+                }),
+              });
+
+              // Only count if actually persisted (not skipped due to empty suggestion)
+              if (pendingId === null) {
+                continue;
+              }
+
+              yield* Ref.update(progressRef, (p) => ({
+                ...p,
+                suggestionsFound: p.suggestionsFound + 1,
+              }));
+            }
+
+            const cancelled = yield* Ref.get(cancelledRef);
+            yield* Ref.update(progressRef, (p) => ({
+              ...p,
+              status: (cancelled ? 'cancelled' : 'completed') as BootstrapProgress['status'],
+              completedAt: new Date().toISOString(),
+              currentDocId: null,
+              currentDocTitle: null,
+            }));
+          }).pipe(
+            // Proper Effect error handling - catches Effect failures that try/catch misses
+            Effect.catchAll((error) =>
+              Effect.gen(function* () {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                yield* Ref.update(progressRef, (p) => ({
+                  ...p,
+                  status: 'error' as const,
+                  errors: p.errors + 1,
+                  errorMessage,
+                  completedAt: new Date().toISOString(),
+                }));
+              })
+            )
+          );
 
           const fiber = yield* Effect.fork(
             runAnalysis.pipe(

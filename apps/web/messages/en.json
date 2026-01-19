@@ -138,6 +138,7 @@
     "correspondents": "Correspondents",
     "documentTypes": "Document Types",
     "tags": "Tags",
+    "documentLinks": "Document Links",
     "attempt": "Attempt {count}",
     "feedback": "Feedback",
     "more": "more...",

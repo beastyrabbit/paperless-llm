@@ -1,10 +1,10 @@
 /**
  * Document Processing Pipeline orchestrating all agents.
  *
- * Pipeline Order: OCR → Schema Analysis → Title → Correspondent → Document Type → Tags → Custom Fields
+ * Pipeline Order: OCR → Schema Analysis → Title → Correspondent → Document Type → Tags → Custom Fields → Document Links
  *
  * Uses LangGraph-based agents for all Ollama interactions (Title, Correspondent, DocumentType, Tags,
- * SchemaAnalysis, CustomFields). Only OCR uses MistralService directly.
+ * SchemaAnalysis, CustomFields, DocumentLinks). Only OCR uses MistralService directly.
  */
 import { Effect, Context, Layer, Stream, pipe } from 'effect';
 import { ConfigService, PaperlessService, TinyBaseService, QdrantService } from '../services/index.js';
@@ -23,6 +23,7 @@ import { CorrespondentAgentGraphService } from './CorrespondentAgentGraph.js';
 import { DocumentTypeAgentGraphService } from './DocumentTypeAgentGraph.js';
 import { TagsAgentGraphService } from './TagsAgentGraph.js';
 import { CustomFieldsAgentGraphService } from './CustomFieldsAgentGraph.js';
+import { DocumentLinksAgentGraphService } from './DocumentLinksAgentGraph.js';
 import { SchemaAnalysisAgentGraphService } from './SchemaAnalysisAgentGraph.js';
 import type { StreamEvent } from './base.js';
 
@@ -41,6 +42,7 @@ export type ProcessingState =
   | 'document_type_done'
   | 'tags_done'
   | 'custom_fields_done'
+  | 'document_links_done'
   | 'processed';
 
 export interface PipelineInput {
@@ -112,6 +114,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
     const documentTypeAgent = yield* DocumentTypeAgentGraphService;
     const tagsAgent = yield* TagsAgentGraphService;
     const customFieldsAgent = yield* CustomFieldsAgentGraphService;
+    const documentLinksAgent = yield* DocumentLinksAgentGraphService;
     const schemaAnalysisAgent = yield* SchemaAnalysisAgentGraphService;
 
     const { tags: tagConfig, pipeline: defaultPipelineConfig } = config.config;
@@ -133,6 +136,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
           enableDocumentType: getBool('pipeline.document_type', defaultPipelineConfig.enableDocumentType),
           enableTags: getBool('pipeline.tags', defaultPipelineConfig.enableTags),
           enableCustomFields: getBool('pipeline.custom_fields', defaultPipelineConfig.enableCustomFields),
+          enableDocumentLinks: getBool('pipeline.document_links', defaultPipelineConfig.enableDocumentLinks ?? true),
         };
       });
 
@@ -593,12 +597,73 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             currentState = 'custom_fields_done';
           }
 
+          // Step 8: Document Links (optional - finds related documents)
+          if (currentState === 'custom_fields_done' && pipelineConfig.enableDocumentLinks) {
+            const customFields = yield* paperless.getCustomFields();
+            const documentLinkFields = customFields.filter((f) => f.data_type === 'documentlink');
+
+            // Only process if there are documentlink custom fields defined
+            if (documentLinkFields.length > 0) {
+              const updatedDoc = yield* paperless.getDocument(docId);
+              const correspondents = yield* paperless.getCorrespondents();
+              const correspondentName = updatedDoc.correspondent
+                ? correspondents.find((c) => c.id === updatedDoc.correspondent)?.name
+                : undefined;
+
+              const dlResult = yield* documentLinksAgent
+                .process({
+                  docId,
+                  content,
+                  docTitle: updatedDoc.title ?? `Document ${docId}`,
+                  correspondent: correspondentName,
+                  documentLinkFields,
+                })
+                .pipe(
+                  Effect.catchAll((e) =>
+                    Effect.succeed({
+                      success: true,
+                      value: null,
+                      reasoning: String(e),
+                      confidence: 0,
+                      alternatives: [],
+                      attempts: 0,
+                      needsReview: false,
+                      appliedLinks: [],
+                      pendingLinks: [],
+                      skipped: true,
+                      skipReason: String(e),
+                    })
+                  )
+                );
+
+              results['document_links'] = {
+                step: 'document_links',
+                success: dlResult.success,
+                data: dlResult,
+              };
+
+              // Document links may queue items for review but don't block pipeline
+              if (dlResult.needsReview) {
+                needsReview = true;
+              }
+            } else {
+              results['document_links'] = {
+                step: 'document_links',
+                success: true,
+                data: { skipped: true, skipReason: 'No documentlink custom fields defined' },
+              };
+            }
+
+            currentState = 'document_links_done';
+          } else if (currentState === 'custom_fields_done') {
+            // Skip disabled step but advance state
+            currentState = 'document_links_done';
+          }
+
           // Complete pipeline
-          if (currentState === 'custom_fields_done') {
+          if (currentState === 'document_links_done') {
             // Transition to processed
-            const finalTag = pipelineConfig.enableCustomFields
-              ? tagConfig.tagsDone // Custom fields doesn't have its own tag in config
-              : tagConfig.tagsDone;
+            const finalTag = tagConfig.tagsDone;
 
             yield* paperless.transitionDocumentTag(docId, finalTag, tagConfig.processed);
 
@@ -611,7 +676,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
               data: {
                 fromTag: finalTag,
                 toTag: tagConfig.processed,
-                fromState: 'custom_fields_done',
+                fromState: 'document_links_done',
                 toState: 'processed',
               },
             });
@@ -1068,8 +1133,67 @@ export const ProcessingPipelineServiceLive = Layer.effect(
               currentState = 'custom_fields_done';
             }
 
+            // Document Links (optional - finds related documents)
+            if (currentState === 'custom_fields_done' && pipelineConfig.enableDocumentLinks) {
+              const customFields = yield* paperless.getCustomFields();
+              const documentLinkFields = customFields.filter((f) => f.data_type === 'documentlink');
+
+              if (documentLinkFields.length > 0) {
+                yield* Effect.sync(() =>
+                  emit.single(event({ type: 'step_start', docId, step: 'document_links' }))
+                );
+
+                const updatedDoc = yield* paperless.getDocument(docId);
+                const correspondents = yield* paperless.getCorrespondents();
+                const correspondentName = updatedDoc.correspondent
+                  ? correspondents.find((c) => c.id === updatedDoc.correspondent)?.name
+                  : undefined;
+
+                const dlResult = yield* documentLinksAgent
+                  .process({
+                    docId,
+                    content,
+                    docTitle: updatedDoc.title ?? `Document ${docId}`,
+                    correspondent: correspondentName,
+                    documentLinkFields,
+                  })
+                  .pipe(
+                    Effect.catchAll((e) =>
+                      Effect.succeed({
+                        success: true,
+                        value: null,
+                        reasoning: String(e),
+                        confidence: 0,
+                        alternatives: [],
+                        attempts: 0,
+                        needsReview: false,
+                        appliedLinks: [],
+                        pendingLinks: [],
+                        skipped: true,
+                        skipReason: String(e),
+                      })
+                    )
+                  );
+
+                yield* Effect.sync(() =>
+                  emit.single(event({ type: 'step_complete', docId, step: 'document_links', data: dlResult }))
+                );
+
+                // Document links may queue items for review but don't block pipeline
+                if (dlResult.needsReview) {
+                  yield* Effect.sync(() =>
+                    emit.single(event({ type: 'needs_review', docId, step: 'document_links', data: dlResult }))
+                  );
+                }
+              }
+
+              currentState = 'document_links_done';
+            } else if (currentState === 'custom_fields_done') {
+              currentState = 'document_links_done';
+            }
+
             // Complete pipeline
-            if (currentState === 'custom_fields_done') {
+            if (currentState === 'document_links_done') {
               const finalTag = tagConfig.tagsDone;
               yield* paperless.transitionDocumentTag(docId, finalTag, tagConfig.processed);
 
@@ -1082,7 +1206,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                 data: {
                   fromTag: finalTag,
                   toTag: tagConfig.processed,
-                  fromState: 'custom_fields_done',
+                  fromState: 'document_links_done',
                   toState: 'processed',
                 },
               });
@@ -1246,6 +1370,33 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                 data: cfResult,
               };
 
+            case 'document_links':
+              const allCustomFields = yield* paperless.getCustomFields();
+              const documentLinkFields = allCustomFields.filter((f) => f.data_type === 'documentlink');
+              if (documentLinkFields.length === 0) {
+                return {
+                  step: 'document_links',
+                  success: true,
+                  data: { skipped: true, skipReason: 'No documentlink custom fields defined' },
+                };
+              }
+              const correspondentsForLinks = yield* paperless.getCorrespondents();
+              const correspondentName = doc.correspondent
+                ? correspondentsForLinks.find((c) => c.id === doc.correspondent)?.name
+                : undefined;
+              const dlResult = yield* documentLinksAgent.process({
+                docId,
+                content,
+                docTitle: doc.title ?? `Document ${docId}`,
+                correspondent: correspondentName,
+                documentLinkFields,
+              });
+              return {
+                step: 'document_links',
+                success: dlResult.success,
+                data: dlResult,
+              };
+
             default:
               return {
                 step,
@@ -1405,6 +1556,37 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                     customFields,
                   });
                   yield* Effect.sync(() => emit.single(event({ type: 'step_complete', docId, step, data: result })));
+                }
+                break;
+
+              case 'document_links':
+                const allCustomFieldsStream = yield* paperless.getCustomFields();
+                const documentLinkFieldsStream = allCustomFieldsStream.filter((f) => f.data_type === 'documentlink');
+                if (documentLinkFieldsStream.length === 0) {
+                  yield* Effect.sync(() => emit.single(event({ type: 'step_complete', docId, step, data: { skipped: true, skipReason: 'No documentlink custom fields defined' } })));
+                  break;
+                }
+                const correspondentsForLinksStream = yield* paperless.getCorrespondents();
+                const correspondentNameStream = doc.correspondent
+                  ? correspondentsForLinksStream.find((c) => c.id === doc.correspondent)?.name
+                  : undefined;
+                if (documentLinksAgent.processStream) {
+                  yield* runAgentStream(documentLinksAgent.processStream({
+                    docId,
+                    content,
+                    docTitle: doc.title ?? `Document ${docId}`,
+                    correspondent: correspondentNameStream,
+                    documentLinkFields: documentLinkFieldsStream,
+                  }));
+                } else {
+                  const dlResult = yield* documentLinksAgent.process({
+                    docId,
+                    content,
+                    docTitle: doc.title ?? `Document ${docId}`,
+                    correspondent: correspondentNameStream,
+                    documentLinkFields: documentLinkFieldsStream,
+                  });
+                  yield* Effect.sync(() => emit.single(event({ type: 'step_complete', docId, step, data: dlResult })));
                 }
                 break;
 

@@ -11,7 +11,7 @@ export const PendingItemSchema = Schema.Struct({
   id: Schema.String,
   docId: Schema.Number,
   docTitle: Schema.String,
-  type: Schema.Literal('correspondent', 'document_type', 'tag', 'title', 'schema_merge', 'schema_delete'),
+  type: Schema.Literal('correspondent', 'document_type', 'tag', 'title', 'documentlink', 'schema_merge', 'schema_delete'),
   suggestion: Schema.String,
   reasoning: Schema.String,
   alternatives: Schema.Array(Schema.String),
@@ -27,6 +27,7 @@ export const PendingCountsSchema = Schema.Struct({
   document_type: Schema.Number,
   tag: Schema.Number,
   title: Schema.Number,
+  documentlink: Schema.Number,
   schema: Schema.Number,
   total: Schema.Number,
 });

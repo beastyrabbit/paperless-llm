@@ -215,6 +215,15 @@ addRoute('GET', '/api/jobs/bulk-ocr/status', () => jobsHandlers.getBulkOcrStatus
 
 addRoute('POST', '/api/jobs/bulk-ocr/cancel', () => jobsHandlers.cancelBulkOcr);
 
+// Bulk Ingest (OCR + Vector DB)
+addRoute('POST', '/api/jobs/bulk-ingest/start', (_, body) => {
+  return jobsHandlers.startBulkIngest(body as any);
+});
+
+addRoute('GET', '/api/jobs/bulk-ingest/status', () => jobsHandlers.getBulkIngestStatus);
+
+addRoute('POST', '/api/jobs/bulk-ingest/cancel', () => jobsHandlers.cancelBulkIngest);
+
 // Metadata Enhancement
 addRoute('POST', '/api/jobs/metadata-enhancement/run', () =>
   Effect.succeed({ status: 'started', message: 'Metadata enhancement started' })

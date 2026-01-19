@@ -161,6 +161,14 @@ export const storeSchema = {
     data: { type: 'string' as const }, // JSON stringified
     parentId: { type: 'string' as const },
   },
+  documentOcrContent: {
+    docId: { type: 'number' as const },
+    content: { type: 'string' as const },
+    pages: { type: 'number' as const },
+    source: { type: 'string' as const }, // 'mistral' | 'paperless' | 'manual'
+    createdAt: { type: 'string' as const },
+    updatedAt: { type: 'string' as const },
+  },
 };
 
 // ===========================================================================
@@ -255,6 +263,13 @@ export interface TinyBaseService {
   readonly clearProcessingLogs: (docId: number) => Effect.Effect<void, DatabaseError>;
   readonly clearAllProcessingLogs: () => Effect.Effect<void, DatabaseError>;
   readonly getProcessingLogStats: () => Effect.Effect<ProcessingLogStats, DatabaseError>;
+
+  // Document OCR Content
+  readonly setDocumentOcrContent: (docId: number, content: string, pages: number, source: 'mistral' | 'paperless' | 'manual') => Effect.Effect<void, DatabaseError>;
+  readonly getDocumentOcrContent: (docId: number) => Effect.Effect<{ content: string; pages: number; source: string; createdAt: string; updatedAt: string } | null, DatabaseError>;
+  readonly hasDocumentOcrContent: (docId: number) => Effect.Effect<boolean, DatabaseError>;
+  readonly deleteDocumentOcrContent: (docId: number) => Effect.Effect<void, DatabaseError>;
+  readonly getDocumentOcrContentStats: () => Effect.Effect<{ totalDocuments: number; totalCharacters: number }, DatabaseError>;
 }
 
 // ===========================================================================
@@ -551,6 +566,7 @@ export const TinyBaseServiceLive = Layer.effect(
             let document_type = 0;
             let tag = 0;
             let title = 0;
+            let documentlink = 0;
             let schema = 0;
             let total = 0;
 
@@ -560,11 +576,12 @@ export const TinyBaseServiceLive = Layer.effect(
               else if (rowType === 'document_type') document_type++;
               else if (rowType === 'tag') tag++;
               else if (rowType === 'title') title++;
+              else if (rowType === 'documentlink') documentlink++;
               else if (rowType?.startsWith('schema_')) schema++;
               total++;
             }
 
-            return { correspondent, document_type, tag, title, schema, total };
+            return { correspondent, document_type, tag, title, documentlink, schema, total };
           },
           catch: (e) => new DatabaseError({ message: `Failed to get pending counts: ${e}`, operation: 'getPendingCounts', cause: e }),
         }),
@@ -1040,6 +1057,94 @@ export const TinyBaseServiceLive = Layer.effect(
             };
           },
           catch: (e) => new DatabaseError({ message: `Failed to get processing log stats: ${e}`, operation: 'getProcessingLogStats', cause: e }),
+        }),
+
+      // =====================================================================
+      // Document OCR Content
+      // =====================================================================
+
+      setDocumentOcrContent: (docId, content, pages, source) =>
+        Effect.try({
+          try: () => {
+            const existing = store.getRow('documentOcrContent', String(docId));
+            const now = new Date().toISOString();
+            if (existing && Object.keys(existing).length > 0) {
+              // Update existing
+              store.setRow('documentOcrContent', String(docId), {
+                docId,
+                content,
+                pages,
+                source,
+                createdAt: existing['createdAt'] as string,
+                updatedAt: now,
+              });
+            } else {
+              // Create new
+              store.setRow('documentOcrContent', String(docId), {
+                docId,
+                content,
+                pages,
+                source,
+                createdAt: now,
+                updatedAt: now,
+              });
+            }
+          },
+          catch: (e) => new DatabaseError({ message: `Failed to set document OCR content: ${e}`, operation: 'setDocumentOcrContent', cause: e }),
+        }),
+
+      getDocumentOcrContent: (docId) =>
+        Effect.try({
+          try: () => {
+            const row = store.getRow('documentOcrContent', String(docId));
+            if (!row || Object.keys(row).length === 0) return null;
+
+            return {
+              content: row['content'] as string,
+              pages: row['pages'] as number,
+              source: row['source'] as string,
+              createdAt: row['createdAt'] as string,
+              updatedAt: row['updatedAt'] as string,
+            };
+          },
+          catch: (e) => new DatabaseError({ message: `Failed to get document OCR content: ${e}`, operation: 'getDocumentOcrContent', cause: e }),
+        }),
+
+      hasDocumentOcrContent: (docId) =>
+        Effect.try({
+          try: () => {
+            const row = store.getRow('documentOcrContent', String(docId));
+            return row !== null && Object.keys(row).length > 0;
+          },
+          catch: (e) => new DatabaseError({ message: `Failed to check document OCR content: ${e}`, operation: 'hasDocumentOcrContent', cause: e }),
+        }),
+
+      deleteDocumentOcrContent: (docId) =>
+        Effect.try({
+          try: () => {
+            store.delRow('documentOcrContent', String(docId));
+          },
+          catch: (e) => new DatabaseError({ message: `Failed to delete document OCR content: ${e}`, operation: 'deleteDocumentOcrContent', cause: e }),
+        }),
+
+      getDocumentOcrContentStats: () =>
+        Effect.try({
+          try: () => {
+            const table = store.getTable('documentOcrContent') ?? {};
+            const rows = Object.values(table);
+            let totalCharacters = 0;
+            for (const row of rows) {
+              const content = row?.['content'] as string;
+              if (content) {
+                totalCharacters += content.length;
+              }
+            }
+            return {
+              totalDocuments: rows.length,
+              totalCharacters,
+            };
+          },
+          catch: (e) => new DatabaseError({ message: `Failed to get document OCR content stats: ${e}`, operation: 'getDocumentOcrContentStats', cause: e }),
         }),
     };
   })

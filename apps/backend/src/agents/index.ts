@@ -137,6 +137,22 @@ export type { CustomFieldsGraphInput as CustomFieldsInput } from './CustomFields
 export type { CustomFieldsGraphResult as CustomFieldsResult } from './CustomFieldsAgentGraph.js';
 export type { FieldValueResult as FieldValue } from './CustomFieldsAgentGraph.js';
 
+// Document Links Agent (LangGraph)
+export {
+  DocumentLinksAgentGraphService,
+  DocumentLinksAgentGraphServiceLive,
+  type DocumentLinksAgentGraphService as DocumentLinksAgentGraphServiceInterface,
+  type DocumentLinksGraphInput,
+  type DocumentLinksGraphResult,
+  type DocumentLinkResult,
+} from './DocumentLinksAgentGraph.js';
+
+// For backwards compatibility
+export { DocumentLinksAgentGraphService as DocumentLinksAgentService } from './DocumentLinksAgentGraph.js';
+export { DocumentLinksAgentGraphServiceLive as DocumentLinksAgentServiceLive } from './DocumentLinksAgentGraph.js';
+export type { DocumentLinksGraphInput as DocumentLinksInput } from './DocumentLinksAgentGraph.js';
+export type { DocumentLinksGraphResult as DocumentLinksResult } from './DocumentLinksAgentGraph.js';
+
 // ===========================================================================
 // Graph components for building agents
 // ===========================================================================
@@ -174,6 +190,14 @@ export {
   CustomFieldsAnalysisSchema,
   type CustomFieldsAnalysisOutput,
 
+  // Document Links types
+  ReferenceTypeSchema,
+  type ReferenceType,
+  DocumentLinkSuggestionSchema,
+  type DocumentLinkSuggestionOutput,
+  DocumentLinksAnalysisSchema,
+  type DocumentLinksAnalysisOutput,
+
   // Tools
   type ToolDependencies,
   createSearchSimilarDocumentsTool,
@@ -184,6 +208,11 @@ export {
   createGetDocumentsByCustomFieldTool,
   createListCustomFieldsTool,
   createAgentTools,
+  // Document Link tools
+  createSearchDocumentByReferenceTool,
+  createFindRelatedDocumentsTool,
+  createValidateDocumentIdTool,
+  createDocumentLinkTools,
 
   // Confirmation Loop
   ConfirmationLoopState,
