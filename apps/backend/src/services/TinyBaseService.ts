@@ -467,9 +467,16 @@ export const TinyBaseServiceLive = Layer.effect(
       addPendingReview: (item) =>
         Effect.try({
           try: () => {
+            // Skip empty suggestions - don't add items with no actual suggestion
+            const trimmedSuggestion = item.suggestion?.trim() ?? '';
+            if (!trimmedSuggestion) {
+              console.log(`[TinyBase] Skipping pending review for doc ${item.docId} - empty suggestion`);
+              return `skip-empty-${item.docId}-${item.type}`;
+            }
+
             // Check for duplicates: same docId + type + suggestion (normalized)
             const table = store.getTable('pendingReviews') ?? {};
-            const normalizedSuggestion = item.suggestion.toLowerCase().trim();
+            const normalizedSuggestion = trimmedSuggestion.toLowerCase();
 
             for (const [existingId, row] of Object.entries(table)) {
               if (
