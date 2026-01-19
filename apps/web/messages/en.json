@@ -521,6 +521,25 @@
       "cancelled": "Cancelled",
       "failed": "Failed"
     },
+    "bulkIngest": {
+      "title": "Vector Database Ingest",
+      "description": "Process documents through OCR and add them to the vector database for semantic search.",
+      "docsPerSecond": "Docs/sec",
+      "runOcr": "Run OCR",
+      "skipExistingOcr": "Skip existing OCR",
+      "start": "Ingest to Vector DB",
+      "progress": "Progress",
+      "currentDoc": "Current",
+      "ocr": "OCR",
+      "indexed": "Indexed",
+      "skipped": "Skipped",
+      "errors": "Errors",
+      "cancel": "Cancel",
+      "running": "Running",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "error": "Error"
+    },
     "scheduled": {
       "title": "Scheduled Jobs",
       "description": "Configure automatic maintenance jobs that run on a schedule.",

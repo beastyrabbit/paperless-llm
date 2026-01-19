@@ -190,7 +190,6 @@ export const BulkIngestJobServiceLive = Layer.effect(
               }));
 
               let documentContent = doc.content ?? '';
-              let ocrWasPerformed = false;
 
               // Phase 1: OCR if needed
               if (runOcr) {
@@ -223,7 +222,6 @@ export const BulkIngestJobServiceLive = Layer.effect(
                   );
 
                   documentContent = ocrResult;
-                  ocrWasPerformed = true;
 
                   // Store OCR content in TinyBase
                   if (documentContent.length > 0) {

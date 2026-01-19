@@ -314,18 +314,3 @@ export const DocumentOcrContentSchema = Schema.Struct({
 });
 
 export type DocumentOcrContent = Schema.Schema.Type<typeof DocumentOcrContentSchema>;
-
-// ===========================================================================
-// Document Link Models
-// ===========================================================================
-
-export const DocumentLinkSuggestionSchema = Schema.Struct({
-  targetDocId: Schema.Number,
-  targetDocTitle: Schema.String,
-  confidence: Schema.Number, // 0-1 scale
-  reasoning: Schema.String,
-  referenceType: Schema.Literal('explicit', 'semantic', 'shared_context'),
-  referenceText: Schema.NullOr(Schema.String), // The text that triggered the link suggestion
-});
-
-export type DocumentLinkSuggestion = Schema.Schema.Type<typeof DocumentLinkSuggestionSchema>;

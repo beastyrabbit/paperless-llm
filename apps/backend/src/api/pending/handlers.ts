@@ -112,7 +112,13 @@ export const approvePendingItem = (id: string, request: ApproveRequest) =>
       }
       case 'documentlink': {
         // Parse metadata to get the target document ID and field ID
-        const metadata = item.metadata ? JSON.parse(item.metadata) : {};
+        let metadata: Record<string, unknown> = {};
+        try {
+          metadata = item.metadata ? JSON.parse(item.metadata) : {};
+        } catch {
+          // Malformed metadata, skip processing
+          break;
+        }
         const targetDocId = metadata.targetDocId as number | undefined;
         const fieldId = metadata.fieldId as number | undefined;
 
@@ -355,7 +361,13 @@ export const bulkAction = (request: BulkActionRequest) =>
           }
           case 'documentlink': {
             // Handle documentlink approval same as single approval
-            const metadata = item.metadata ? JSON.parse(item.metadata) : {};
+            let metadata: Record<string, unknown> = {};
+            try {
+              metadata = item.metadata ? JSON.parse(item.metadata) : {};
+            } catch {
+              // Malformed metadata, skip processing
+              break;
+            }
             const targetDocId = metadata.targetDocId as number | undefined;
             const fieldId = metadata.fieldId as number | undefined;
 

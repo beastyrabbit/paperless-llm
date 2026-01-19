@@ -854,7 +854,7 @@ export interface BulkOCRStartResponse {
 }
 
 // Bulk Ingest Types (OCR + Vector DB)
-export type BulkIngestStatusType = "idle" | "running" | "completed" | "cancelled" | "failed";
+export type BulkIngestStatusType = "idle" | "running" | "completed" | "cancelled" | "error";
 
 export interface BulkIngestProgress {
   status: BulkIngestStatusType;

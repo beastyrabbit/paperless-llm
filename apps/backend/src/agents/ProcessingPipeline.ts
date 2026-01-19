@@ -1370,7 +1370,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                 data: cfResult,
               };
 
-            case 'document_links':
+            case 'document_links': {
               const allCustomFields = yield* paperless.getCustomFields();
               const documentLinkFields = allCustomFields.filter((f) => f.data_type === 'documentlink');
               if (documentLinkFields.length === 0) {
@@ -1396,6 +1396,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                 success: dlResult.success,
                 data: dlResult,
               };
+            }
 
             default:
               return {
@@ -1559,7 +1560,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                 }
                 break;
 
-              case 'document_links':
+              case 'document_links': {
                 const allCustomFieldsStream = yield* paperless.getCustomFields();
                 const documentLinkFieldsStream = allCustomFieldsStream.filter((f) => f.data_type === 'documentlink');
                 if (documentLinkFieldsStream.length === 0) {
@@ -1589,6 +1590,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                   yield* Effect.sync(() => emit.single(event({ type: 'step_complete', docId, step, data: dlResult })));
                 }
                 break;
+              }
 
               case 'ocr':
                 // OCR doesn't have a stream mode

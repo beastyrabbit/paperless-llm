@@ -718,16 +718,16 @@ export function MaintenanceTab() {
       {/* Bulk Ingest Card (OCR + Vector DB) */}
       <Card>
         <CardHeader>
-          <CardTitle>Vector Database Ingest</CardTitle>
+          <CardTitle>{tMaint("bulkIngest.title")}</CardTitle>
           <CardDescription>
-            Process documents through OCR and add them to the vector database for semantic search.
+            {tMaint("bulkIngest.description")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Configuration */}
           <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-2">
-              <Label htmlFor="ingest-rate">Docs/sec</Label>
+              <Label htmlFor="ingest-rate">{tMaint("bulkIngest.docsPerSecond")}</Label>
               <Input
                 id="ingest-rate"
                 type="number"
@@ -747,7 +747,7 @@ export function MaintenanceTab() {
                 onCheckedChange={setBulkIngestRunOcr}
                 disabled={isBulkIngestRunning}
               />
-              <Label htmlFor="run-ocr">Run OCR</Label>
+              <Label htmlFor="run-ocr">{tMaint("bulkIngest.runOcr")}</Label>
             </div>
             <div className="flex items-center gap-2">
               <Switch
@@ -756,7 +756,7 @@ export function MaintenanceTab() {
                 onCheckedChange={setBulkIngestSkipExistingOcr}
                 disabled={isBulkIngestRunning || !bulkIngestRunOcr}
               />
-              <Label htmlFor="skip-existing-ocr">Skip existing OCR</Label>
+              <Label htmlFor="skip-existing-ocr">{tMaint("bulkIngest.skipExistingOcr")}</Label>
             </div>
             <Button
               onClick={handleStartBulkIngest}
@@ -768,7 +768,7 @@ export function MaintenanceTab() {
               ) : (
                 <Play className="h-4 w-4 mr-2" />
               )}
-              Ingest to Vector DB
+              {tMaint("bulkIngest.start")}
             </Button>
           </div>
 
@@ -781,20 +781,20 @@ export function MaintenanceTab() {
                   {bulkIngestProgress.status === "running" && (
                     <Badge variant="default" className="bg-blue-500">
                       <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                      Running
+                      {tMaint("bulkIngest.running")}
                     </Badge>
                   )}
                   {bulkIngestProgress.status === "completed" && (
                     <Badge variant="default" className="bg-emerald-500">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
-                      Completed
+                      {tMaint("bulkIngest.completed")}
                     </Badge>
                   )}
                   {bulkIngestProgress.status === "cancelled" && (
-                    <Badge variant="secondary">Cancelled</Badge>
+                    <Badge variant="secondary">{tMaint("bulkIngest.cancelled")}</Badge>
                   )}
-                  {bulkIngestProgress.status === "failed" && (
-                    <Badge variant="destructive">Failed</Badge>
+                  {bulkIngestProgress.status === "error" && (
+                    <Badge variant="destructive">{tMaint("bulkIngest.error")}</Badge>
                   )}
                   {bulkIngestProgress.current_phase && isBulkIngestRunning && (
                     <span className="text-xs text-zinc-500 capitalize">
@@ -805,7 +805,7 @@ export function MaintenanceTab() {
                 {isBulkIngestRunning && (
                   <Button variant="outline" size="sm" onClick={handleCancelBulkIngest}>
                     <Square className="h-4 w-4 mr-1" />
-                    Cancel
+                    {tMaint("bulkIngest.cancel")}
                   </Button>
                 )}
               </div>
@@ -814,7 +814,7 @@ export function MaintenanceTab() {
               {bulkIngestProgress.total > 0 && (
                 <div className="space-y-1">
                   <div className="flex justify-between text-sm text-zinc-600 dark:text-zinc-400">
-                    <span>Progress</span>
+                    <span>{tMaint("bulkIngest.progress")}</span>
                     <span>
                       {bulkIngestProgress.processed}/{bulkIngestProgress.total} (
                       {bulkIngestProgressPercent}%)
@@ -827,7 +827,7 @@ export function MaintenanceTab() {
               {/* Current Document */}
               {bulkIngestProgress.current_doc_title && isBulkIngestRunning && (
                 <div className="text-sm">
-                  <span className="text-zinc-500">Current:</span>{" "}
+                  <span className="text-zinc-500">{tMaint("bulkIngest.currentDoc")}:</span>{" "}
                   <span className="font-medium">{bulkIngestProgress.current_doc_title}</span>
                 </div>
               )}
@@ -836,21 +836,21 @@ export function MaintenanceTab() {
               <div className="flex gap-4 text-sm">
                 {bulkIngestProgress.ocr_processed > 0 && (
                   <div>
-                    <span className="text-zinc-500">OCR:</span>{" "}
+                    <span className="text-zinc-500">{tMaint("bulkIngest.ocr")}:</span>{" "}
                     <span className="font-medium text-blue-600">
                       {bulkIngestProgress.ocr_processed}
                     </span>
                   </div>
                 )}
                 <div>
-                  <span className="text-zinc-500">Indexed:</span>{" "}
+                  <span className="text-zinc-500">{tMaint("bulkIngest.indexed")}:</span>{" "}
                   <span className="font-medium text-emerald-600">
                     {bulkIngestProgress.vector_indexed}
                   </span>
                 </div>
                 {bulkIngestProgress.skipped > 0 && (
                   <div>
-                    <span className="text-zinc-500">Skipped:</span>{" "}
+                    <span className="text-zinc-500">{tMaint("bulkIngest.skipped")}:</span>{" "}
                     <span className="font-medium text-zinc-600">
                       {bulkIngestProgress.skipped}
                     </span>
@@ -858,7 +858,7 @@ export function MaintenanceTab() {
                 )}
                 {bulkIngestProgress.errors > 0 && (
                   <div>
-                    <span className="text-zinc-500">Errors:</span>{" "}
+                    <span className="text-zinc-500">{tMaint("bulkIngest.errors")}:</span>{" "}
                     <span className="font-medium text-red-600">{bulkIngestProgress.errors}</span>
                   </div>
                 )}

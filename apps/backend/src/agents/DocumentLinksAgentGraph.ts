@@ -533,20 +533,16 @@ Review these link suggestions and provide your confirmation decision.`;
                 }
                 return events;
               },
-              catch: (e) => e instanceof Error ? e : new Error(String(e)),
-            });
-
-            if (result instanceof Error) {
-              yield* Effect.sync(() =>
-                emit.fail(
-                  new AgentError({
-                    message: `Stream failed: ${result}`,
-                    agent: 'document_links',
-                  })
-                )
-              );
-              return;
-            }
+              catch: (e) => new AgentError({
+                message: `Stream failed: ${e instanceof Error ? e.message : String(e)}`,
+                agent: 'document_links',
+                cause: e,
+              }),
+            }).pipe(
+              Effect.tapError((error) =>
+                Effect.sync(() => emit.fail(error))
+              )
+            );
 
             let lastAnalysis: DocumentLinksAnalysisOutput | null = null;
 
