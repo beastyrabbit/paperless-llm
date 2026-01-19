@@ -440,7 +440,7 @@ Review this title suggestion and provide your confirmation decision.`;
                   docId: input.docId,
                   docTitle: input.existingTitle ?? 'Untitled',
                   type: 'title',
-                  suggestion: lastAnalysis.suggested_title,
+                  suggestion: lastAnalysis.suggested_title || '[Unable to determine - manual review required]',
                   reasoning: lastAnalysis.reasoning,
                   alternatives: lastAnalysis.based_on_similar,
                   attempts: autoProcessing.confirmationMaxRetries,
