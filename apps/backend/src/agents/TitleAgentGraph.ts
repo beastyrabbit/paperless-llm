@@ -234,7 +234,7 @@ Review this title suggestion and provide your confirmation decision.`;
               docId: input.docId,
               docTitle: input.existingTitle ?? 'Untitled',
               type: 'title',
-              suggestion: analysis?.suggested_title ?? '',
+              suggestion: analysis?.suggested_title || '[Unable to determine - manual review required]',
               reasoning: analysis?.reasoning ?? result.error ?? 'Analysis failed',
               alternatives: analysis?.based_on_similar ?? [],
               attempts: result.attempts,
