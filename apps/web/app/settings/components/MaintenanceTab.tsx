@@ -68,6 +68,14 @@ function formatETA(seconds: number): string {
   }
 }
 
+/**
+ * Render the maintenance UI for managing bootstrap analysis, bulk OCR, bulk ingest, scheduled jobs, and processing logs.
+ *
+ * This component displays controls to start/cancel long-running maintenance tasks, shows live progress and stats (with polling while tasks run),
+ * provides schedule configuration and manual triggers for background jobs, and offers processing-log inspection and clearing.
+ *
+ * @returns The JSX element for the maintenance tab containing action controls, progress displays, schedule sections, and processing log controls.
+ */
 export function MaintenanceTab() {
   const tMaint = useTranslations("maintenance");
   const tCommon = useTranslations("common");

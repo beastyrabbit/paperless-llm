@@ -69,6 +69,15 @@ const sections = [
 
 type SectionKey = (typeof sections)[number]["key"];
 
+/**
+ * Renders the Pending admin moderation UI for reviewing and acting on suggested items.
+ *
+ * Provides sectioned lists (correspondents, document types, tags, document links), schema cleanup and blocked-item views,
+ * search and existing-entity suggestions, single and bulk approve/reject workflows (with optional blocking and feedback),
+ * similar-suggestion grouping and merge actions, periodic silent refresh, and UI state for loading, errors, and modals.
+ *
+ * @returns The PendingPage React element
+ */
 export default function PendingPage() {
   const t = useTranslations("pending");
   const searchParams = useSearchParams();
