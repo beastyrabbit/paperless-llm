@@ -35,7 +35,7 @@ const createMockTinyBase = (overrides = {}) => {
     getPendingReview: vi.fn((id: string) =>
       Effect.succeed(samplePendingReviews().find((r) => r.id === id) ?? null)
     ),
-    addPendingReview: vi.fn(() => Effect.succeed(undefined)),
+    addPendingReview: vi.fn(() => Effect.succeed('mock-pending-id' as string | null)),
     updatePendingReview: vi.fn(() => Effect.succeed(undefined)),
     removePendingReview: vi.fn(() => Effect.succeed(undefined)),
   };

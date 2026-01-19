@@ -431,7 +431,7 @@ export const BootstrapJobServiceLive = Layer.effect(
                 const cancelled = yield* Ref.get(cancelledRef);
                 if (cancelled) break;
 
-                yield* tinybase.addPendingReview({
+                const pendingId = yield* tinybase.addPendingReview({
                   docId: suggestion.sourceId ?? 0,
                   docTitle: suggestion.suggestion,
                   type: suggestion.type,
@@ -448,6 +448,11 @@ export const BootstrapJobServiceLive = Layer.effect(
                     documentCount: suggestion.documentCount,
                   }),
                 });
+
+                // Only count if actually persisted (not skipped due to empty suggestion)
+                if (pendingId === null) {
+                  continue;
+                }
 
                 yield* Ref.update(progressRef, (p) => ({
                   ...p,

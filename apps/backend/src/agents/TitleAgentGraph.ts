@@ -230,11 +230,11 @@ Review this title suggestion and provide your confirmation decision.`;
           const analysis = result.analysis as TitleAnalysis | null;
 
           if (!result.success || !analysis) {
-            yield* tinybase.addPendingReview({
+            const pendingId = yield* tinybase.addPendingReview({
               docId: input.docId,
               docTitle: input.existingTitle ?? 'Untitled',
               type: 'title',
-              suggestion: analysis?.suggested_title ?? '',
+              suggestion: analysis?.suggested_title || '[Unable to determine - manual review required]',
               reasoning: analysis?.reasoning ?? result.error ?? 'Analysis failed',
               alternatives: analysis?.based_on_similar ?? [],
               attempts: result.attempts,
@@ -254,6 +254,7 @@ Review this title suggestion and provide your confirmation decision.`;
               data: {
                 success: false,
                 needsReview: true,
+                pendingReviewCreated: pendingId !== null,
                 reasoning: result.error ?? 'Confirmation failed',
                 attempts: result.attempts,
               },
@@ -435,11 +436,11 @@ Review this title suggestion and provide your confirmation decision.`;
               }
 
               if (node === 'queue_review' && lastAnalysis) {
-                yield* tinybase.addPendingReview({
+                const pendingId = yield* tinybase.addPendingReview({
                   docId: input.docId,
                   docTitle: input.existingTitle ?? 'Untitled',
                   type: 'title',
-                  suggestion: lastAnalysis.suggested_title,
+                  suggestion: lastAnalysis.suggested_title || '[Unable to determine - manual review required]',
                   reasoning: lastAnalysis.reasoning,
                   alternatives: lastAnalysis.based_on_similar,
                   attempts: autoProcessing.confirmationMaxRetries,
@@ -459,6 +460,7 @@ Review this title suggestion and provide your confirmation decision.`;
                   data: {
                     success: false,
                     needsReview: true,
+                    pendingReviewCreated: pendingId !== null,
                     reasoning: 'Max retries exceeded',
                   },
                 });

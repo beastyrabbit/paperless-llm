@@ -206,7 +206,7 @@ export interface TinyBaseService {
   // Pending Reviews
   readonly getPendingReviews: (type?: string) => Effect.Effect<PendingReview[], DatabaseError>;
   readonly getPendingReview: (id: string) => Effect.Effect<PendingReview | null, DatabaseError>;
-  readonly addPendingReview: (item: Omit<PendingReview, 'id' | 'createdAt'>) => Effect.Effect<string, DatabaseError>;
+  readonly addPendingReview: (item: Omit<PendingReview, 'id' | 'createdAt'>) => Effect.Effect<string | null, DatabaseError>;
   readonly updatePendingReview: (id: string, updates: Partial<PendingReview>) => Effect.Effect<void, DatabaseError>;
   readonly removePendingReview: (id: string) => Effect.Effect<void, DatabaseError>;
   readonly removePendingReviewByDocAndType: (docId: number, type: PendingReview['type']) => Effect.Effect<void, DatabaseError>;
@@ -466,10 +466,17 @@ export const TinyBaseServiceLive = Layer.effect(
 
       addPendingReview: (item) =>
         Effect.try({
-          try: () => {
+          try: (): string | null => {
+            // Skip empty suggestions - don't add items with no actual suggestion
+            const trimmedSuggestion = item.suggestion?.trim() ?? '';
+            if (!trimmedSuggestion) {
+              console.log(`[TinyBase] Skipping pending review for doc ${item.docId} (${item.type}) - empty suggestion`);
+              return null;
+            }
+
             // Check for duplicates: same docId + type + suggestion (normalized)
             const table = store.getTable('pendingReviews') ?? {};
-            const normalizedSuggestion = item.suggestion.toLowerCase().trim();
+            const normalizedSuggestion = trimmedSuggestion.toLowerCase();
 
             for (const [existingId, row] of Object.entries(table)) {
               if (
@@ -486,6 +493,7 @@ export const TinyBaseServiceLive = Layer.effect(
             const id = generateId();
             const rowData = sanitizeForStorage({
               ...item,
+              suggestion: trimmedSuggestion,
               alternatives: JSON.stringify(item.alternatives),
               createdAt: new Date().toISOString(),
             });

@@ -311,11 +311,11 @@ Review the tag suggestions and provide your confirmation decision.`;
 
           if (!result.success || !analysis) {
             // Queue for review
-            yield* tinybase.addPendingReview({
+            const pendingId = yield* tinybase.addPendingReview({
               docId: input.docId,
               docTitle: input.docTitle,
               type: 'tag',
-              suggestion: analysis?.suggested_tags?.map((t) => t.name).join(', ') ?? '',
+              suggestion: analysis?.suggested_tags?.map((t) => t.name).join(', ') || '[Unable to determine - manual review required]',
               reasoning: analysis?.reasoning ?? result.error ?? 'Analysis failed',
               alternatives: [],
               attempts: result.attempts,
@@ -335,6 +335,7 @@ Review the tag suggestions and provide your confirmation decision.`;
               data: {
                 success: false,
                 needsReview: true,
+                pendingReviewCreated: pendingId !== null,
                 reasoning: result.error ?? 'Confirmation failed',
                 attempts: result.attempts,
               },
@@ -375,13 +376,12 @@ Review the tag suggestions and provide your confirmation decision.`;
           // Add tags
           for (const tagSuggestion of analysis.suggested_tags) {
             if (tagSuggestion.is_new) {
-              newTagsQueued.push(tagSuggestion.name);
-
-              yield* tinybase.addPendingReview({
+              const normalizedTagName = tagSuggestion.name.trim();
+              const pendingId = yield* tinybase.addPendingReview({
                 docId: input.docId,
                 docTitle: input.docTitle,
                 type: 'tag',
-                suggestion: tagSuggestion.name,
+                suggestion: normalizedTagName,
                 reasoning: tagSuggestion.relevance || analysis.reasoning,
                 alternatives: [],
                 attempts: 1,
@@ -389,6 +389,10 @@ Review the tag suggestions and provide your confirmation decision.`;
                 nextTag: tagConfig.tagsDone,
                 metadata: JSON.stringify({ confidence: analysis.confidence }),
               });
+              // Only count if actually persisted (not skipped due to empty name)
+              if (pendingId !== null) {
+                newTagsQueued.push(normalizedTagName);
+              }
             } else {
               const tagId = tagSuggestion.existing_tag_id ?? tagNameToId.get(tagSuggestion.name.toLowerCase());
               if (tagId && !updatedTagIds.includes(tagId)) {
@@ -572,12 +576,12 @@ Review the tag suggestions and provide your confirmation decision.`;
 
                 for (const tagSuggestion of lastAnalysis.suggested_tags) {
                   if (tagSuggestion.is_new) {
-                    newTagsQueued.push(tagSuggestion.name);
-                    yield* tinybase.addPendingReview({
+                    const normalizedTagName = tagSuggestion.name.trim();
+                    const pendingId = yield* tinybase.addPendingReview({
                       docId: input.docId,
                       docTitle: input.docTitle,
                       type: 'tag',
-                      suggestion: tagSuggestion.name,
+                      suggestion: normalizedTagName,
                       reasoning: tagSuggestion.relevance || lastAnalysis.reasoning,
                       alternatives: [],
                       attempts: 1,
@@ -585,6 +589,10 @@ Review the tag suggestions and provide your confirmation decision.`;
                       nextTag: tagConfig.tagsDone,
                       metadata: null,
                     });
+                    // Only count if actually persisted (not skipped due to empty name)
+                    if (pendingId !== null) {
+                      newTagsQueued.push(normalizedTagName);
+                    }
                   } else {
                     const tagId = tagSuggestion.existing_tag_id ?? tagNameToId.get(tagSuggestion.name.toLowerCase());
                     if (tagId && !updatedTagIds.includes(tagId)) {
@@ -637,11 +645,11 @@ Review the tag suggestions and provide your confirmation decision.`;
               }
 
               if (node === 'queue_review' && lastAnalysis) {
-                yield* tinybase.addPendingReview({
+                const pendingId = yield* tinybase.addPendingReview({
                   docId: input.docId,
                   docTitle: input.docTitle,
                   type: 'tag',
-                  suggestion: lastAnalysis.suggested_tags.map((t) => t.name).join(', '),
+                  suggestion: lastAnalysis.suggested_tags.map((t) => t.name).join(', ') || '[Unable to determine - manual review required]',
                   reasoning: lastAnalysis.reasoning,
                   alternatives: [],
                   attempts: autoProcessing.confirmationMaxRetries,
@@ -671,6 +679,7 @@ Review the tag suggestions and provide your confirmation decision.`;
                   data: {
                     success: false,
                     needsReview: true,
+                    pendingReviewCreated: pendingId !== null,
                     reasoning: 'Max retries exceeded',
                   },
                 });
