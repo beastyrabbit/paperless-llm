@@ -79,6 +79,33 @@ const extractDescription = (content: string): string | null => {
   return null;
 };
 
+/**
+ * Strip markdown formatting from prompt text.
+ * Converts markdown to plain text for cleaner LLM input.
+ */
+const stripMarkdown = (content: string): string => {
+  return (
+    content
+      // Remove headers (# ## ### etc.) but keep the text
+      .replace(/^#{1,6}\s+/gm, '')
+      // Remove bold **text** or __text__
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/__([^_]+)__/g, '$1')
+      // Remove italic *text* or _text_ (but not in middle of words)
+      .replace(/(?<!\w)\*([^*]+)\*(?!\w)/g, '$1')
+      .replace(/(?<!\w)_([^_]+)_(?!\w)/g, '$1')
+      // Remove inline code backticks
+      .replace(/`([^`]+)`/g, '$1')
+      // Remove links [text](url) -> text
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      // Remove horizontal rules
+      .replace(/^[-*_]{3,}\s*$/gm, '')
+      // Clean up multiple blank lines
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  );
+};
+
 // ===========================================================================
 // Live Implementation
 // ===========================================================================
@@ -335,6 +362,9 @@ export const PromptServiceLive = Layer.effect(
           for (const [key, value] of Object.entries(variables)) {
             rendered = rendered.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
           }
+
+          // Strip markdown formatting for cleaner LLM input
+          rendered = stripMarkdown(rendered);
 
           return rendered;
         }),
