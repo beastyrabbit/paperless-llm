@@ -628,8 +628,9 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                       alternatives: [],
                       attempts: 0,
                       needsReview: false,
-                      appliedLinks: [],
-                      pendingLinks: [],
+                      links: [],
+                      autoApplied: [],
+                      pendingReview: [],
                       skipped: true,
                       skipReason: String(e),
                     })
@@ -1167,8 +1168,9 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                         alternatives: [],
                         attempts: 0,
                         needsReview: false,
-                        appliedLinks: [],
-                        pendingLinks: [],
+                        links: [],
+                        autoApplied: [],
+                        pendingReview: [],
                         skipped: true,
                         skipReason: String(e),
                       })

@@ -311,7 +311,6 @@ export const cancelBulkOcr = Effect.gen(function* () {
 interface BulkIngestStartRequest {
   docs_per_second?: number;
   skip_existing_ocr?: boolean;
-  skip_existing_vector?: boolean;
   run_ocr?: boolean;
   transition_tag?: boolean;
   source_tag?: string;
@@ -334,7 +333,6 @@ export const startBulkIngest = (request: BulkIngestStartRequest) =>
     yield* job.start({
       docsPerSecond: request.docs_per_second ?? 0.5,
       skipExistingOcr: request.skip_existing_ocr ?? true,
-      skipExistingVector: request.skip_existing_vector ?? false,
       runOcr: request.run_ocr ?? true,
       transitionTag: request.transition_tag ?? false,
       sourceTag: request.source_tag,

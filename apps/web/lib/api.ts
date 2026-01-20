@@ -876,7 +876,6 @@ export interface BulkIngestProgress {
 export interface BulkIngestStartRequest {
   docs_per_second?: number;
   skip_existing_ocr?: boolean;
-  skip_existing_vector?: boolean;
   run_ocr?: boolean;
   transition_tag?: boolean;
   source_tag?: string;

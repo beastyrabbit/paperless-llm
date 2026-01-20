@@ -38,7 +38,6 @@ export interface BulkIngestProgress {
 export interface BulkIngestOptions {
   docsPerSecond?: number;
   skipExistingOcr?: boolean;
-  skipExistingVector?: boolean;
   runOcr?: boolean;
   transitionTag?: boolean;
   sourceTag?: string; // Tag to filter documents (default: processed or all)
@@ -110,7 +109,6 @@ export const BulkIngestJobServiceLive = Layer.effect(
           const rawDocsPerSecond = options?.docsPerSecond ?? 0.5;
           const docsPerSecond = Math.max(0.1, Math.min(10, Number.isFinite(rawDocsPerSecond) ? rawDocsPerSecond : 0.5));
           const skipExistingOcr = options?.skipExistingOcr ?? true;
-          const skipExistingVector = options?.skipExistingVector ?? false;
           const runOcr = options?.runOcr ?? true;
           const transitionTag = options?.transitionTag ?? false;
           const sourceTag = options?.sourceTag; // undefined = all documents
