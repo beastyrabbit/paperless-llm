@@ -68,6 +68,17 @@ function formatETA(seconds: number): string {
   }
 }
 
+/**
+ * Renders the Maintenance dashboard tab with controls and real-time status for bootstrap analysis,
+ * bulk OCR, bulk ingest (OCR + vector indexing), scheduled jobs, and processing log management.
+ *
+ * The component loads and polls job/status APIs, exposes start/cancel/update actions for each
+ * feature area, surfaces API errors, and provides localized UI strings and formatted dates.
+ *
+ * @returns The rendered Maintenance tab React element
+ *
+ * @public
+ */
 export function MaintenanceTab() {
   const tMaint = useTranslations("maintenance");
   const tCommon = useTranslations("common");
