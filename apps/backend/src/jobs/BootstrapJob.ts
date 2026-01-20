@@ -14,7 +14,7 @@
 import { Effect, Context, Layer, Ref, Fiber } from 'effect';
 import { ChatOllama } from '@langchain/ollama';
 import { z } from 'zod';
-import { ConfigService, PaperlessService, TinyBaseService, OllamaService } from '../services/index.js';
+import { ConfigService, PaperlessService, TinyBaseService, OllamaService, PromptService } from '../services/index.js';
 import { JobError } from '../errors/index.js';
 
 // ===========================================================================
@@ -82,73 +82,44 @@ export interface BootstrapJobService {
 export const BootstrapJobService = Context.GenericTag<BootstrapJobService>('BootstrapJobService');
 
 // ===========================================================================
-// Bootstrap Analysis System Prompt (slightly relaxed from pipeline)
+// Prompt Template Helpers
 // ===========================================================================
 
-const BOOTSTRAP_SYSTEM_PROMPT = `You are a schema analysis specialist for a document management system.
-
-Your task is to analyze documents and suggest new entities (correspondents, document types, tags) that should be added to improve the system's schema.
-
-## Bootstrap Analysis Mode
-
-This is a BOOTSTRAP analysis - we're scanning existing documents to discover missing schema entities.
-Be slightly more open to suggestions than normal pipeline processing, but still conservative.
-
-## Confidence Threshold: 0.85
-
-Only suggest entities with confidence >= 0.85 (slightly relaxed from normal 0.9 threshold).
-
-## Guidelines
-
-1. **Check Existing First**: Always use existing entities if they could work
-2. **Check Pending**: If something similar is already pending review, report it as a match instead of suggesting again
-3. **Be Conservative**: Only suggest entities you're confident about
-4. **Broader is Better**: Prefer broad categories over specific subtypes
-
-## Anti-Patterns - DO NOT Suggest These:
-
-1. **Subtypes when broader types exist**:
-   - "Zahnärztliche Rechnung" when "Rechnungen" exists → Use "Rechnungen"
-   - "Steuererinnerung" when "Brief" exists → Use existing
-
-2. **Year-based tags**: "2020", "2021", "2024" → Use date filters instead
-
-3. **Single-use tags**: Tags that only apply to one document are not useful
-
-4. **Technical codes**: "GOZ", "ICD-10", "BIC", "IBAN" → Too specific
-
-5. **Granular details**: "Laborkosten", "Materialkosten" → Too specific
-
-6. **Product names**: Unless it's a major vendor, avoid product-specific tags
-
-## Entity Types
-
-- **correspondent**: The sender/originator of documents (companies, organizations, people)
-- **document_type**: Categories like Invoice, Contract, Letter, Report (use BROAD categories)
-- **tag**: Descriptive labels for broad categories: "finance", "medical", "legal", "urgent"
-
-## Output Format
-
-Respond with JSON matching this schema:
-{
-  "suggestions": [
-    {
-      "entity_type": "correspondent" | "document_type" | "tag",
-      "suggested_name": "string",
-      "reasoning": "string",
-      "confidence": number (0-1, only include if >= 0.85),
-      "similar_to_existing": ["list of similar existing entities"]
-    }
-  ],
-  "matches_pending": [
-    {
-      "entity_type": "correspondent" | "document_type" | "tag",
-      "matched_name": "string (exact name from pending list)"
-    }
-  ],
-  "reasoning": "Overall analysis reasoning",
-  "no_suggestions_reason": "If no suggestions, explain why"
-}`;
+/**
+ * Fill in placeholders in the schema_analysis prompt template.
+ * The prompt file contains placeholders like {document_content}, {existing_correspondents}, etc.
+ */
+const fillPromptTemplate = (
+  template: string,
+  values: {
+    documentContent: string;
+    existingCorrespondents: string[];
+    existingDocTypes: string[];
+    existingTags: string[];
+    pendingCorrespondents: string[];
+    pendingDocTypes: string[];
+    pendingTags: string[];
+    blockedGlobal: string[];
+    blockedCorrespondents: string[];
+    blockedDocTypes: string[];
+    blockedTags: string[];
+    similarDocs?: string;
+  }
+): string => {
+  return template
+    .replace('{document_content}', values.documentContent.slice(0, 8000))
+    .replace('{existing_correspondents}', values.existingCorrespondents.join(', ') || 'None')
+    .replace('{existing_document_types}', values.existingDocTypes.join(', ') || 'None')
+    .replace('{existing_tags}', values.existingTags.join(', ') || 'None')
+    .replace('{pending_correspondents}', values.pendingCorrespondents.join(', ') || 'None')
+    .replace('{pending_document_types}', values.pendingDocTypes.join(', ') || 'None')
+    .replace('{pending_tags}', values.pendingTags.join(', ') || 'None')
+    .replace('{blocked_global}', values.blockedGlobal.join(', ') || 'None')
+    .replace('{blocked_correspondents}', values.blockedCorrespondents.join(', ') || 'None')
+    .replace('{blocked_document_types}', values.blockedDocTypes.join(', ') || 'None')
+    .replace('{blocked_tags}', values.blockedTags.join(', ') || 'None')
+    .replace('{similar_docs}', values.similarDocs ?? 'No similar documents available');
+};
 
 // ===========================================================================
 // Live Implementation
@@ -161,6 +132,7 @@ export const BootstrapJobServiceLive = Layer.effect(
     const paperless = yield* PaperlessService;
     const tinybase = yield* TinyBaseService;
     const ollama = yield* OllamaService;
+    const promptService = yield* PromptService;
 
     const progressRef = yield* Ref.make<BootstrapProgress>({
       status: 'idle',
@@ -200,8 +172,9 @@ export const BootstrapJobServiceLive = Layer.effect(
         return new Set(blocked.map((b) => b.normalizedName));
       }).pipe(Effect.catchAll(() => Effect.succeed(new Set<string>())));
 
-    // Build the analysis prompt for a document
+    // Build the analysis prompt using the localized template
     const buildPrompt = (
+      promptTemplate: string,
       content: string,
       analysisType: AnalysisType,
       existingCorrespondents: string[],
@@ -213,36 +186,29 @@ export const BootstrapJobServiceLive = Layer.effect(
       blockedTags: Set<string>,
       blockedGlobal: Set<string>
     ): string => {
-      const sections: string[] = [`## Document Content\n\n${content.slice(0, 8000)}`];
+      // Fill in the template placeholders
+      let prompt = fillPromptTemplate(promptTemplate, {
+        documentContent: content,
+        existingCorrespondents,
+        existingDocTypes,
+        existingTags,
+        pendingCorrespondents: pendingSuggestions.correspondent,
+        pendingDocTypes: pendingSuggestions.document_type,
+        pendingTags: pendingSuggestions.tag,
+        blockedGlobal: [...blockedGlobal],
+        blockedCorrespondents: [...blockedCorrespondents],
+        blockedDocTypes: [...blockedDocTypes],
+        blockedTags: [...blockedTags],
+      });
 
-      // Only include relevant sections based on analysis type
-      if (analysisType === 'all' || analysisType === 'correspondents') {
-        sections.push(`## Existing Correspondents\n${existingCorrespondents.join(', ') || 'None yet'}`);
-        sections.push(`## Pending Correspondents (do NOT duplicate)\n${pendingSuggestions.correspondent.join(', ') || 'None'}`);
-        sections.push(`## Blocked Correspondents (NEVER suggest)\n${[...blockedCorrespondents].join(', ') || 'None'}`);
-      }
-
-      if (analysisType === 'all' || analysisType === 'document_types') {
-        sections.push(`## Existing Document Types\n${existingDocTypes.join(', ') || 'None yet'}`);
-        sections.push(`## Pending Document Types (do NOT duplicate)\n${pendingSuggestions.document_type.join(', ') || 'None'}`);
-        sections.push(`## Blocked Document Types (NEVER suggest)\n${[...blockedDocTypes].join(', ') || 'None'}`);
-      }
-
-      if (analysisType === 'all' || analysisType === 'tags') {
-        sections.push(`## Existing Tags\n${existingTags.join(', ') || 'None yet'}`);
-        sections.push(`## Pending Tags (do NOT duplicate)\n${pendingSuggestions.tag.join(', ') || 'None'}`);
-        sections.push(`## Blocked Tags (NEVER suggest)\n${[...blockedTags].join(', ') || 'None'}`);
-      }
-
-      sections.push(`## Blocked Global (NEVER suggest)\n${[...blockedGlobal].join(', ') || 'None'}`);
-
+      // Add analysis type instruction for bootstrap (slightly relaxed threshold)
       const analysisInstructions = analysisType === 'all'
-        ? 'Analyze for correspondents, document types, AND tags.'
-        : `Analyze ONLY for ${analysisType.replace('_', ' ')}.`;
+        ? `\n\n## Bootstrap Mode\nThis is a bootstrap analysis. Analyze for correspondents, document types, AND tags.\nNote: Using relaxed confidence threshold of ${CONFIDENCE_THRESHOLD} for bootstrap discovery.`
+        : `\n\n## Bootstrap Mode\nThis is a bootstrap analysis. Analyze ONLY for ${analysisType.replace('_', ' ')}.\nNote: Using relaxed confidence threshold of ${CONFIDENCE_THRESHOLD} for bootstrap discovery.`;
 
-      sections.push(`\n## Instructions\n${analysisInstructions}\nOnly suggest entities with confidence >= ${CONFIDENCE_THRESHOLD}.`);
+      prompt += analysisInstructions;
 
-      return sections.join('\n\n');
+      return prompt;
     };
 
     return {
@@ -329,6 +295,23 @@ export const BootstrapJobServiceLive = Layer.effect(
               getBlockedNames('global'),
             ]);
 
+            // Load the localized prompt template (falls back to English if not available)
+            const promptInfo = yield* promptService.getPrompt('schema_analysis').pipe(
+              Effect.catchAll(() => Effect.succeed({ name: 'schema_analysis', content: '', category: 'system' as const }))
+            );
+            const promptTemplate = promptInfo.content;
+
+            if (!promptTemplate) {
+              console.error('[Bootstrap] Failed to load schema_analysis prompt template');
+              yield* Ref.update(progressRef, (p) => ({
+                ...p,
+                status: 'error' as const,
+                errorMessage: 'Failed to load prompt template',
+                completedAt: new Date().toISOString(),
+              }));
+              return;
+            }
+
             // Create LLM client
             const llm = new ChatOllama({
               baseUrl: ollamaUrl,
@@ -371,8 +354,9 @@ export const BootstrapJobServiceLive = Layer.effect(
                 continue;
               }
 
-              // Build prompt and analyze
+              // Build prompt using the localized template
               const prompt = buildPrompt(
+                promptTemplate,
                 doc.content,
                 analysisType,
                 existingCorrespondents,
@@ -387,8 +371,8 @@ export const BootstrapJobServiceLive = Layer.effect(
 
               const analysisResult = yield* Effect.tryPromise({
                 try: async () => {
+                  // Use the filled prompt template directly (it contains all instructions)
                   const messages = [
-                    { role: 'system' as const, content: BOOTSTRAP_SYSTEM_PROMPT },
                     { role: 'user' as const, content: prompt },
                   ];
                   return await llm.invoke(messages);
