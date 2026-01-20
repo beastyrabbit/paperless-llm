@@ -212,13 +212,25 @@ export const PromptServiceLive = Layer.effect(
           const dirs = fs.readdirSync(promptsBaseDir, { withFileTypes: true });
           const languages: LanguageInfo[] = [];
 
-          // Expected prompts for completeness check
+          // Expected prompts for completeness check (all prompts that should exist)
           const expectedPrompts = [
             'title',
+            'title_confirmation',
             'correspondent',
+            'correspondent_confirmation',
             'document_type',
+            'document_type_confirmation',
             'tags',
+            'tags_confirmation',
+            'custom_fields',
+            'custom_fields_confirmation',
+            'document_links',
+            'document_links_confirmation',
+            'summary',
             'confirmation',
+            'schema_analysis',
+            'schema_cleanup',
+            'metadata_description',
           ];
 
           for (const dir of dirs) {
