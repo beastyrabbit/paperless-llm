@@ -19,6 +19,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
     ports:
       - "3765:3765"
     environment:

@@ -300,6 +300,23 @@ export const jobsApi = {
     }),
 };
 
+// Search API
+export const searchApi = {
+  search: (query: string, limit = 10) =>
+    fetchApi<SearchResponse>(
+      `/api/search?${new URLSearchParams({ q: query, limit: String(limit) })}`
+    ),
+};
+
+// Chat API
+export const chatApi = {
+  send: (messages: ChatMessage[]) =>
+    fetchApi<ChatResponse>("/api/chat", {
+      method: "POST",
+      body: JSON.stringify({ messages }),
+    }),
+};
+
 // Translation API
 export const translationApi = {
   translate: (data: TranslateRequest) =>
@@ -917,4 +934,31 @@ export interface ProcessingLogStats {
   totalLogs: number;
   oldestLog: string | null;
   newestLog: string | null;
+}
+
+// Search Types
+export interface SearchResult {
+  docId: number;
+  score: number;
+  title: string;
+  tags: string[];
+  correspondent?: string;
+  documentType?: string;
+}
+
+export interface SearchResponse {
+  results: SearchResult[];
+  query: string;
+  total: number;
+}
+
+// Chat Types
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ChatResponse {
+  message: string;
+  sources: SearchResult[];
 }

@@ -3,22 +3,27 @@
 # Auto-detect version from git tags
 VERSION := $(shell git describe --tags --always 2>/dev/null || echo "dev")
 
-.PHONY: build build-frontend build-backend up down logs clean
+.PHONY: build build-frontend build-backend up down logs clean version refresh-version
 
-# Build all services with version tag
-build:
-	docker compose build --build-arg APP_VERSION=$(VERSION)
+# Generate .env file with version (used by docker-compose automatically)
+.env:
+	@echo "APP_VERSION=$(VERSION)" > .env
+	@echo "Generated .env with APP_VERSION=$(VERSION)"
+
+# Build all services with version tag (auto-generates .env)
+build: .env
+	docker compose build
 
 # Build only frontend with version tag
-build-frontend:
-	docker compose build --build-arg APP_VERSION=$(VERSION) frontend
+build-frontend: .env
+	docker compose build frontend
 
 # Build only backend
 build-backend:
 	docker compose build backend
 
-# Start all services
-up:
+# Start all services (auto-generates .env)
+up: .env
 	docker compose up -d
 
 # Stop all services
@@ -32,7 +37,13 @@ logs:
 # Clean up containers and volumes
 clean:
 	docker compose down -v
+	rm -f .env
 
 # Show current version
 version:
 	@echo "Version: $(VERSION)"
+
+# Force regenerate .env
+refresh-version:
+	@echo "APP_VERSION=$(VERSION)" > .env
+	@echo "Refreshed .env with APP_VERSION=$(VERSION)"
