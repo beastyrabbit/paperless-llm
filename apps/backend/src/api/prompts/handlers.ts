@@ -84,6 +84,8 @@ export const getLanguages = Effect.gen(function* () {
       code: l.code,
       name: l.name,
       is_default: l.code === defaultLang,
+      is_complete: l.isComplete,
+      prompt_count: l.promptCount,
     })),
     default: defaultLang,
   };
