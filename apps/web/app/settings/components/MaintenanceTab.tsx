@@ -477,7 +477,7 @@ export function MaintenanceTab() {
               )}
 
               {/* Phase indicator - show initializing message or current phase */}
-              {isBootstrapRunning && bootstrapProgress.total === 0 && bootstrapProgress.current_doc_title === "Initializing..." && (
+              {isBootstrapRunning && bootstrapProgress.current_doc_title === "Initializing..." && (
                 <div className="text-sm text-zinc-500 flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   {tMaint("bootstrap.initializing")}
