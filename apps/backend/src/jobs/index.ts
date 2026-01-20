@@ -7,7 +7,7 @@ export {
   BootstrapJobServiceLive,
   type BootstrapProgress,
   type AnalysisType,
-  type SchemaSuggestion,
+  type SuggestionsByType,
 } from './BootstrapJob.js';
 
 export {

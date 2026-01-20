@@ -103,3 +103,70 @@ The confirmation loop uses: Large Model analysis â†’ Small Model verification â†
 Copy `config.example.yaml` to `config.yaml` (gitignored). Settings are loaded with priority: environment variables > config.yaml > defaults.
 
 Key config sections: `paperless`, `mistral`, `ollama`, `qdrant`, `auto_processing`, `tags`, `pipeline`, `vector_search`.
+
+## Development Guidelines
+
+### Prompts and Localization
+
+**NEVER hardcode prompts in code.** Always use `PromptService` to load prompts:
+
+```typescript
+const promptService = yield* PromptService;
+const promptInfo = yield* promptService.getPrompt('prompt_name');
+const prompt = promptInfo.content;
+```
+
+- Prompts are stored in `apps/backend/prompts/{lang}/` (e.g., `en/`, `de/`)
+- PromptService automatically loads the correct language based on settings
+- Falls back to English if the target language prompt doesn't exist
+- Use placeholder syntax like `{document_content}`, `{existing_tags}` in prompts
+- PromptService strips markdown formatting before sending to LLM (plain text only)
+
+**When adding a new prompt:**
+
+1. **Create both language versions** - Always provide `en/` AND `de/` translations
+2. **Update expectedPrompts** - Add the prompt name to the `expectedPrompts` array in `PromptService.ts` (around line 216) so language completeness is tracked correctly
+3. **Use consistent placeholders** - Follow existing patterns like `{document_content}`, `{existing_correspondents}`
+
+```typescript
+// In PromptService.ts - add your new prompt to this list
+const expectedPrompts = [
+  'title',
+  'correspondent',
+  // ... existing prompts
+  'your_new_prompt',  // <-- Add here
+];
+```
+
+### Pipeline Steps
+
+When adding a new pipeline step in `ProcessingPipeline.ts`:
+
+1. **Add an enable flag** in the pipeline config (e.g., `enableNewStep`)
+2. **Add skip handling** - When the step is disabled, advance the state:
+   ```typescript
+   if (currentState === 'previous_done' && pipelineConfig.enableNewStep) {
+     // ... run the step
+     currentState = 'new_step_done';
+   } else if (currentState === 'previous_done' && !pipelineConfig.enableNewStep) {
+     // Skip disabled step but advance state
+     currentState = 'new_step_done';
+   }
+   ```
+3. **Add settings UI** in the Pipeline tab for users to enable/disable
+
+### Background Jobs
+
+When creating jobs that run in the background (e.g., Bootstrap, BulkIngest, BulkOcr):
+
+- Use `Effect.forkDaemon` instead of `Effect.fork` for fibers that need to survive after the HTTP request completes
+- Child fibers created with `Effect.fork` are terminated when the parent scope closes
+- Daemon fibers run independently and survive after the parent effect completes
+
+```typescript
+// CORRECT - fiber survives after HTTP request completes
+const fiber = yield* Effect.forkDaemon(runAnalysis);
+
+// WRONG - fiber is killed when HTTP request finishes
+const fiber = yield* Effect.fork(runAnalysis);
+```

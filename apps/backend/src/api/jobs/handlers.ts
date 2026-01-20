@@ -176,7 +176,7 @@ export const getBootstrapStatus = Effect.gen(function* () {
     // Enhanced progress tracking
     total_documents: progress.totalDocuments,
     current_entity_count: progress.currentEntityCount,
-    avg_seconds_per_category: progress.avgSecondsPerCategory,
+    avg_seconds_per_document: progress.avgSecondsPerDocument,
     estimated_remaining_seconds: progress.estimatedRemainingSeconds,
   };
 });

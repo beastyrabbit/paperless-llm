@@ -79,6 +79,33 @@ const extractDescription = (content: string): string | null => {
   return null;
 };
 
+/**
+ * Strip markdown formatting from prompt text.
+ * Converts markdown to plain text for cleaner LLM input.
+ */
+const stripMarkdown = (content: string): string => {
+  return (
+    content
+      // Remove headers (# ## ### etc.) but keep the text
+      .replace(/^#{1,6}\s+/gm, '')
+      // Remove bold **text** or __text__
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/__([^_]+)__/g, '$1')
+      // Remove italic *text* or _text_ (but not in middle of words)
+      .replace(/(?<!\w)\*([^*]+)\*(?!\w)/g, '$1')
+      .replace(/(?<!\w)_([^_]+)_(?!\w)/g, '$1')
+      // Remove inline code backticks
+      .replace(/`([^`]+)`/g, '$1')
+      // Remove links [text](url) -> text
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      // Remove horizontal rules
+      .replace(/^[-*_]{3,}\s*$/gm, '')
+      // Clean up multiple blank lines
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  );
+};
+
 // ===========================================================================
 // Live Implementation
 // ===========================================================================
@@ -212,13 +239,25 @@ export const PromptServiceLive = Layer.effect(
           const dirs = fs.readdirSync(promptsBaseDir, { withFileTypes: true });
           const languages: LanguageInfo[] = [];
 
-          // Expected prompts for completeness check
+          // Expected prompts for completeness check (all prompts that should exist)
           const expectedPrompts = [
             'title',
+            'title_confirmation',
             'correspondent',
+            'correspondent_confirmation',
             'document_type',
+            'document_type_confirmation',
             'tags',
+            'tags_confirmation',
+            'custom_fields',
+            'custom_fields_confirmation',
+            'document_links',
+            'document_links_confirmation',
+            'summary',
             'confirmation',
+            'schema_analysis',
+            'schema_cleanup',
+            'metadata_description',
           ];
 
           for (const dir of dirs) {
@@ -323,6 +362,9 @@ export const PromptServiceLive = Layer.effect(
           for (const [key, value] of Object.entries(variables)) {
             rendered = rendered.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
           }
+
+          // Strip markdown formatting for cleaner LLM input
+          rendered = stripMarkdown(rendered);
 
           return rendered;
         }),
