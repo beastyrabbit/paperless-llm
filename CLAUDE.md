@@ -120,6 +120,23 @@ const prompt = promptInfo.content;
 - PromptService automatically loads the correct language based on settings
 - Falls back to English if the target language prompt doesn't exist
 - Use placeholder syntax like `{document_content}`, `{existing_tags}` in prompts
+- PromptService strips markdown formatting before sending to LLM (plain text only)
+
+**When adding a new prompt:**
+
+1. **Create both language versions** - Always provide `en/` AND `de/` translations
+2. **Update expectedPrompts** - Add the prompt name to the `expectedPrompts` array in `PromptService.ts` (around line 216) so language completeness is tracked correctly
+3. **Use consistent placeholders** - Follow existing patterns like `{document_content}`, `{existing_correspondents}`
+
+```typescript
+// In PromptService.ts - add your new prompt to this list
+const expectedPrompts = [
+  'title',
+  'correspondent',
+  // ... existing prompts
+  'your_new_prompt',  // <-- Add here
+];
+```
 
 ### Pipeline Steps
 
