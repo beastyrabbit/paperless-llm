@@ -37,7 +37,10 @@
   "navigation": {
     "dashboard": "Dashboard",
     "documents": "Documents",
+    "logs": "Logs",
     "pending": "Pending Review",
+    "search": "Search",
+    "chat": "Chat",
     "documentPrompts": "Doc Prompts",
     "systemPrompts": "System Prompts",
     "tags": "Tags",
@@ -462,6 +465,30 @@
       "saveHistory": "Save Processing History",
       "saveHistoryDesc": "Keep history of all processing steps"
     }
+  },
+  "chat": {
+    "title": "Chat with Documents",
+    "subtitle": "Ask questions about your documents",
+    "conversation": "Conversation",
+    "clearChat": "Clear Chat",
+    "inputPlaceholder": "Ask a question about your documents...",
+    "thinking": "Thinking...",
+    "sources": "Referenced documents",
+    "welcomeTitle": "Start a conversation",
+    "welcomeMessage": "Ask questions about your documents. I'll search through your document library and provide relevant answers based on what I find."
+  },
+  "search": {
+    "title": "Search Documents",
+    "subtitle": "Find documents using semantic search",
+    "searchPlaceholder": "Enter your search query...",
+    "searchButton": "Search",
+    "searching": "Searching...",
+    "resultsCount": "{count} results found",
+    "enterQuery": "Enter a search query",
+    "noResults": "No results found",
+    "tryDifferent": "Try different search terms",
+    "startSearching": "Start searching",
+    "searchHint": "Use natural language to find documents"
   },
   "services": {
     "paperless": "Paperless-ngx",

@@ -12,6 +12,8 @@ import * as promptsHandlers from './prompts/handlers.js';
 import * as metadataHandlers from './metadata/handlers.js';
 import * as schemaHandlers from './schema/handlers.js';
 import * as translationHandlers from './translation/handlers.js';
+import * as searchHandlers from './search/handlers.js';
+import * as chatHandlers from './chat/handlers.js';
 
 // ===========================================================================
 // Types
@@ -277,6 +279,7 @@ addRoute('PATCH', '/api/settings/ai-tags', (_, body) => {
 
 addRoute('GET', '/api/documents/queue', () => documentsHandlers.getQueueStats);
 
+// NOTE: tag query param is handled in handleRequest() below
 addRoute('GET', '/api/documents/pending', () => documentsHandlers.getPendingDocuments());
 
 addRoute('GET', '/api/documents/:id', (params) =>
@@ -447,6 +450,23 @@ addRoute('POST', '/api/translation/cache/clear', (_, body) => {
 addRoute('GET', '/api/translation/languages', () => translationHandlers.getLanguages);
 
 // ===========================================================================
+// Search API - /api/search
+// ===========================================================================
+
+// NOTE: query params (q, limit) are handled in handleRequest() below
+addRoute('GET', '/api/search', () => searchHandlers.searchDocuments(''));
+addRoute('POST', '/api/search/index/:docId', (params) => searchHandlers.indexDocument(parseInt(params.docId!, 10)));
+
+// ===========================================================================
+// Chat API - /api/chat
+// ===========================================================================
+
+addRoute('POST', '/api/chat', (_, body) => {
+  const { messages } = body as { messages?: chatHandlers.ChatMessage[] };
+  return chatHandlers.chatWithDocuments(messages ?? []);
+});
+
+// ===========================================================================
 // Route Matching
 // ===========================================================================
 
@@ -495,6 +515,19 @@ export const handleRequest = (
   // Inject query params if applicable
   if (queryType && path === '/api/pending') {
     return pendingHandlers.listPendingItems(queryType);
+  }
+
+  // Handle tag filter for documents/pending
+  const queryTag = url.searchParams.get('tag');
+  if (path === '/api/documents/pending' && queryTag) {
+    return documentsHandlers.getPendingDocuments(queryTag);
+  }
+
+  // Handle search query params
+  if (path === '/api/search') {
+    const q = url.searchParams.get('q') ?? '';
+    const limit = parseInt(url.searchParams.get('limit') ?? '10', 10);
+    return searchHandlers.searchDocuments(q, limit);
   }
 
   return match.handler(match.params, body);

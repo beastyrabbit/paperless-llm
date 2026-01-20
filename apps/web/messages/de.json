@@ -37,7 +37,10 @@
   "navigation": {
     "dashboard": "Dashboard",
     "documents": "Dokumente",
+    "logs": "Protokolle",
     "pending": "Zur Überprüfung",
+    "search": "Suche",
+    "chat": "Chat",
     "documentPrompts": "Dok-Prompts",
     "systemPrompts": "System-Prompts",
     "tags": "Tags",
@@ -460,6 +463,30 @@
       "saveHistory": "Verarbeitungsverlauf speichern",
       "saveHistoryDesc": "Verlauf aller Verarbeitungsschritte behalten"
     }
+  },
+  "chat": {
+    "title": "Mit Dokumenten chatten",
+    "subtitle": "Stellen Sie Fragen zu Ihren Dokumenten",
+    "conversation": "Unterhaltung",
+    "clearChat": "Chat leeren",
+    "inputPlaceholder": "Stellen Sie eine Frage zu Ihren Dokumenten...",
+    "thinking": "Denke nach...",
+    "sources": "Referenzierte Dokumente",
+    "welcomeTitle": "Starten Sie eine Unterhaltung",
+    "welcomeMessage": "Stellen Sie Fragen zu Ihren Dokumenten. Ich durchsuche Ihre Dokumentenbibliothek und liefere relevante Antworten basierend auf dem, was ich finde."
+  },
+  "search": {
+    "title": "Dokumente suchen",
+    "subtitle": "Dokumente mit semantischer Suche finden",
+    "searchPlaceholder": "Suchanfrage eingeben...",
+    "searchButton": "Suchen",
+    "searching": "Suche läuft...",
+    "resultsCount": "{count} Ergebnisse gefunden",
+    "enterQuery": "Geben Sie eine Suchanfrage ein",
+    "noResults": "Keine Ergebnisse gefunden",
+    "tryDifferent": "Versuchen Sie andere Suchbegriffe",
+    "startSearching": "Suche starten",
+    "searchHint": "Verwenden Sie natürliche Sprache, um Dokumente zu finden"
   },
   "services": {
     "paperless": "Paperless-ngx",
