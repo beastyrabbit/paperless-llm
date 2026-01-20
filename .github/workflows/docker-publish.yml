@@ -107,3 +107,4 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             NEXT_TELEMETRY_DISABLED=1
+            APP_VERSION=${{ steps.meta.outputs.version }}
