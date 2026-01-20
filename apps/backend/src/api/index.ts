@@ -526,7 +526,8 @@ export const handleRequest = (
   // Handle search query params
   if (path === '/api/search') {
     const q = url.searchParams.get('q') ?? '';
-    const limit = parseInt(url.searchParams.get('limit') ?? '10', 10);
+    const parsedLimit = parseInt(url.searchParams.get('limit') ?? '10', 10);
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 100) : 10;
     return searchHandlers.searchDocuments(q, limit);
   }
 
