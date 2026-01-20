@@ -32,6 +32,13 @@ export {
   type FieldValueOutput,
   CustomFieldsAnalysisSchema,
   type CustomFieldsAnalysisOutput,
+  // Document Links types
+  ReferenceTypeSchema,
+  type ReferenceType,
+  DocumentLinkSuggestionSchema,
+  type DocumentLinkSuggestionOutput,
+  DocumentLinksAnalysisSchema,
+  type DocumentLinksAnalysisOutput,
 } from './types.js';
 
 export {
@@ -44,6 +51,11 @@ export {
   createGetDocumentsByCustomFieldTool,
   createListCustomFieldsTool,
   createAgentTools,
+  // Document Link tools
+  createSearchDocumentByReferenceTool,
+  createFindRelatedDocumentsTool,
+  createValidateDocumentIdTool,
+  createDocumentLinkTools,
 } from './tools.js';
 
 export {

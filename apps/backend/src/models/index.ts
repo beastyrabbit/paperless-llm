@@ -106,6 +106,7 @@ export const PendingReviewTypeSchema = Schema.Literal(
   'document_type',
   'tag',
   'title',
+  'documentlink',
   'schema_merge',
   'schema_delete'
 );
@@ -134,6 +135,7 @@ export const PendingCountsSchema = Schema.Struct({
   document_type: Schema.Number,
   tag: Schema.Number,
   title: Schema.Number,
+  documentlink: Schema.Number,
   schema: Schema.Number,
   total: Schema.Number,
 });
@@ -289,3 +291,26 @@ export const StreamEventSchema = Schema.Struct({
 });
 
 export type StreamEvent = Schema.Schema.Type<typeof StreamEventSchema>;
+
+// ===========================================================================
+// Document OCR Content Models
+// ===========================================================================
+
+export const DocumentOcrContentSourceSchema = Schema.Literal(
+  'mistral',
+  'paperless',
+  'manual'
+);
+
+export type DocumentOcrContentSource = Schema.Schema.Type<typeof DocumentOcrContentSourceSchema>;
+
+export const DocumentOcrContentSchema = Schema.Struct({
+  docId: Schema.Number,
+  content: Schema.String,
+  pages: Schema.Number,
+  source: DocumentOcrContentSourceSchema,
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+});
+
+export type DocumentOcrContent = Schema.Schema.Type<typeof DocumentOcrContentSchema>;

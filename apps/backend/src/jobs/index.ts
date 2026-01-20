@@ -23,3 +23,10 @@ export {
   type BulkOcrProgress,
   type BulkOcrOptions,
 } from './BulkOcrJob.js';
+
+export {
+  BulkIngestJobService,
+  BulkIngestJobServiceLive,
+  type BulkIngestProgress,
+  type BulkIngestOptions,
+} from './BulkIngestJob.js';

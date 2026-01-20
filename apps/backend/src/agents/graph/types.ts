@@ -204,3 +204,40 @@ export const CustomFieldsAnalysisSchema = z.object({
 });
 
 export type CustomFieldsAnalysisOutput = z.infer<typeof CustomFieldsAnalysisSchema>;
+
+// ===========================================================================
+// Document Link Schemas
+// ===========================================================================
+
+/**
+ * Type of reference that triggered the link suggestion.
+ */
+export const ReferenceTypeSchema = z.enum(['explicit', 'semantic', 'shared_context']);
+
+export type ReferenceType = z.infer<typeof ReferenceTypeSchema>;
+
+/**
+ * A single document link suggestion.
+ */
+export const DocumentLinkSuggestionSchema = z.object({
+  target_doc_id: z.number().describe('ID of the document to link to'),
+  target_doc_title: z.string().describe('Title of the target document for reference'),
+  confidence: z.number().min(0).max(1).describe('Confidence score from 0 to 1'),
+  reasoning: z.string().describe('Why this document should be linked'),
+  reference_type: ReferenceTypeSchema.describe('Type of reference: explicit (e.g., "See Invoice #456"), semantic (similar content), or shared_context (same correspondent/date)'),
+  reference_text: z.string().nullable().describe('The text that triggered this suggestion, if any'),
+});
+
+export type DocumentLinkSuggestionOutput = z.infer<typeof DocumentLinkSuggestionSchema>;
+
+/**
+ * Complete document links analysis result.
+ */
+export const DocumentLinksAnalysisSchema = z.object({
+  suggested_links: z.array(DocumentLinkSuggestionSchema).describe('List of document link suggestions'),
+  reasoning: z.string().describe('Overall reasoning for link suggestions'),
+  high_confidence_links: z.array(z.number()).describe('IDs of links that can be auto-applied (confidence > 0.8, explicit references)'),
+  low_confidence_links: z.array(z.number()).describe('IDs of links that need manual review'),
+});
+
+export type DocumentLinksAnalysisOutput = z.infer<typeof DocumentLinksAnalysisSchema>;

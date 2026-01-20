@@ -215,8 +215,13 @@ Review these field extractions and provide your confirmation decision.`;
 
       process: (input: CustomFieldsGraphInput) =>
         Effect.gen(function* () {
-          // If no custom fields defined, skip
-          if (input.customFields.length === 0) {
+          // Filter out documentlink type fields - those are handled by DocumentLinksAgentGraph
+          const extractableFields = input.customFields.filter(
+            (f) => f.data_type !== 'documentlink'
+          );
+
+          // If no extractable custom fields, skip
+          if (extractableFields.length === 0) {
             // Log skip
             yield* tinybase.addProcessingLog({
               docId: input.docId,
@@ -226,14 +231,18 @@ Review these field extractions and provide your confirmation decision.`;
               data: {
                 success: true,
                 skipped: true,
-                reason: 'No custom fields defined in Paperless',
+                reason: input.customFields.length > 0
+                  ? 'All custom fields are documentlink type (handled separately)'
+                  : 'No custom fields defined in Paperless',
               },
             });
 
             return {
               success: true,
               value: null,
-              reasoning: 'No custom fields defined',
+              reasoning: input.customFields.length > 0
+                ? 'All custom fields are documentlink type (handled separately)'
+                : 'No custom fields defined',
               confidence: 1,
               alternatives: [],
               attempts: 0,
@@ -241,7 +250,9 @@ Review these field extractions and provide your confirmation decision.`;
               fields: [],
               updatedFields: [],
               skipped: true,
-              skipReason: 'No custom fields defined in Paperless',
+              skipReason: input.customFields.length > 0
+                ? 'All custom fields are documentlink type (handled separately)'
+                : 'No custom fields defined in Paperless',
             };
           }
 
@@ -251,7 +262,7 @@ Review these field extractions and provide your confirmation decision.`;
                 docId: input.docId,
                 docTitle: input.docTitle,
                 content: input.content,
-                context: { customFields: input.customFields, documentType: input.documentType },
+                context: { customFields: extractableFields, documentType: input.documentType },
                 maxRetries: autoProcessing.confirmationMaxRetries,
               }, `customfields-${input.docId}-${Date.now()}`),
             catch: (e) => new AgentError({ message: `Custom fields graph failed: ${e}`, agent: 'custom_fields', cause: e }),
@@ -318,7 +329,7 @@ Review these field extractions and provide your confirmation decision.`;
           // Apply the field values
           const doc = yield* paperless.getDocument(input.docId);
           const currentFields = (doc.custom_fields ?? []) as CustomFieldValue[];
-          const fieldIdToField = new Map(input.customFields.map((f) => [f.id, f]));
+          const fieldIdToField = new Map(extractableFields.map((f) => [f.id, f]));
           const updatedFields: string[] = [];
 
           const newCustomFields: CustomFieldValue[] = [...currentFields];
@@ -390,13 +401,20 @@ Review these field extractions and provide your confirmation decision.`;
           Effect.gen(function* () {
             yield* Effect.sync(() => emit.single(emitStart('custom_fields')));
 
-            // If no custom fields defined, skip
-            if (input.customFields.length === 0) {
+            // Filter out documentlink type fields - those are handled by DocumentLinksAgentGraph
+            const extractableFields = input.customFields.filter(
+              (f) => f.data_type !== 'documentlink'
+            );
+
+            // If no extractable custom fields, skip
+            if (extractableFields.length === 0) {
               yield* Effect.sync(() =>
                 emit.single(emitResult('custom_fields', {
                   success: true,
                   skipped: true,
-                  reason: 'No custom fields defined',
+                  reason: input.customFields.length > 0
+                    ? 'All custom fields are documentlink type (handled separately)'
+                    : 'No custom fields defined',
                 }))
               );
               yield* Effect.sync(() => emit.single(emitComplete('custom_fields')));
@@ -411,7 +429,7 @@ Review these field extractions and provide your confirmation decision.`;
                   docId: input.docId,
                   docTitle: input.docTitle,
                   content: input.content,
-                  context: { customFields: input.customFields, documentType: input.documentType },
+                  context: { customFields: extractableFields, documentType: input.documentType },
                   maxRetries: autoProcessing.confirmationMaxRetries,
                 }, `customfields-stream-${input.docId}-${Date.now()}`);
 
@@ -448,7 +466,7 @@ Review these field extractions and provide your confirmation decision.`;
                 // Apply the field values
                 const doc = yield* paperless.getDocument(input.docId);
                 const currentFields = (doc.custom_fields ?? []) as CustomFieldValue[];
-                const fieldIdToField = new Map(input.customFields.map((f) => [f.id, f]));
+                const fieldIdToField = new Map(extractableFields.map((f) => [f.id, f]));
                 const updatedFields: string[] = [];
 
                 const newCustomFields: CustomFieldValue[] = [...currentFields];

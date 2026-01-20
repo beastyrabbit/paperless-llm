@@ -16,6 +16,7 @@ import {
   BootstrapJobServiceLive,
   SchemaCleanupJobServiceLive,
   BulkOcrJobServiceLive,
+  BulkIngestJobServiceLive,
 } from '../jobs/index.js';
 import {
   OCRAgentServiceLive,
@@ -25,6 +26,7 @@ import {
   DocumentTypeAgentServiceLive,
   TagsAgentServiceLive,
   CustomFieldsAgentServiceLive,
+  DocumentLinksAgentServiceLive,
   SchemaAnalysisAgentServiceLive,
   ProcessingPipelineServiceLive,
 } from '../agents/index.js';
@@ -88,7 +90,8 @@ const CoreServicesLayer = Layer.provideMerge(
 const JobsLayer = Layer.mergeAll(
   BootstrapJobServiceLive,
   SchemaCleanupJobServiceLive,
-  BulkOcrJobServiceLive
+  BulkOcrJobServiceLive,
+  BulkIngestJobServiceLive
 );
 
 /**
@@ -102,6 +105,7 @@ const AgentsLayer = Layer.mergeAll(
   DocumentTypeAgentServiceLive,
   TagsAgentServiceLive,
   CustomFieldsAgentServiceLive,
+  DocumentLinksAgentServiceLive,
   SchemaAnalysisAgentServiceLive
 );
 

@@ -61,6 +61,7 @@ export const PipelineConfigSchema = Schema.Struct({
   enableDocumentType: Schema.Boolean.pipe(Schema.optional),
   enableTags: Schema.Boolean.pipe(Schema.optional),
   enableCustomFields: Schema.Boolean.pipe(Schema.optional),
+  enableDocumentLinks: Schema.Boolean.pipe(Schema.optional),
 });
 
 // Full app configuration
@@ -133,6 +134,7 @@ export interface ResolvedConfig {
     enableDocumentType: boolean;
     enableTags: boolean;
     enableCustomFields: boolean;
+    enableDocumentLinks: boolean;
   };
   language: string;
   debug: boolean;

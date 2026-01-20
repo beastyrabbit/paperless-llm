@@ -138,6 +138,7 @@
     "correspondents": "Korrespondenten",
     "documentTypes": "Dokumenttypen",
     "tags": "Tags",
+    "documentLinks": "Dokumentverknüpfungen",
     "attempt": "Versuch {count}",
     "feedback": "Feedback",
     "more": "mehr...",
@@ -517,6 +518,25 @@
       "completed": "Abgeschlossen",
       "cancelled": "Abgebrochen",
       "failed": "Fehlgeschlagen"
+    },
+    "bulkIngest": {
+      "title": "Vektor-Datenbank-Import",
+      "description": "Dokumente durch OCR verarbeiten und zur Vektordatenbank für semantische Suche hinzufügen.",
+      "docsPerSecond": "Dok./Sek",
+      "runOcr": "OCR ausführen",
+      "skipExistingOcr": "Vorhandene OCR überspringen",
+      "start": "In Vektor-DB importieren",
+      "progress": "Fortschritt",
+      "currentDoc": "Aktuell",
+      "ocr": "OCR",
+      "indexed": "Indexiert",
+      "skipped": "Übersprungen",
+      "errors": "Fehler",
+      "cancel": "Abbrechen",
+      "running": "Läuft",
+      "completed": "Abgeschlossen",
+      "cancelled": "Abgebrochen",
+      "error": "Fehler"
     },
     "scheduled": {
       "title": "Geplante Jobs",

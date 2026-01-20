@@ -50,6 +50,7 @@ import {
   JobScheduleStatus,
   ScheduleType,
   BulkOCRProgress,
+  BulkIngestProgress,
   ProcessingLogStats,
 } from "@/lib/api";
 
@@ -83,6 +84,13 @@ export function MaintenanceTab() {
   const [bulkOCRDocsPerSecond, setBulkOCRDocsPerSecond] = useState(1.0);
   const [bulkOCRSkipExisting, setBulkOCRSkipExisting] = useState(true);
 
+  // Bulk Ingest state (OCR + Vector DB)
+  const [bulkIngestProgress, setBulkIngestProgress] = useState<BulkIngestProgress | null>(null);
+  const [bulkIngestStarting, setBulkIngestStarting] = useState(false);
+  const [bulkIngestDocsPerSecond, setBulkIngestDocsPerSecond] = useState(0.5);
+  const [bulkIngestRunOcr, setBulkIngestRunOcr] = useState(true);
+  const [bulkIngestSkipExistingOcr, setBulkIngestSkipExistingOcr] = useState(true);
+
   // Schedule state
   const [scheduleStatus, setScheduleStatus] = useState<JobScheduleStatus | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
@@ -111,6 +119,13 @@ export function MaintenanceTab() {
     }
   }, []);
 
+  const loadBulkIngestStatus = useCallback(async () => {
+    const response = await jobsApi.getBulkIngestStatus();
+    if (response.data) {
+      setBulkIngestProgress(response.data);
+    }
+  }, []);
+
   const loadScheduleStatus = useCallback(async () => {
     setScheduleLoading(true);
     const response = await jobsApi.getSchedules();
@@ -133,9 +148,10 @@ export function MaintenanceTab() {
   useEffect(() => {
     loadBootstrapStatus();
     loadBulkOCRStatus();
+    loadBulkIngestStatus();
     loadScheduleStatus();
     loadProcessingLogStats();
-  }, [loadBootstrapStatus, loadBulkOCRStatus, loadScheduleStatus, loadProcessingLogStats]);
+  }, [loadBootstrapStatus, loadBulkOCRStatus, loadBulkIngestStatus, loadScheduleStatus, loadProcessingLogStats]);
 
   // Poll bootstrap status while running
   useEffect(() => {
@@ -152,6 +168,14 @@ export function MaintenanceTab() {
       return () => clearInterval(interval);
     }
   }, [bulkOCRProgress?.status, loadBulkOCRStatus]);
+
+  // Poll bulk ingest status while running
+  useEffect(() => {
+    if (bulkIngestProgress?.status === "running") {
+      const interval = setInterval(loadBulkIngestStatus, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [bulkIngestProgress?.status, loadBulkIngestStatus]);
 
   // Bootstrap handlers
   const handleStartBootstrap = async (type: string) => {
@@ -204,6 +228,33 @@ export function MaintenanceTab() {
       setMaintenanceError(response.error);
     } else {
       await loadBulkOCRStatus();
+    }
+  };
+
+  // Bulk Ingest handlers
+  const handleStartBulkIngest = async () => {
+    setBulkIngestStarting(true);
+    setMaintenanceError(null);
+    const response = await jobsApi.startBulkIngest({
+      docs_per_second: bulkIngestDocsPerSecond,
+      skip_existing_ocr: bulkIngestSkipExistingOcr,
+      run_ocr: bulkIngestRunOcr,
+    });
+    if (response.error) {
+      setMaintenanceError(response.error);
+    } else {
+      await loadBulkIngestStatus();
+    }
+    setBulkIngestStarting(false);
+  };
+
+  const handleCancelBulkIngest = async () => {
+    setMaintenanceError(null);
+    const response = await jobsApi.cancelBulkIngest();
+    if (response.error) {
+      setMaintenanceError(response.error);
+    } else {
+      await loadBulkIngestStatus();
     }
   };
 
@@ -263,6 +314,11 @@ export function MaintenanceTab() {
     ? Math.round((bulkOCRProgress.processed / bulkOCRProgress.total) * 100)
     : 0;
   const isBulkOCRRunning = bulkOCRProgress?.status === "running";
+
+  const bulkIngestProgressPercent = bulkIngestProgress?.total
+    ? Math.round((bulkIngestProgress.processed / bulkIngestProgress.total) * 100)
+    : 0;
+  const isBulkIngestRunning = bulkIngestProgress?.status === "running";
 
   const formatMaintenanceDate = (dateString: string | null) => {
     if (!dateString) return tMaint("scheduled.never");
@@ -652,6 +708,166 @@ export function MaintenanceTab() {
               {bulkOCRProgress.error_message && (
                 <div className="text-sm text-red-600 dark:text-red-400">
                   {bulkOCRProgress.error_message}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Bulk Ingest Card (OCR + Vector DB) */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{tMaint("bulkIngest.title")}</CardTitle>
+          <CardDescription>
+            {tMaint("bulkIngest.description")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Configuration */}
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="ingest-rate">{tMaint("bulkIngest.docsPerSecond")}</Label>
+              <Input
+                id="ingest-rate"
+                type="number"
+                min="0.1"
+                max="5"
+                step="0.1"
+                value={bulkIngestDocsPerSecond}
+                onChange={(e) => setBulkIngestDocsPerSecond(parseFloat(e.target.value) || 0.5)}
+                disabled={isBulkIngestRunning}
+                className="w-24"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="run-ocr"
+                checked={bulkIngestRunOcr}
+                onCheckedChange={setBulkIngestRunOcr}
+                disabled={isBulkIngestRunning}
+              />
+              <Label htmlFor="run-ocr">{tMaint("bulkIngest.runOcr")}</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="skip-existing-ocr"
+                checked={bulkIngestSkipExistingOcr}
+                onCheckedChange={setBulkIngestSkipExistingOcr}
+                disabled={isBulkIngestRunning || !bulkIngestRunOcr}
+              />
+              <Label htmlFor="skip-existing-ocr">{tMaint("bulkIngest.skipExistingOcr")}</Label>
+            </div>
+            <Button
+              onClick={handleStartBulkIngest}
+              disabled={isBulkIngestRunning || bulkIngestStarting}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {bulkIngestStarting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4 mr-2" />
+              )}
+              {tMaint("bulkIngest.start")}
+            </Button>
+          </div>
+
+          {/* Progress Display */}
+          {bulkIngestProgress && bulkIngestProgress.status !== "idle" && (
+            <div className="mt-4 p-4 rounded-lg bg-zinc-50 dark:bg-zinc-900 space-y-3">
+              {/* Status Badge */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {bulkIngestProgress.status === "running" && (
+                    <Badge variant="default" className="bg-blue-500">
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      {tMaint("bulkIngest.running")}
+                    </Badge>
+                  )}
+                  {bulkIngestProgress.status === "completed" && (
+                    <Badge variant="default" className="bg-emerald-500">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      {tMaint("bulkIngest.completed")}
+                    </Badge>
+                  )}
+                  {bulkIngestProgress.status === "cancelled" && (
+                    <Badge variant="secondary">{tMaint("bulkIngest.cancelled")}</Badge>
+                  )}
+                  {bulkIngestProgress.status === "error" && (
+                    <Badge variant="destructive">{tMaint("bulkIngest.error")}</Badge>
+                  )}
+                  {bulkIngestProgress.current_phase && isBulkIngestRunning && (
+                    <span className="text-xs text-zinc-500 capitalize">
+                      ({bulkIngestProgress.current_phase})
+                    </span>
+                  )}
+                </div>
+                {isBulkIngestRunning && (
+                  <Button variant="outline" size="sm" onClick={handleCancelBulkIngest}>
+                    <Square className="h-4 w-4 mr-1" />
+                    {tMaint("bulkIngest.cancel")}
+                  </Button>
+                )}
+              </div>
+
+              {/* Progress Bar */}
+              {bulkIngestProgress.total > 0 && (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm text-zinc-600 dark:text-zinc-400">
+                    <span>{tMaint("bulkIngest.progress")}</span>
+                    <span>
+                      {bulkIngestProgress.processed}/{bulkIngestProgress.total} (
+                      {bulkIngestProgressPercent}%)
+                    </span>
+                  </div>
+                  <Progress value={bulkIngestProgressPercent} className="h-2" />
+                </div>
+              )}
+
+              {/* Current Document */}
+              {bulkIngestProgress.current_doc_title && isBulkIngestRunning && (
+                <div className="text-sm">
+                  <span className="text-zinc-500">{tMaint("bulkIngest.currentDoc")}:</span>{" "}
+                  <span className="font-medium">{bulkIngestProgress.current_doc_title}</span>
+                </div>
+              )}
+
+              {/* Stats */}
+              <div className="flex gap-4 text-sm">
+                {bulkIngestProgress.ocr_processed > 0 && (
+                  <div>
+                    <span className="text-zinc-500">{tMaint("bulkIngest.ocr")}:</span>{" "}
+                    <span className="font-medium text-blue-600">
+                      {bulkIngestProgress.ocr_processed}
+                    </span>
+                  </div>
+                )}
+                <div>
+                  <span className="text-zinc-500">{tMaint("bulkIngest.indexed")}:</span>{" "}
+                  <span className="font-medium text-emerald-600">
+                    {bulkIngestProgress.vector_indexed}
+                  </span>
+                </div>
+                {bulkIngestProgress.skipped > 0 && (
+                  <div>
+                    <span className="text-zinc-500">{tMaint("bulkIngest.skipped")}:</span>{" "}
+                    <span className="font-medium text-zinc-600">
+                      {bulkIngestProgress.skipped}
+                    </span>
+                  </div>
+                )}
+                {bulkIngestProgress.errors > 0 && (
+                  <div>
+                    <span className="text-zinc-500">{tMaint("bulkIngest.errors")}:</span>{" "}
+                    <span className="font-medium text-red-600">{bulkIngestProgress.errors}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Error Message */}
+              {bulkIngestProgress.error_message && (
+                <div className="text-sm text-red-600 dark:text-red-400">
+                  {bulkIngestProgress.error_message}
                 </div>
               )}
             </div>

@@ -14,6 +14,64 @@ import type {
 } from './api.js';
 
 // ===========================================================================
+// Helper Functions
+// ===========================================================================
+
+/**
+ * Apply a document link from pending review metadata.
+ * Returns true if the link was applied, false if skipped (invalid metadata).
+ */
+const applyDocumentLink = (docId: number, metadataJson: string | null) =>
+  Effect.gen(function* () {
+    // Parse metadata to get the target document ID and field ID
+    let metadata: Record<string, unknown> = {};
+    try {
+      metadata = metadataJson ? JSON.parse(metadataJson) : {};
+    } catch {
+      // Malformed metadata, skip processing
+      return false;
+    }
+
+    const targetDocId = metadata.targetDocId as number | undefined;
+    const fieldId = metadata.fieldId as number | undefined;
+
+    if (!targetDocId || !fieldId) {
+      return false;
+    }
+
+    const paperless = yield* PaperlessService;
+
+    // Get current document custom fields
+    const doc = yield* paperless.getDocument(docId);
+    const currentFields = (doc.custom_fields ?? []) as Array<{
+      field: number;
+      value: unknown;
+    }>;
+
+    // Find or create the field entry
+    const existingField = currentFields.find((cf) => cf.field === fieldId);
+    const existingLinks = Array.isArray(existingField?.value)
+      ? (existingField.value as number[])
+      : [];
+
+    // Add the new link if not already present
+    if (!existingLinks.includes(targetDocId)) {
+      const newLinks = [...existingLinks, targetDocId];
+      const newCustomFields = currentFields.filter((cf) => cf.field !== fieldId);
+      newCustomFields.push({
+        field: fieldId,
+        value: newLinks,
+      });
+
+      yield* paperless.updateDocument(docId, {
+        custom_fields: newCustomFields,
+      });
+    }
+
+    return true;
+  });
+
+// ===========================================================================
 // List Pending Items
 // ===========================================================================
 
@@ -108,6 +166,10 @@ export const approvePendingItem = (id: string, request: ApproveRequest) =>
       }
       case 'title': {
         yield* paperless.updateDocument(item.docId, { title: value });
+        break;
+      }
+      case 'documentlink': {
+        yield* applyDocumentLink(item.docId, item.metadata);
         break;
       }
       case 'schema_merge':
@@ -315,6 +377,10 @@ export const bulkAction = (request: BulkActionRequest) =>
           }
           case 'title': {
             yield* paperless.updateDocument(item.docId, { title: value });
+            break;
+          }
+          case 'documentlink': {
+            yield* applyDocumentLink(item.docId, item.metadata);
             break;
           }
         }

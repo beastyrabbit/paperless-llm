@@ -286,6 +286,18 @@ export const jobsApi = {
     fetchApi<{ message: string; status: string }>("/api/jobs/bulk-ocr/cancel", {
       method: "POST",
     }),
+  // Bulk Ingest (OCR + Vector DB)
+  startBulkIngest: (request: BulkIngestStartRequest) =>
+    fetchApi<BulkIngestStartResponse>("/api/jobs/bulk-ingest/start", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+  getBulkIngestStatus: () =>
+    fetchApi<BulkIngestProgress>("/api/jobs/bulk-ingest/status"),
+  cancelBulkIngest: () =>
+    fetchApi<{ message: string; status: string }>("/api/jobs/bulk-ingest/cancel", {
+      method: "POST",
+    }),
 };
 
 // Translation API
@@ -532,6 +544,7 @@ export interface PendingCounts {
   correspondent: number;
   document_type: number;
   tag: number;
+  documentlink: number;
   total: number;
   // Schema suggestion counts (from bootstrap analysis)
   schema_correspondent: number;
@@ -837,6 +850,42 @@ export interface BulkOCRStartResponse {
   message: string;
   docs_per_second: number;
   skip_existing: boolean;
+  status: string;
+}
+
+// Bulk Ingest Types (OCR + Vector DB)
+export type BulkIngestStatusType = "idle" | "running" | "completed" | "cancelled" | "error";
+
+export interface BulkIngestProgress {
+  status: BulkIngestStatusType;
+  total: number;
+  processed: number;
+  skipped: number;
+  errors: number;
+  ocr_processed: number;
+  vector_indexed: number;
+  current_doc_id: number | null;
+  current_doc_title: string | null;
+  current_phase: "ocr" | "embedding" | "indexing" | null;
+  docs_per_second: number;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+}
+
+export interface BulkIngestStartRequest {
+  docs_per_second?: number;
+  skip_existing_ocr?: boolean;
+  run_ocr?: boolean;
+  transition_tag?: boolean;
+  source_tag?: string;
+  target_tag?: string;
+}
+
+export interface BulkIngestStartResponse {
+  message: string;
+  docs_per_second: number;
+  run_ocr: boolean;
   status: string;
 }
 

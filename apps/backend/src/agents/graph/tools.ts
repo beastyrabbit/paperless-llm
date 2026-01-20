@@ -460,6 +460,252 @@ export const createListCustomFieldsTool = (deps: ToolDependencies) =>
     }
   );
 
+// ===========================================================================
+// Document Link Tools (for DocumentLinksAgentGraph)
+// ===========================================================================
+
+/**
+ * Creates a tool to search for documents by reference (title, ASN, or reference text).
+ * This is useful for finding documents explicitly mentioned in text.
+ */
+export const createSearchDocumentByReferenceTool = (deps: ToolDependencies) =>
+  tool(
+    async ({ searchTerm, searchType }): Promise<string> => {
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          // Get processed documents
+          const docs = yield* deps.paperless.getDocumentsByTag(deps.processedTagName, 500);
+
+          let matches: Array<{ id: number; title: string; asn: number | null; score: number }> = [];
+
+          if (searchType === 'asn') {
+            // Search by Archive Serial Number
+            const asnNumber = parseInt(searchTerm, 10);
+            if (!isNaN(asnNumber)) {
+              matches = docs
+                .filter((d) => d.archive_serial_number === asnNumber)
+                .map((d) => ({
+                  id: d.id,
+                  title: d.title,
+                  asn: d.archive_serial_number,
+                  score: 1.0,
+                }));
+            }
+          } else if (searchType === 'title_exact') {
+            // Exact title match (case-insensitive)
+            const searchLower = searchTerm.toLowerCase();
+            matches = docs
+              .filter((d) => d.title.toLowerCase() === searchLower)
+              .map((d) => ({
+                id: d.id,
+                title: d.title,
+                asn: d.archive_serial_number,
+                score: 1.0,
+              }));
+          } else {
+            // Fuzzy title search
+            const searchLower = searchTerm.toLowerCase();
+            matches = docs
+              .filter((d) => d.title.toLowerCase().includes(searchLower))
+              .map((d) => {
+                const titleLower = d.title.toLowerCase();
+                // Score based on how much of the title is the search term
+                const score = searchLower.length / titleLower.length;
+                return {
+                  id: d.id,
+                  title: d.title,
+                  asn: d.archive_serial_number,
+                  score,
+                };
+              })
+              .sort((a, b) => b.score - a.score)
+              .slice(0, 10);
+          }
+
+          return matches;
+        })
+      ).catch((e) => ({ error: String(e) }));
+
+      if ('error' in result) {
+        return `Error: ${result.error}`;
+      }
+
+      if (result.length === 0) {
+        return `No documents found matching "${searchTerm}" (search type: ${searchType})`;
+      }
+
+      return `Found ${result.length} document(s) matching "${searchTerm}":\n\n${result
+        .map(
+          (d, i) =>
+            `${i + 1}. "${d.title}" (ID: ${d.id}${d.asn ? `, ASN: ${d.asn}` : ''}) [Match score: ${(d.score * 100).toFixed(0)}%]`
+        )
+        .join('\n')}`;
+    },
+    {
+      name: 'search_document_by_reference',
+      description:
+        'Search for documents by title, ASN (Archive Serial Number), or reference text. Use this when a document explicitly mentions another document by name or number.',
+      schema: z.object({
+        searchTerm: z.string().describe('The search term - document title, ASN number, or reference text'),
+        searchType: z
+          .enum(['title', 'title_exact', 'asn'])
+          .describe('Type of search: "title" for fuzzy title match, "title_exact" for exact match, "asn" for Archive Serial Number'),
+      }),
+    }
+  );
+
+/**
+ * Creates a tool to find related documents by correspondent and/or date range.
+ * This is useful for finding documents that share context with the current document.
+ */
+export const createFindRelatedDocumentsTool = (deps: ToolDependencies) =>
+  tool(
+    async ({ correspondentName, dateFrom, dateTo, limit }): Promise<string> => {
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          // Get processed documents
+          const docs = yield* deps.paperless.getDocumentsByTag(deps.processedTagName, 500);
+          const correspondents = yield* deps.paperless.getCorrespondents();
+          const tags = yield* deps.paperless.getTags();
+
+          // Find correspondent ID if specified
+          let correspondentId: number | null = null;
+          if (correspondentName) {
+            const correspondent = correspondents.find(
+              (c) => c.name.toLowerCase() === correspondentName.toLowerCase()
+            );
+            if (!correspondent) {
+              return { error: `Correspondent "${correspondentName}" not found.` };
+            }
+            correspondentId = correspondent.id;
+          }
+
+          // Parse and validate dates
+          const parsedFromDate = dateFrom ? new Date(dateFrom) : null;
+          const parsedToDate = dateTo ? new Date(dateTo) : null;
+          const fromDate = parsedFromDate && !isNaN(parsedFromDate.getTime()) ? parsedFromDate : null;
+          const toDate = parsedToDate && !isNaN(parsedToDate.getTime()) ? parsedToDate : null;
+
+          // Filter documents
+          let filteredDocs = docs;
+
+          if (correspondentId !== null) {
+            filteredDocs = filteredDocs.filter((d) => d.correspondent === correspondentId);
+          }
+
+          if (fromDate || toDate) {
+            filteredDocs = filteredDocs.filter((d) => {
+              const docDate = new Date(d.created);
+              if (isNaN(docDate.getTime())) return true; // Keep docs with invalid dates
+              if (fromDate && docDate < fromDate) return false;
+              if (toDate && docDate > toDate) return false;
+              return true;
+            });
+          }
+
+          // Limit results
+          const limitedDocs = filteredDocs.slice(0, Math.min(limit ?? 10, 20));
+
+          if (limitedDocs.length === 0) {
+            return { empty: true, correspondentName, dateFrom, dateTo };
+          }
+
+          return limitedDocs.map((d) => ({
+            id: d.id,
+            title: d.title,
+            asn: d.archive_serial_number,
+            created: d.created,
+            correspondent: d.correspondent
+              ? correspondents.find((c) => c.id === d.correspondent)?.name
+              : null,
+            tags: d.tags
+              .map((id: number) => tags.find((t) => t.id === id)?.name ?? `unknown-${id}`)
+              .filter((t: string) => !t.startsWith('llm-')),
+          }));
+        })
+      ).catch((e) => ({ error: String(e) }));
+
+      if ('error' in result) {
+        return `Error: ${result.error}`;
+      }
+
+      if ('empty' in result) {
+        const filters: string[] = [];
+        if (result.correspondentName) filters.push(`correspondent: ${result.correspondentName}`);
+        if (result.dateFrom) filters.push(`from: ${result.dateFrom}`);
+        if (result.dateTo) filters.push(`to: ${result.dateTo}`);
+        return `No related documents found (${filters.join(', ')})`;
+      }
+
+      const filters: string[] = [];
+      if (correspondentName) filters.push(`correspondent: ${correspondentName}`);
+      if (dateFrom) filters.push(`from: ${dateFrom}`);
+      if (dateTo) filters.push(`to: ${dateTo}`);
+
+      return `Related documents (${filters.join(', ')}):\n\n${result
+        .map(
+          (d, i) =>
+            `${i + 1}. "${d.title}" (ID: ${d.id}${d.asn ? `, ASN: ${d.asn}` : ''})\n   Date: ${d.created.split('T')[0]}\n   Correspondent: ${d.correspondent || 'none'}\n   Tags: ${d.tags.join(', ') || 'none'}`
+        )
+        .join('\n\n')}`;
+    },
+    {
+      name: 'find_related_documents',
+      description:
+        'Find documents that share context with the current document - by same correspondent and/or similar date range. Use this to discover related documents that might be linked.',
+      schema: z.object({
+        correspondentName: z.string().optional().describe('Filter by correspondent name'),
+        dateFrom: z.string().optional().describe('Filter from date (ISO format: YYYY-MM-DD)'),
+        dateTo: z.string().optional().describe('Filter to date (ISO format: YYYY-MM-DD)'),
+        limit: z.number().min(1).max(20).optional().describe('Maximum number of results (default: 10, max: 20)'),
+      }),
+    }
+  );
+
+/**
+ * Creates a tool to validate that a document ID exists and is accessible.
+ */
+export const createValidateDocumentIdTool = (deps: ToolDependencies) =>
+  tool(
+    async ({ docId }): Promise<string> => {
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const doc = yield* deps.paperless.getDocument(docId);
+          const correspondents = yield* deps.paperless.getCorrespondents();
+          const correspondent = doc.correspondent
+            ? correspondents.find((c) => c.id === doc.correspondent)?.name
+            : null;
+
+          return {
+            id: doc.id,
+            title: doc.title,
+            asn: doc.archive_serial_number,
+            correspondent,
+            created: doc.created,
+          };
+        })
+      ).catch(() => ({ error: true as const }));
+
+      if ('error' in result) {
+        return `Document ID ${docId} does not exist or is not accessible.`;
+      }
+
+      return `Document ID ${result.id} is valid:
+- Title: "${result.title}"
+- ASN: ${result.asn || 'none'}
+- Correspondent: ${result.correspondent || 'none'}
+- Created: ${result.created.split('T')[0]}`;
+    },
+    {
+      name: 'validate_document_id',
+      description:
+        'Verify that a document ID exists and is accessible. Use this before suggesting a document link to ensure the target document is valid.',
+      schema: z.object({
+        docId: z.number().describe('The document ID to validate'),
+      }),
+    }
+  );
+
 /**
  * Creates all tools for an agent.
  */
@@ -471,4 +717,15 @@ export const createAgentTools = (deps: ToolDependencies) => [
   createGetDocumentsByTypeTool(deps),
   createGetDocumentsByCustomFieldTool(deps),
   createListCustomFieldsTool(deps),
+];
+
+/**
+ * Creates tools specifically for document linking agents.
+ */
+export const createDocumentLinkTools = (deps: ToolDependencies) => [
+  createSearchSimilarDocumentsTool(deps),
+  createSearchDocumentByReferenceTool(deps),
+  createFindRelatedDocumentsTool(deps),
+  createValidateDocumentIdTool(deps),
+  createGetDocumentTool(deps),
 ];

@@ -6,6 +6,7 @@ import {
   BootstrapJobService,
   SchemaCleanupJobService,
   BulkOcrJobService,
+  BulkIngestJobService,
 } from '../../jobs/index.js';
 
 // ===========================================================================
@@ -16,10 +17,12 @@ export const getAllJobStatus = Effect.gen(function* () {
   const bootstrap = yield* BootstrapJobService;
   const schemaCleanup = yield* SchemaCleanupJobService;
   const bulkOcr = yield* BulkOcrJobService;
+  const bulkIngest = yield* BulkIngestJobService;
 
   const bootstrapProgress = yield* bootstrap.getProgress();
   const schemaCleanupStatus = yield* schemaCleanup.getStatus();
   const bulkOcrProgress = yield* bulkOcr.getProgress();
+  const bulkIngestProgress = yield* bulkIngest.getProgress();
 
   return {
     bootstrap: {
@@ -49,6 +52,18 @@ export const getAllJobStatus = Effect.gen(function* () {
         total: bulkOcrProgress.total,
         processed: bulkOcrProgress.processed,
         skipped: bulkOcrProgress.skipped,
+      } : null,
+    },
+    bulk_ingest: {
+      job_name: 'bulk_ingest',
+      status: bulkIngestProgress.status,
+      last_run: bulkIngestProgress.startedAt ?? null,
+      last_result: bulkIngestProgress.status === 'completed' ? {
+        total: bulkIngestProgress.total,
+        processed: bulkIngestProgress.processed,
+        skipped: bulkIngestProgress.skipped,
+        ocr_processed: bulkIngestProgress.ocrProcessed,
+        vector_indexed: bulkIngestProgress.vectorIndexed,
       } : null,
     },
   };
@@ -84,6 +99,17 @@ export const getJobStatus = (jobName: string) =>
         const progress = yield* job.getProgress();
         return {
           job_name: 'bulk_ocr',
+          status: progress.status,
+          last_run: progress.startedAt ?? null,
+          last_result: progress,
+        };
+      }
+      case 'bulk_ingest':
+      case 'bulk-ingest': {
+        const job = yield* BulkIngestJobService;
+        const progress = yield* job.getProgress();
+        return {
+          job_name: 'bulk_ingest',
           status: progress.status,
           last_run: progress.startedAt ?? null,
           last_result: progress,
@@ -274,6 +300,90 @@ export const cancelBulkOcr = Effect.gen(function* () {
 
   return {
     message: 'Bulk OCR cancellation requested',
+    status: 'cancelling',
+  };
+});
+
+// ===========================================================================
+// Bulk Ingest Job (OCR + Vector DB)
+// ===========================================================================
+
+interface BulkIngestStartRequest {
+  docs_per_second?: number;
+  skip_existing_ocr?: boolean;
+  run_ocr?: boolean;
+  transition_tag?: boolean;
+  source_tag?: string;
+  target_tag?: string;
+}
+
+export const startBulkIngest = (request: BulkIngestStartRequest) =>
+  Effect.gen(function* () {
+    const job = yield* BulkIngestJobService;
+    const progress = yield* job.getProgress();
+
+    if (progress.status === 'running') {
+      return {
+        status: 400,
+        error: 'Bad Request',
+        message: 'Bulk ingest is already running',
+      };
+    }
+
+    yield* job.start({
+      docsPerSecond: request.docs_per_second ?? 0.5,
+      skipExistingOcr: request.skip_existing_ocr ?? true,
+      runOcr: request.run_ocr ?? true,
+      transitionTag: request.transition_tag ?? false,
+      sourceTag: request.source_tag,
+      targetTag: request.target_tag,
+    });
+
+    return {
+      message: `Bulk ingest started (${request.docs_per_second ?? 0.5} docs/sec)`,
+      docs_per_second: request.docs_per_second ?? 0.5,
+      run_ocr: request.run_ocr ?? true,
+      status: 'running',
+    };
+  });
+
+export const getBulkIngestStatus = Effect.gen(function* () {
+  const job = yield* BulkIngestJobService;
+  const progress = yield* job.getProgress();
+
+  return {
+    status: progress.status,
+    total: progress.total,
+    processed: progress.processed,
+    skipped: progress.skipped,
+    errors: progress.errors,
+    ocr_processed: progress.ocrProcessed,
+    vector_indexed: progress.vectorIndexed,
+    current_doc_id: progress.currentDocId,
+    current_doc_title: progress.currentDocTitle,
+    current_phase: progress.currentPhase,
+    docs_per_second: progress.docsPerSecond,
+    started_at: progress.startedAt,
+    completed_at: progress.completedAt,
+    error_message: progress.errorMessage,
+  };
+});
+
+export const cancelBulkIngest = Effect.gen(function* () {
+  const job = yield* BulkIngestJobService;
+  const progress = yield* job.getProgress();
+
+  if (progress.status !== 'running') {
+    return {
+      message: 'No running bulk ingest job to cancel',
+      status: 'idle',
+    };
+  }
+
+  yield* job.cancel();
+
+  return {
+    message: 'Bulk ingest cancellation requested',
     status: 'cancelling',
   };
 });
