@@ -56,7 +56,7 @@ export const chatWithDocuments = (messages: ChatMessage[]) =>
       .join('\n');
 
     // Calculate confidence level based on top result
-    const topScore = docs.length > 0 ? docs[0]!.score : 0;
+    const topScore = docs[0]?.score ?? 0;
     const hasGoodMatch = topScore >= 0.7;
     const hasSomeMatch = topScore >= 0.4;
 
