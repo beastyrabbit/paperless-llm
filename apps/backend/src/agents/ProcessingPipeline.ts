@@ -262,6 +262,9 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             const updatedDoc = yield* paperless.getDocument(docId);
             content = updatedDoc.content ?? '';
             currentState = 'ocr_done';
+          } else if (currentState === 'pending' && !pipelineConfig.enableOcr) {
+            // Skip OCR step but advance state
+            currentState = 'ocr_done';
           }
 
           // Step 1.5: Summary (optional, after OCR)
@@ -805,6 +808,9 @@ export const ProcessingPipelineServiceLive = Layer.effect(
 
               const updatedDoc = yield* paperless.getDocument(docId);
               content = updatedDoc.content ?? '';
+              currentState = 'ocr_done';
+            } else if (currentState === 'pending' && !pipelineConfig.enableOcr) {
+              // Skip OCR step but advance state
               currentState = 'ocr_done';
             }
 
