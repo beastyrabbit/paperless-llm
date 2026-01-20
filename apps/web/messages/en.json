@@ -502,7 +502,9 @@
       "tagsCount": "Tags",
       "eta": "ETA",
       "phase": "Phase",
-      "coveringDocs": "covering {count} documents"
+      "coveringDocs": "covering {count} documents",
+      "initializing": "Initializing - fetching data from Paperless...",
+      "calculating": "Calculating..."
     },
     "bulkOCR": {
       "title": "Bulk OCR",

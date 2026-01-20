@@ -445,7 +445,17 @@ export function MaintenanceTab() {
                 )}
               </div>
 
-              {/* Progress Bar */}
+              {/* Progress Bar - show "Calculating..." during initialization */}
+              {isBootstrapRunning && bootstrapProgress.total === 0 && (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm text-zinc-600 dark:text-zinc-400">
+                    <span>{tMaint("bootstrap.progress")}</span>
+                    <span className="text-zinc-500">{tMaint("bootstrap.calculating")}</span>
+                  </div>
+                  <Progress value={0} className="h-2" />
+                </div>
+              )}
+
               {bootstrapProgress.total > 0 && (
                 <div className="space-y-1">
                   <div className="flex justify-between text-sm text-zinc-600 dark:text-zinc-400">
@@ -466,8 +476,16 @@ export function MaintenanceTab() {
                 </div>
               )}
 
+              {/* Phase indicator - show initializing message or current phase */}
+              {isBootstrapRunning && bootstrapProgress.current_doc_title === "Initializing..." && (
+                <div className="text-sm text-zinc-500 flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {tMaint("bootstrap.initializing")}
+                </div>
+              )}
+
               {/* Current Phase with Entity Count and Document Coverage */}
-              {bootstrapProgress.current_doc_title && isBootstrapRunning && (
+              {bootstrapProgress.current_doc_title && bootstrapProgress.current_doc_title !== "Initializing..." && isBootstrapRunning && (
                 <div className="text-sm">
                   <span className="font-medium text-zinc-700 dark:text-zinc-300">
                     {tMaint("bootstrap.phase")} {bootstrapProgress.processed + 1}/{bootstrapProgress.total}:
