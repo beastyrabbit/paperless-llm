@@ -325,7 +325,8 @@ export const BulkIngestJobServiceLive = Layer.effect(
             )
           );
 
-          const fiber = yield* Effect.fork(
+          // Use forkDaemon so the fiber survives after the HTTP request completes
+          const fiber = yield* Effect.forkDaemon(
             runIngest.pipe(
               Effect.mapError((e) =>
                 new JobError({
@@ -339,8 +340,8 @@ export const BulkIngestJobServiceLive = Layer.effect(
 
           yield* Ref.set(fiberRef, fiber);
 
-          // Wait for completion and clean up fiber ref
-          yield* Effect.fork(
+          // Wait for completion and clean up fiber ref (also daemon to survive request)
+          yield* Effect.forkDaemon(
             Effect.gen(function* () {
               yield* Fiber.await(fiber);
               yield* Ref.set(fiberRef, null);
