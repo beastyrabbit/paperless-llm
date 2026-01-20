@@ -500,7 +500,9 @@
       "tagsCount": "Tags",
       "eta": "Verbleibend",
       "phase": "Phase",
-      "coveringDocs": "umfasst {count} Dokumente"
+      "coveringDocs": "umfasst {count} Dokumente",
+      "initializing": "Initialisierung - Daten werden von Paperless abgerufen...",
+      "calculating": "Berechnung läuft..."
     },
     "bulkOCR": {
       "title": "Massen-OCR",

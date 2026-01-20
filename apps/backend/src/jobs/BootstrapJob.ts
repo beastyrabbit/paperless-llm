@@ -282,7 +282,7 @@ export const BootstrapJobServiceLive = Layer.effect(
             suggestionsByType: { correspondents: 0, documentTypes: 0, tags: 0 },
             errors: 0,
             currentDocId: null,
-            currentDocTitle: null,
+            currentDocTitle: 'Initializing...', // Signal that initialization has started
             startedAt: new Date().toISOString(),
             completedAt: null,
             errorMessage: null,
