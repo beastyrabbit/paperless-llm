@@ -2,9 +2,7 @@
  * LangGraph-based Document Links agent.
  *
  * Uses the confirmation loop pattern to find and suggest document links.
- * Two-tier confidence system:
- * - High confidence (auto-apply): Explicit references like "See Invoice #456"
- * - Low confidence (manual review): Semantic similarity, shared context
+ * All confirmed links are auto-applied - agents must be conservative.
  */
 import { Effect, Context, Layer, Stream } from 'effect';
 import {
@@ -58,8 +56,7 @@ export interface DocumentLinkResult {
 
 export interface DocumentLinksGraphResult extends AgentProcessResult {
   links: DocumentLinkResult[];
-  autoApplied: number[];
-  pendingReview: number[];
+  appliedLinks: number[];
   skipped?: boolean;
   skipReason?: string;
 }
@@ -82,6 +79,8 @@ export const DocumentLinksAgentGraphService = Context.GenericTag<DocumentLinksAg
 
 const ANALYSIS_SYSTEM_PROMPT = `You are a document relationship specialist. Your task is to find related documents that should be linked to the current document.
 
+IMPORTANT: All confirmed links will be automatically applied. Only suggest links when you are CERTAIN the relationship is meaningful and the user will appreciate the connection. When in doubt, do NOT suggest the link.
+
 ## Tool Usage Guidelines
 
 You have access to tools to search for documents. Use them to find related documents:
@@ -91,44 +90,60 @@ You have access to tools to search for documents. Use them to find related docum
 - search_similar_documents: Find semantically similar documents
 - get_document: Get full details of a specific document
 
-## Link Types
+## Link Types (in order of priority)
 
-1. **Explicit References (High Confidence)**
-   - Document mentions another document by name: "See Invoice #456"
+1. **Explicit References** (PRIMARY - suggest these)
+   - Document explicitly mentions another document by name: "See Invoice #456"
    - References an ASN (Archive Serial Number): "Reference: ASN 12345"
    - Mentions a specific document title: "As discussed in Annual Report 2023"
-   - These should have confidence > 0.8
 
-2. **Semantic Similarity (Medium Confidence)**
-   - Documents about the same topic or project
-   - Follow-up documents (e.g., quote → invoice → receipt)
-   - These should have confidence 0.5-0.8
+2. **Strong Semantic Relationships** (only if crystal clear)
+   - Clear follow-up documents in a chain (e.g., quote → invoice → receipt)
+   - Direct amendments or addenda to a specific document
 
-3. **Shared Context (Low Confidence)**
-   - Same correspondent with similar date
-   - Same document type from same period
-   - These should have confidence < 0.5
+3. **Do NOT suggest** (unless explicitly requested)
+   - Vague topic similarity
+   - Same correspondent without explicit reference
+   - Same time period without explicit reference
 
-Guidelines:
-1. Only suggest links where there's clear evidence of relationship
-2. For explicit references, search using the exact text mentioned
-3. For semantic similarity, use the search tools to find related documents
+## Guidelines
+
+1. Be EXTREMELY conservative - better to suggest 0 links than 1 wrong link
+2. Only suggest links where there's undeniable evidence of relationship
+3. For explicit references, search using the exact text mentioned
 4. Always validate document IDs before suggesting them
 5. Include the reference text that triggered explicit suggestions
-6. High confidence links (>0.8) will be auto-applied, so be conservative
+6. Ask yourself: "Would the user thank me for this link?" - if unsure, don't suggest it
 
 You MUST respond with structured JSON matching the required schema.`;
 
 const CONFIRMATION_SYSTEM_PROMPT = `You are a quality assurance assistant reviewing document link suggestions.
 
-Evaluation criteria:
-- Are the suggested links relevant to the document?
-- Is there clear evidence for each link in the document content?
-- Are high-confidence links truly explicit references?
-- Are the target documents valid and correctly identified?
+CRITICAL: All confirmed links will be AUTOMATICALLY applied. You are the last checkpoint before auto-apply. Only confirm if you would stake your reputation on this link being correct and helpful.
 
-Confirm if the link suggestions are accurate.
-Reject if links are tenuous, incorrectly identified, or lack supporting evidence.
+## Evaluation criteria (ALL must be met):
+
+- Is the relationship crystal clear with undeniable evidence?
+- Would the user thank you for adding this link?
+- Is the target document correctly identified?
+- Is there zero doubt about this link's value?
+
+## Ask yourself:
+
+1. "Would I be embarrassed if this link was wrong?" - If yes, reject.
+2. "Is the evidence for this link beyond question?" - If no, reject.
+3. "Would a human reviewer approve without hesitation?" - If no, reject.
+
+## When to REJECT:
+
+- ANY doubt about the relationship
+- Tenuous or weak connections
+- Missing or unclear evidence in the document
+- Target document doesn't match the reference exactly
+- Link is "nice to have" rather than "obviously correct"
+
+Confirm ONLY if the link is obviously correct and helpful.
+Reject if there is ANY uncertainty.
 
 You MUST respond with structured JSON: { "confirmed": boolean, "feedback": string, "suggested_changes": string }`;
 
@@ -228,15 +243,9 @@ Use the search tools to find related documents and validate their IDs.`;
           )
           .join('\n\n');
 
-        return `## Suggested Document Links
+        return `## Suggested Document Links (ALL will be auto-applied if confirmed)
 
 ${linksSummary || 'No links suggested'}
-
-## High Confidence (Auto-Apply)
-${analysis.high_confidence_links.length > 0 ? analysis.high_confidence_links.map((id) => `- Document ID: ${id}`).join('\n') : 'None'}
-
-## Low Confidence (Manual Review)
-${analysis.low_confidence_links.length > 0 ? analysis.low_confidence_links.map((id) => `- Document ID: ${id}`).join('\n') : 'None'}
 
 ## Overall Reasoning
 
@@ -246,7 +255,7 @@ ${analysis.reasoning}
 
 ${state.content.slice(0, 4000)}
 
-Review these link suggestions and provide your confirmation decision.`;
+REMINDER: If you confirm, ALL these links will be automatically applied. Only confirm if EVERY link is correct and helpful. Reject if you have ANY doubts about any link.`;
       },
     };
 
@@ -280,8 +289,7 @@ Review these link suggestions and provide your confirmation decision.`;
               attempts: 0,
               needsReview: false,
               links: [],
-              autoApplied: [],
-              pendingReview: [],
+              appliedLinks: [],
               skipped: true,
               skipReason: 'No documentlink fields defined in Paperless',
             };
@@ -315,6 +323,8 @@ Review these link suggestions and provide your confirmation decision.`;
           const analysis = result.analysis as DocumentLinksAnalysisOutput | null;
 
           if (!result.success || !analysis) {
+            // Confirmation failed - log and skip, don't queue for review
+            // Document links are optional metadata; if uncertain, skip rather than burden users
             yield* tinybase.addProcessingLog({
               docId: input.docId,
               timestamp: new Date().toISOString(),
@@ -322,8 +332,7 @@ Review these link suggestions and provide your confirmation decision.`;
               eventType: 'result',
               data: {
                 success: false,
-                needsReview: true,
-                reason: result.error ?? 'Confirmation failed',
+                reason: result.error ?? 'Confirmation failed - no links applied',
                 attempts: result.attempts,
               },
             });
@@ -331,14 +340,13 @@ Review these link suggestions and provide your confirmation decision.`;
             return {
               success: true,
               value: null,
-              reasoning: result.error ?? 'Confirmation failed',
+              reasoning: result.error ?? 'Confirmation failed - no links applied',
               confidence: 0,
               alternatives: [],
               attempts: result.attempts,
-              needsReview: true,
-              links: analysis ? toLinkResults(analysis, input.documentLinkFields) : [],
-              autoApplied: [],
-              pendingReview: [],
+              needsReview: false,
+              links: [],
+              appliedLinks: [],
             };
           }
 
@@ -365,23 +373,14 @@ Review these link suggestions and provide your confirmation decision.`;
               attempts: result.attempts,
               needsReview: false,
               links: [],
-              autoApplied: [],
-              pendingReview: [],
+              appliedLinks: [],
             };
           }
 
-          // Apply high-confidence links automatically
-          const highConfidenceLinks = analysis.suggested_links.filter(
-            (l) => analysis.high_confidence_links.includes(l.target_doc_id)
-          );
-          const lowConfidenceLinks = analysis.suggested_links.filter(
-            (l) => analysis.low_confidence_links.includes(l.target_doc_id)
-          );
-
-          // Auto-apply high confidence links to the first documentlink field
-          const autoApplied: number[] = [];
+          // Apply ALL confirmed links to the first documentlink field
+          const appliedLinks: number[] = [];
           const firstField = input.documentLinkFields[0];
-          if (highConfidenceLinks.length > 0 && firstField) {
+          if (analysis.suggested_links.length > 0 && firstField) {
             const doc = yield* paperless.getDocument(input.docId);
             const currentFields = (doc.custom_fields ?? []) as Array<{
               field: number;
@@ -397,7 +396,7 @@ Review these link suggestions and provide your confirmation decision.`;
             // Add new links
             const newLinks = [
               ...existingLinks,
-              ...highConfidenceLinks.map((l) => l.target_doc_id),
+              ...analysis.suggested_links.map((l) => l.target_doc_id),
             ];
 
             // Deduplicate
@@ -414,39 +413,7 @@ Review these link suggestions and provide your confirmation decision.`;
               custom_fields: newCustomFields,
             });
 
-            autoApplied.push(...highConfidenceLinks.map((l) => l.target_doc_id));
-          }
-
-          // Queue low confidence links for review
-          const pendingReview: number[] = [];
-          if (lowConfidenceLinks.length > 0) {
-            // Add to pending review queue
-            for (const link of lowConfidenceLinks) {
-              const addResult = yield* tinybase.addPendingReview({
-                docId: input.docId,
-                docTitle: input.docTitle,
-                type: 'documentlink',
-                suggestion: `Link to: ${link.target_doc_title} (ID: ${link.target_doc_id})`,
-                reasoning: link.reasoning,
-                alternatives: [],
-                attempts: result.attempts,
-                lastFeedback: null,
-                nextTag: null,
-                metadata: JSON.stringify({
-                  targetDocId: link.target_doc_id,
-                  targetDocTitle: link.target_doc_title,
-                  confidence: link.confidence,
-                  referenceType: link.reference_type,
-                  referenceText: link.reference_text,
-                  fieldId: input.documentLinkFields[0]?.id,
-                  fieldName: input.documentLinkFields[0]?.name,
-                }),
-              });
-
-              if (addResult) {
-                pendingReview.push(link.target_doc_id);
-              }
-            }
+            appliedLinks.push(...analysis.suggested_links.map((l) => l.target_doc_id));
           }
 
           yield* tinybase.addProcessingLog({
@@ -457,8 +424,7 @@ Review these link suggestions and provide your confirmation decision.`;
             data: {
               success: true,
               linksFound: analysis.suggested_links.length,
-              autoApplied: autoApplied.length,
-              pendingReview: pendingReview.length,
+              appliedLinks: appliedLinks.length,
               reasoning: analysis.reasoning,
               attempts: result.attempts,
             },
@@ -466,15 +432,14 @@ Review these link suggestions and provide your confirmation decision.`;
 
           return {
             success: true,
-            value: `${autoApplied.length} auto-applied, ${pendingReview.length} pending review`,
+            value: `${appliedLinks.length} links applied`,
             reasoning: analysis.reasoning,
             confidence: 1,
             alternatives: [],
             attempts: result.attempts,
-            needsReview: pendingReview.length > 0,
+            needsReview: false,
             links: toLinkResults(analysis, input.documentLinkFields),
-            autoApplied,
-            pendingReview,
+            appliedLinks,
           };
         }).pipe(
           Effect.mapError((e) =>
@@ -574,22 +539,21 @@ Review these link suggestions and provide your confirmation decision.`;
                     emitResult('document_links', {
                       success: true,
                       links: toLinkResults(lastAnalysis!, input.documentLinkFields),
-                      autoApplied: lastAnalysis!.high_confidence_links,
-                      pendingReview: lastAnalysis!.low_confidence_links,
+                      appliedLinks: lastAnalysis!.suggested_links.map((l) => l.target_doc_id),
                     })
                   )
                 );
               }
 
               if (node === 'queue_review') {
+                // Confirmation failed - no links applied, no review needed
                 yield* Effect.sync(() =>
                   emit.single(
                     emitResult('document_links', {
                       success: true,
-                      needsReview: true,
-                      links: lastAnalysis ? toLinkResults(lastAnalysis, input.documentLinkFields) : [],
-                      autoApplied: [],
-                      pendingReview: [],
+                      needsReview: false,
+                      links: [],
+                      appliedLinks: [],
                     })
                   )
                 );

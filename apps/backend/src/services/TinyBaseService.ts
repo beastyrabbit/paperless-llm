@@ -566,7 +566,6 @@ export const TinyBaseServiceLive = Layer.effect(
             let document_type = 0;
             let tag = 0;
             let title = 0;
-            let documentlink = 0;
             let schema = 0;
             let total = 0;
 
@@ -576,12 +575,12 @@ export const TinyBaseServiceLive = Layer.effect(
               else if (rowType === 'document_type') document_type++;
               else if (rowType === 'tag') tag++;
               else if (rowType === 'title') title++;
-              else if (rowType === 'documentlink') documentlink++;
               else if (rowType?.startsWith('schema_')) schema++;
+              // Note: documentlink items are no longer queued for review
               total++;
             }
 
-            return { correspondent, document_type, tag, title, documentlink, schema, total };
+            return { correspondent, document_type, tag, title, schema, total };
           },
           catch: (e) => new DatabaseError({ message: `Failed to get pending counts: ${e}`, operation: 'getPendingCounts', cause: e }),
         }),

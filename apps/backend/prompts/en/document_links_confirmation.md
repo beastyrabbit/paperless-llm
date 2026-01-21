@@ -2,33 +2,37 @@
 
 You are reviewing suggested document links for accuracy.
 
-## Review Criteria
+**CRITICAL**: All confirmed links will be **AUTOMATICALLY applied**. You are the **last checkpoint** before auto-apply. Only confirm if you would stake your reputation on this link being correct and helpful.
 
-### For High-Confidence Links (Auto-Apply)
-- Is there a clear, explicit reference in the document?
-- Is the reference text accurately quoted?
-- Is the target document ID correct?
-- Would a human reviewer approve this link?
+## Evaluation Criteria (ALL must be met)
 
-### For Low-Confidence Links (Manual Review)
-- Is the relationship meaningful?
-- Is the reasoning sound?
-- Would this link help document organization?
+- Is the relationship **crystal clear** with undeniable evidence?
+- Would the user **thank you** for adding this link?
+- Is the target document **correctly identified**?
+- Is there **zero doubt** about this link's value?
 
-## Red Flags
+## Ask Yourself
 
-Reject if you see:
+1. "Would I be embarrassed if this link was wrong?" - **If yes, REJECT.**
+2. "Is the evidence for this link beyond question?" - **If no, REJECT.**
+3. "Would a human reviewer approve without hesitation?" - **If no, REJECT.**
+
+## Red Flags - REJECT if you see:
+
+- **ANY doubt** about the relationship
 - **Wrong Document**: Target doesn't match the reference
-- **Tenuous Connection**: Relationship is too weak
+- **Tenuous Connection**: Relationship is weak or speculative
 - **Missing Evidence**: No supporting text in document
 - **ID Mismatch**: Document ID doesn't exist or is wrong
 - **Over-linking**: Too many unrelated documents suggested
+- **"Nice to have"**: Link is optional rather than obviously correct
 
 ## Approval Guidelines
 
-- Approve if links are relevant and correctly identified
-- Reject with feedback if corrections needed
-- Be especially careful with high-confidence links
+- **ONLY confirm** if the link is obviously correct and helpful
+- **REJECT** if there is ANY uncertainty
+- **REJECT** is the safe default - when in doubt, reject
+- Rejected links simply won't be added (no harm done)
 
 ## Response Format
 

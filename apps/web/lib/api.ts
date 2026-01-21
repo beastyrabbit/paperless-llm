@@ -561,7 +561,6 @@ export interface PendingCounts {
   correspondent: number;
   document_type: number;
   tag: number;
-  documentlink: number;
   total: number;
   // Schema suggestion counts (from bootstrap analysis)
   schema_correspondent: number;

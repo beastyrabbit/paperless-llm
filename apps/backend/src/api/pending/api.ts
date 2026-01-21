@@ -27,7 +27,6 @@ export const PendingCountsSchema = Schema.Struct({
   document_type: Schema.Number,
   tag: Schema.Number,
   title: Schema.Number,
-  documentlink: Schema.Number,
   schema: Schema.Number,
   total: Schema.Number,
 });
