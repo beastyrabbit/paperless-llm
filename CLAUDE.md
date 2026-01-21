@@ -120,7 +120,7 @@ const prompt = promptInfo.content;
 - PromptService automatically loads the correct language based on settings
 - Falls back to English if the target language prompt doesn't exist
 - Use placeholder syntax like `{document_content}`, `{existing_tags}` in prompts
-- PromptService strips markdown formatting before sending to LLM (plain text only)
+- PromptService strips Markdown formatting before sending to LLM (plain text only)
 
 **When adding a new prompt:**
 

@@ -236,8 +236,6 @@ export type DocumentLinkSuggestionOutput = z.infer<typeof DocumentLinkSuggestion
 export const DocumentLinksAnalysisSchema = z.object({
   suggested_links: z.array(DocumentLinkSuggestionSchema).describe('List of document link suggestions'),
   reasoning: z.string().describe('Overall reasoning for link suggestions'),
-  high_confidence_links: z.array(z.number()).describe('IDs of links that can be auto-applied (confidence > 0.8, explicit references)'),
-  low_confidence_links: z.array(z.number()).describe('IDs of links that need manual review'),
 });
 
 export type DocumentLinksAnalysisOutput = z.infer<typeof DocumentLinksAnalysisSchema>;
