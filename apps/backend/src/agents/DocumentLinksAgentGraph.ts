@@ -175,12 +175,11 @@ export const DocumentLinksAgentGraphServiceLive = Layer.effect(
     });
 
     // Convert structured output to result format
+    // Each documentlink field receives the same suggested links
     const toLinkResults = (
       analysis: DocumentLinksAnalysisOutput,
       documentLinkFields: CustomField[]
     ): DocumentLinkResult[] => {
-      // For now, we create one result per documentlink field
-      // Each field gets all the suggested links
       return documentLinkFields.map((field) => ({
         fieldId: field.id,
         fieldName: field.name,
@@ -377,43 +376,45 @@ REMINDER: If you confirm, ALL these links will be automatically applied. Only co
             };
           }
 
-          // Apply ALL confirmed links to the first documentlink field
+          // Apply ALL confirmed links to ALL documentlink fields
           const appliedLinks: number[] = [];
-          const firstField = input.documentLinkFields[0];
-          if (analysis.suggested_links.length > 0 && firstField) {
+          if (analysis.suggested_links.length > 0 && input.documentLinkFields.length > 0) {
             const doc = yield* paperless.getDocument(input.docId);
             const currentFields = (doc.custom_fields ?? []) as Array<{
               field: number;
               value: unknown;
             }>;
 
-            // Get current value for the field (should be an array of doc IDs)
-            const existingField = currentFields.find((cf) => cf.field === firstField.id);
-            const existingLinks = Array.isArray(existingField?.value)
-              ? (existingField.value as number[])
-              : [];
+            // Build updated custom fields with links applied to each documentlink field
+            const newLinkDocIds = analysis.suggested_links.map((l) => l.target_doc_id);
+            const documentLinkFieldIds = new Set(input.documentLinkFields.map((f) => f.id));
 
-            // Add new links
-            const newLinks = [
-              ...existingLinks,
-              ...analysis.suggested_links.map((l) => l.target_doc_id),
-            ];
+            // Start with non-documentlink fields
+            const newCustomFields = currentFields.filter(
+              (cf) => !documentLinkFieldIds.has(cf.field)
+            );
 
-            // Deduplicate
-            const uniqueLinks = [...new Set(newLinks)];
+            // Add each documentlink field with merged links
+            for (const field of input.documentLinkFields) {
+              const existingField = currentFields.find((cf) => cf.field === field.id);
+              const existingLinks = Array.isArray(existingField?.value)
+                ? (existingField.value as number[])
+                : [];
 
-            // Update the field
-            const newCustomFields = currentFields.filter((cf) => cf.field !== firstField.id);
-            newCustomFields.push({
-              field: firstField.id,
-              value: uniqueLinks,
-            });
+              // Merge existing and new links, deduplicate
+              const mergedLinks = [...new Set([...existingLinks, ...newLinkDocIds])];
+
+              newCustomFields.push({
+                field: field.id,
+                value: mergedLinks,
+              });
+            }
 
             yield* paperless.updateDocument(input.docId, {
               custom_fields: newCustomFields,
             });
 
-            appliedLinks.push(...analysis.suggested_links.map((l) => l.target_doc_id));
+            appliedLinks.push(...newLinkDocIds);
           }
 
           yield* tinybase.addProcessingLog({
@@ -425,6 +426,7 @@ REMINDER: If you confirm, ALL these links will be automatically applied. Only co
               success: true,
               linksFound: analysis.suggested_links.length,
               appliedLinks: appliedLinks.length,
+              fieldsUpdated: input.documentLinkFields.length,
               reasoning: analysis.reasoning,
               attempts: result.attempts,
             },
@@ -432,7 +434,7 @@ REMINDER: If you confirm, ALL these links will be automatically applied. Only co
 
           return {
             success: true,
-            value: `${appliedLinks.length} links applied`,
+            value: `${appliedLinks.length} links applied to ${input.documentLinkFields.length} field(s)`,
             reasoning: analysis.reasoning,
             confidence: 1,
             alternatives: [],

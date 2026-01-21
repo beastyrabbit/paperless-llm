@@ -48,6 +48,6 @@ Liefere:
   - target_doc_title: Titel als Referenz
   - confidence: Wert 0-1 (fuer Protokollierung/Debugging behalten)
   - reasoning: Warum dieses Dokument verknuepft werden sollte
-  - reference_type: 'explicit', 'semantic', oder 'shared_context'
+  - reference_type: 'explicit', 'semantic' (shared_context nur bei expliziter Anfrage)
   - reference_text: Zitat, das den Vorschlag ausgeloest hat (bei explizit)
 - **reasoning**: Gesamter Analyseansatz

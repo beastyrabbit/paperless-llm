@@ -48,6 +48,6 @@ Provide:
   - target_doc_title: Title for reference
   - confidence: 0-1 score (keep for logging/debugging)
   - reasoning: Why this document should be linked
-  - reference_type: 'explicit', 'semantic', or 'shared_context'
+  - reference_type: 'explicit', 'semantic' (shared_context only if explicitly requested)
   - reference_text: Quote that triggered the suggestion (if explicit)
 - **reasoning**: Overall analysis approach
