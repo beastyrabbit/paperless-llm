@@ -104,6 +104,10 @@ Copy `config.example.yaml` to `config.yaml` (gitignored). Settings are loaded wi
 
 Key config sections: `paperless`, `mistral`, `ollama`, `qdrant`, `auto_processing`, `tags`, `pipeline`, `vector_search`.
 
+## Ports
+
+Frontend dev server on port 3765, backend on port 8765 (registered in `/home/beasty/projects/.ports`).
+
 ## Development Guidelines
 
 ### Prompts and Localization
