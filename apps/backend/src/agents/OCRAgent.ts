@@ -197,6 +197,9 @@ export const OCRAgentServiceLive = Layer.effect(
           // Run Mistral OCR
           const ocrResult = yield* runMistralOCR(pdfBytes);
 
+          // Write Mistral OCR content back to Paperless-ngx (replaces Tesseract output)
+          yield* paperless.updateDocument(docId, { content: ocrResult.text });
+
           // Update tags: remove pending, add ocr-done
           yield* paperless.transitionDocumentTag(docId, tagConfig.pending, tagConfig.ocrDone);
 
@@ -283,6 +286,9 @@ export const OCRAgentServiceLive = Layer.effect(
               );
 
               const ocrResult = yield* runMistralOCR(pdfBytes);
+
+              // Write Mistral OCR content back to Paperless-ngx (replaces Tesseract output)
+              yield* paperless.updateDocument(docId, { content: ocrResult.text });
 
               yield* paperless.transitionDocumentTag(docId, tagConfig.pending, tagConfig.ocrDone);
 

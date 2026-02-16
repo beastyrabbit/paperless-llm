@@ -42,6 +42,7 @@ export const DocumentUpdateSchema = Schema.Struct({
   tags: Schema.Array(Schema.Number).pipe(Schema.optional),
   archive_serial_number: Schema.NullOr(Schema.Number).pipe(Schema.optional),
   custom_fields: Schema.Array(CustomFieldValueSchema).pipe(Schema.optional),
+  content: Schema.String.pipe(Schema.optional),
 });
 
 export type DocumentUpdate = Schema.Schema.Type<typeof DocumentUpdateSchema>;

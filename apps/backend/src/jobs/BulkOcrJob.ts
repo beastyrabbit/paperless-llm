@@ -141,9 +141,8 @@ export const BulkOcrJobServiceLive = Layer.effect(
                   const ocrPrompt = `Extract all text from this document. Preserve the structure and formatting as much as possible. Return only the extracted text, no explanations.`;
                   const ocrResult = yield* mistral.processDocument(pdfBase64, ocrPrompt);
 
-                  // Note: Paperless-ngx doesn't support direct content update via API
-                  // The OCR content would typically be stored elsewhere or used for analysis
-                  // For now, we just move the document to the next stage
+                  // Write Mistral OCR content back to Paperless-ngx (replaces Tesseract output)
+                  yield* paperless.updateDocument(doc.id, { content: ocrResult });
 
                   // Move to next stage - atomic tag transition
                   yield* paperless.transitionDocumentTag(doc.id, tagConfig.pending, tagConfig.ocrDone);
