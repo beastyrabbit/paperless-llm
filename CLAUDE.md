@@ -52,6 +52,8 @@ pnpm run precommit
 
 On errors, the commit is aborted.
 
+**Note:** Pre-commit hooks run typecheck + lint via turborepo and can take 5-10s (cached) or 30s+ (uncached). Use 600s timeout for `git commit` in automation.
+
 ## Architecture
 
 **Two-service architecture:**
@@ -158,6 +160,19 @@ When adding a new pipeline step in `ProcessingPipeline.ts`:
    }
    ```
 3. **Add settings UI** in the Pipeline tab for users to enable/disable
+
+### Mistral OCR Code Paths
+
+Two separate OCR implementations exist (pre-existing architectural divergence):
+- `OCRAgent.runMistralOCR()` → dedicated `/v1/ocr` endpoint → returns `{ text: string, pages: number }`
+- `MistralService.processDocument()` → chat completions API with extraction prompt → returns `string`
+
+`BulkOcrJob` uses `MistralService`, while `OCRAgent` uses the dedicated OCR API. Watch the return types when passing to `updateDocument`.
+
+### Paperless-ngx API Notes
+
+- `PATCH /api/documents/{id}/` accepts `content` field to overwrite document text (replaces Tesseract output with Mistral OCR)
+- The `DocumentUpdateSchema` in `models/index.ts` defines the allowed PATCH fields
 
 ### Background Jobs
 
