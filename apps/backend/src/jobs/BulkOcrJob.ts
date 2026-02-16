@@ -141,9 +141,12 @@ export const BulkOcrJobServiceLive = Layer.effect(
                   const ocrPrompt = `Extract all text from this document. Preserve the structure and formatting as much as possible. Return only the extracted text, no explanations.`;
                   const ocrResult = yield* mistral.processDocument(pdfBase64, ocrPrompt);
 
-                  // Note: Paperless-ngx doesn't support direct content update via API
-                  // The OCR content would typically be stored elsewhere or used for analysis
-                  // For now, we just move the document to the next stage
+                  // Write Mistral OCR content back to Paperless-ngx (overwrites existing content)
+                  if (ocrResult.length > 0) {
+                    yield* paperless.updateDocument(doc.id, { content: ocrResult });
+                  } else {
+                    console.warn(`[BulkOCR] Mistral returned empty text for document ${doc.id} (${doc.title}), keeping existing content`);
+                  }
 
                   // Move to next stage - atomic tag transition
                   yield* paperless.transitionDocumentTag(doc.id, tagConfig.pending, tagConfig.ocrDone);
@@ -153,13 +156,21 @@ export const BulkOcrJobServiceLive = Layer.effect(
                     processed: p.processed + 1,
                   }));
                 } catch (error) {
+                  console.error(`[BulkOCR] Failed to process document ${doc.id} (${doc.title}): ${String(error)}`);
+
                   yield* Ref.update(progressRef, (p) => ({
                     ...p,
                     errors: p.errors + 1,
                   }));
 
-                  // Mark as failed
-                  yield* paperless.addTagToDocument(doc.id, tagConfig.failed);
+                  // Best-effort: mark as failed, but don't let this abort the batch
+                  yield* paperless.addTagToDocument(doc.id, tagConfig.failed).pipe(
+                    Effect.catchAll((tagError) =>
+                      Effect.sync(() =>
+                        console.error(`[BulkOCR] Additionally failed to tag document ${doc.id} as failed: ${String(tagError)}`)
+                      )
+                    )
+                  );
                 }
 
                 // Rate limiting
@@ -175,6 +186,7 @@ export const BulkOcrJobServiceLive = Layer.effect(
                 currentDocTitle: null,
               }));
             } catch (error) {
+              console.error(`[BulkOCR] Job failed: ${String(error)}`);
               yield* Ref.update(progressRef, (p) => ({
                 ...p,
                 status: 'error' as const,
