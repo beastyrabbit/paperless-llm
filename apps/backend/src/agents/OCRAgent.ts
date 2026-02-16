@@ -4,7 +4,8 @@
  * This agent handles ONLY the OCR step:
  * 1. Download PDF from Paperless
  * 2. Send to Mistral OCR API
- * 3. Update document tags
+ * 3. Write OCR content back to Paperless (overwrites existing content)
+ * 4. Update document tags
  */
 import { Effect, Context, Layer, Stream, pipe } from 'effect';
 import { ConfigService, PaperlessService, TinyBaseService } from '../services/index.js';
@@ -57,12 +58,6 @@ export interface OCRAgentService extends Agent<OCRInput, OCRResult> {
 }
 
 export const OCRAgentService = Context.GenericTag<OCRAgentService>('OCRAgentService');
-
-// ===========================================================================
-// Constants
-// ===========================================================================
-
-const MAX_PAGES_FOR_BASE64 = 60;
 
 // ===========================================================================
 // Live Implementation
@@ -131,18 +126,11 @@ export const OCRAgentServiceLive = Layer.effect(
 
             const result = (await response.json()) as MistralOCRResponse;
 
-            // Extract text from OCR response
-            let extractedText = '';
-            let pages = 0;
-
-            for (const page of result.pages) {
-              extractedText += page.markdown + '\n\n';
-              pages++;
-            }
+            const text = result.pages.map((page) => page.markdown).join('\n\n');
 
             return {
-              text: extractedText.trim(),
-              pages,
+              text,
+              pages: result.pages.length,
             };
           },
           catch: (error) =>
@@ -197,8 +185,12 @@ export const OCRAgentServiceLive = Layer.effect(
           // Run Mistral OCR
           const ocrResult = yield* runMistralOCR(pdfBytes);
 
-          // Write Mistral OCR content back to Paperless-ngx (replaces Tesseract output)
-          yield* paperless.updateDocument(docId, { content: ocrResult.text });
+          // Write Mistral OCR content back to Paperless-ngx (overwrites existing content)
+          if (ocrResult.text.length > 0) {
+            yield* paperless.updateDocument(docId, { content: ocrResult.text });
+          } else {
+            console.warn(`[OCR] Mistral returned empty text for document ${docId}, keeping existing content`);
+          }
 
           // Update tags: remove pending, add ocr-done
           yield* paperless.transitionDocumentTag(docId, tagConfig.pending, tagConfig.ocrDone);
@@ -287,8 +279,12 @@ export const OCRAgentServiceLive = Layer.effect(
 
               const ocrResult = yield* runMistralOCR(pdfBytes);
 
-              // Write Mistral OCR content back to Paperless-ngx (replaces Tesseract output)
-              yield* paperless.updateDocument(docId, { content: ocrResult.text });
+              // Write Mistral OCR content back to Paperless-ngx (overwrites existing content)
+              if (ocrResult.text.length > 0) {
+                yield* paperless.updateDocument(docId, { content: ocrResult.text });
+              } else {
+                console.warn(`[OCR] Mistral returned empty text for document ${docId}, keeping existing content`);
+              }
 
               yield* paperless.transitionDocumentTag(docId, tagConfig.pending, tagConfig.ocrDone);
 
@@ -322,6 +318,7 @@ export const OCRAgentServiceLive = Layer.effect(
           }).pipe(
             Effect.catchAll((error) =>
               Effect.gen(function* () {
+                console.error(`[OCR] Stream processing failed for document ${input.docId}: ${String(error)}`);
                 yield* Effect.sync(() =>
                   emit.single(emitError('ocr', String(error)))
                 );
