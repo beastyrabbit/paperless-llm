@@ -11,7 +11,7 @@ Paperless Local LLM is an AI-powered document analysis system for Paperless-ngx.
 ### Frontend (Next.js)
 ```bash
 pnpm install         # Install dependencies (from root)
-pnpm run dev:web     # Development server (port 3765)
+pnpm run dev:web     # Development server
 pnpm run build       # Production build
 pnpm run lint        # ESLint
 pnpm run typecheck   # TypeScript check
@@ -20,7 +20,7 @@ pnpm run typecheck   # TypeScript check
 ### Backend (TypeScript/Effect)
 ```bash
 cd apps/backend
-pnpm run dev         # Development server (port 8765)
+pnpm run dev         # Development server
 pnpm run build       # Production build
 pnpm run test        # Run tests with Vitest
 pnpm run typecheck   # TypeScript check
@@ -57,8 +57,8 @@ On errors, the commit is aborted.
 ## Architecture
 
 **Two-service architecture:**
-- **Frontend**: Next.js 16 + React 19 + TailwindCSS 4 + shadcn/ui (port 3765)
-- **Backend**: TypeScript + Effect-TS + Hono HTTP server (port 8765)
+- **Frontend**: Next.js 16 + React 19 + TailwindCSS 4 + shadcn/ui
+- **Backend**: TypeScript + Effect-TS + Hono HTTP server
 
 **External dependencies:**
 - Paperless-ngx (document management)
@@ -108,7 +108,11 @@ Key config sections: `paperless`, `mistral`, `ollama`, `qdrant`, `auto_processin
 
 ## Ports
 
-Frontend dev server on port 3765, backend on port 8765 (registered in `/home/beasty/projects/.ports`).
+Ports are managed by portless. Use `pnpm dev:portless` (or `pnpm dev:web:portless` / `pnpm dev:backend:portless` individually).
+
+- Frontend: `http://paperless-web.localhost:1355`
+- Backend: `http://paperless-api.localhost:1355`
+- Fallback (without portless): frontend on 3765, backend on 8765
 
 ## Development Guidelines
 

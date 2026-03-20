@@ -13,6 +13,6 @@ OCR + document-processing platform with Next.js frontend and TypeScript/Effect b
 - Hooks: `pnpm run precommit`
 
 ## Ports
-- Frontend: `3765`
-- Backend: `8765`
-- Registered in `/home/beasty/projects/.ports`
+- Frontend: `http://paperless-web.localhost:1355` (portless)
+- Backend: `http://paperless-api.localhost:1355` (portless)
+- Fallback: frontend `3765`, backend `8765`
