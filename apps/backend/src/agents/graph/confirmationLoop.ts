@@ -518,7 +518,6 @@ const createToolNode = <TAnalysis>(config: ConfirmationLoopConfig<TAnalysis>) =>
         });
 
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const result = await (tool as any).invoke(toolCall.args);
           const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
 

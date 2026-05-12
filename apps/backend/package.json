@@ -10,7 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "tsc --noEmit",
+    "lint": "biome lint --diagnostic-level=error .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -20,5 +20,5 @@ pre-commit:
       fail_text: "Private key found in staged files."
     typecheck:
       run: pnpm run typecheck
-    eslint:
+    biome:
       run: pnpm run lint

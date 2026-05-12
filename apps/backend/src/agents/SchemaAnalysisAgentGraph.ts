@@ -447,7 +447,6 @@ Analyze this document and suggest any new entities that should be added to the s
         const tool = tools.find((t) => t.name === toolCall.name);
         if (tool) {
           try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const result = await (tool as any).invoke(toolCall.args);
             toolMessages.push(
               new ToolMessage({

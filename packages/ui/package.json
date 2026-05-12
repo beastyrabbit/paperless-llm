@@ -12,7 +12,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "eslint ."
+    "lint": "biome lint --diagnostic-level=error ."
   },
   "peerDependencies": {
     "react": "^18 || ^19",
@@ -41,11 +41,9 @@
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
-    "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@types/react": "^19.2.8",
     "@types/react-dom": "^19.2.3",
-    "eslint": "^9.39.2",
     "typescript": "^5.9.3"
   }
 }

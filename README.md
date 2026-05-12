@@ -120,18 +120,20 @@ qdrant:
 
 ### Running in Development
 
-**Terminal 1 — Backend:**
+**Full stack via Portless:**
 ```bash
-cd apps/backend
 pnpm run dev
 ```
 
-**Terminal 2 — Frontend:**
-```bash
-pnpm run dev:web
-```
+The application will be available at `https://paperless-llm-web.localhost:1355`.
+The backend route will be available at `https://paperless-llm-api.localhost:1355`.
+Portless uses the shared proxy port `1355`; service names keep this project separate from other local projects while app ports are assigned automatically.
 
-The application will be available at `http://localhost:3765`.
+**Fallback direct ports:**
+```bash
+pnpm run dev:web       # Frontend on http://localhost:3765
+pnpm run dev:backend   # Backend on http://localhost:8765
+```
 
 ## Docker Deployment
 
@@ -258,16 +260,16 @@ paperless-local-llm/
 ### Frontend Commands
 ```bash
 pnpm install          # Install dependencies
-pnpm run dev:web      # Development server (port 3765)
+pnpm run dev          # Frontend + backend via Portless
+pnpm run dev:web      # Frontend only (port 3765)
 pnpm run build        # Production build
-pnpm run lint         # ESLint
+pnpm run lint         # Biome lint
 pnpm run typecheck    # TypeScript check
 ```
 
 ### Backend Commands
 ```bash
-cd apps/backend
-pnpm run dev          # Development server (port 8765)
+pnpm run dev:backend  # Backend only (port 8765)
 pnpm run build        # Production build
 pnpm run test         # Run tests with Vitest
 pnpm run typecheck    # TypeScript check
@@ -282,7 +284,7 @@ Git hooks are automatically active (located in `.git/hooks/pre-commit`).
 pnpm run precommit
 ```
 
-Active checks: **gitleaks** (secrets), **TypeScript** (types), **ESLint** (linting), **large files**, **merge conflicts**
+Active checks: **gitleaks** (secrets), **TypeScript** (types), **Biome** (linting), **large files**, **merge conflicts**
 
 ## Contributing
 
