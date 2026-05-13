@@ -209,7 +209,9 @@ export const PiConsolidationAgentServiceLive = Layer.effect(
               : "document_type";
         const exampleId = proposal.sourceIds[0] ?? proposal.targetId ?? 0;
         const exampleDocuments =
-          proposal.attributeType === "custom_field" || !exampleId
+          proposal.attributeType === "custom_field" ||
+          !exampleId ||
+          proposal.affectedDocumentCount === 0
             ? []
             : yield* examplesFor(exampleField, exampleId);
         proposals.push({ id, ...proposal, exampleDocuments });
@@ -239,12 +241,14 @@ export const PiConsolidationAgentServiceLive = Layer.effect(
           for (let j = i + 1; j < entries.length; j++) {
             const left = entries[i]!;
             const right = entries[j]!;
+            const leftCount = left.document_count ?? 0;
+            const rightCount = right.document_count ?? 0;
+            if (leftCount === 0 && rightCount === 0) continue;
+
             const score = similarity(left.name, right.name);
             const sameNormalized = normalize(left.name) === normalize(right.name);
             if (!sameNormalized && score < 0.84) continue;
 
-            const leftCount = left.document_count ?? 0;
-            const rightCount = right.document_count ?? 0;
             const target = leftCount >= rightCount ? left : right;
             const source = target.id === left.id ? right : left;
             yield* addProposal(proposals, {

@@ -1281,9 +1281,14 @@ export const PiDocumentAgentServiceLive = Layer.effect(
             const name = tagNamesById.get(tagId);
             return !name || !isWorkflowTagName(name, workflowTagNames);
           });
-          const documentUserTagNames = (doc.tag_names ?? []).filter(
-            (name) => !isWorkflowTagName(name, workflowTagNames),
-          );
+          const documentUserTagNames =
+            doc.tag_names && doc.tag_names.length > 0
+              ? doc.tag_names.filter((name) => !isWorkflowTagName(name, workflowTagNames))
+              : documentUserTagIds
+                  .map((tagId) => tagNamesById.get(tagId))
+                  .filter(
+                    (name): name is string => !!name && !isWorkflowTagName(name, workflowTagNames),
+                  );
           const documentWorkflowTagNames = (doc.tags ?? [])
             .map((tagId) => tagNamesById.get(tagId))
             .filter((name): name is string => !!name && isWorkflowTagName(name, workflowTagNames));
