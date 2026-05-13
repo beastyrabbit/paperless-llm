@@ -21,14 +21,6 @@ export const translate = (data: {
     target_lang: data.target_lang,
   });
 
-export const translatePrompts = (sourceLang: string, targetLang: string) =>
-  Effect.succeed({
-    status: 'completed',
-    translated_count: 0,
-    failed_count: 0,
-    prompts: [],
-  });
-
 // ===========================================================================
 // Translations Cache
 // ===========================================================================

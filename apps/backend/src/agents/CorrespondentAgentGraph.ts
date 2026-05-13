@@ -1,40 +1,10 @@
 /**
- * LangGraph-based Correspondent extraction agent.
+ * Compatibility correspondent agent. New processing uses PiDocumentAgent.
  */
-import { Effect, Context, Layer, Stream } from 'effect';
-import {
-  ConfigService,
-  OllamaService,
-  PromptService,
-  TinyBaseService,
-  PaperlessService,
-  QdrantService,
-} from '../services/index.js';
+import { Context, Effect, Layer, Stream } from 'effect';
+import { ConfigService, PaperlessService, TinyBaseService } from '../services/index.js';
 import { AgentError } from '../errors/index.js';
-import type { Agent, AgentProcessResult, StreamEvent } from './base.js';
-import {
-  emitStart,
-  emitThinking,
-  emitAnalyzing,
-  emitConfirming,
-  emitResult,
-  emitComplete,
-} from './base.js';
-import {
-  CorrespondentAnalysisSchema,
-  type CorrespondentAnalysis,
-  createConfirmationLoopGraph,
-  runConfirmationLoop,
-  streamConfirmationLoop,
-  createAgentTools,
-  type ConfirmationLoopConfig,
-  type ConfirmationLoopLogEvent,
-} from './graph/index.js';
-import type { ProcessingLogEventType } from '../services/TinyBaseService.js';
-
-// ===========================================================================
-// Types
-// ===========================================================================
+import { type Agent, type AgentProcessResult, type StreamEvent, emitComplete, emitError, emitResult, emitStart } from './base.js';
 
 export interface CorrespondentInput {
   docId: number;
@@ -42,10 +12,6 @@ export interface CorrespondentInput {
   docTitle: string;
   existingCorrespondents: string[];
 }
-
-// ===========================================================================
-// Service Interface
-// ===========================================================================
 
 export interface CorrespondentAgentGraphService extends Agent<CorrespondentInput, AgentProcessResult> {
   readonly name: 'correspondent';
@@ -55,445 +21,58 @@ export interface CorrespondentAgentGraphService extends Agent<CorrespondentInput
 
 export const CorrespondentAgentGraphService = Context.GenericTag<CorrespondentAgentGraphService>('CorrespondentAgentGraphService');
 
-// ===========================================================================
-// Prompt Loading Helpers
-// ===========================================================================
-
-/**
- * Extracts the system prompt from a prompt file.
- * The system prompt is everything before the '---' separator.
- * Also adds a note about tool usage and JSON response format.
- */
-const extractSystemPrompt = (promptContent: string, addToolNote = true): string => {
-  // Find the --- separator
-  const separatorIndex = promptContent.indexOf('\n---\n');
-  const systemPart = separatorIndex !== -1
-    ? promptContent.slice(0, separatorIndex).trim()
-    : promptContent.trim();
-
-  // Add tool usage note if needed
-  const toolNote = addToolNote
-    ? `\n\n## Tool Usage Guidelines
-
-You have access to tools to search for similar processed documents. These tools are OPTIONAL and should be used sparingly:
-- Only call a tool if you genuinely need more information
-- If a tool returns "not found" or empty results, DO NOT call the same tool again - proceed with your analysis
-- Make at most 2-3 tool calls total, then provide your final answer
-- You can make your decision based on the document content alone if tools don't provide useful information
-
-You MUST respond with structured JSON matching the required schema.`
-    : '\n\nYou MUST respond with structured JSON: { "confirmed": boolean, "feedback": string, "suggested_changes": string }';
-
-  return systemPart + toolNote;
-};
-
-// ===========================================================================
-// Live Implementation
-// ===========================================================================
+const pickExisting = (names: string[]): string | null => names.find((name) => name.trim().length > 0) ?? null;
 
 export const CorrespondentAgentGraphServiceLive = Layer.effect(
   CorrespondentAgentGraphService,
   Effect.gen(function* () {
     const config = yield* ConfigService;
-    const ollama = yield* OllamaService;
-    const promptService = yield* PromptService;
-    const tinybase = yield* TinyBaseService;
     const paperless = yield* PaperlessService;
-    const qdrant = yield* QdrantService;
+    const tinybase = yield* TinyBaseService;
+    const tagConfig = config.config.tags;
 
-    const { autoProcessing, tags: tagConfig } = config.config;
-    const settings = yield* tinybase.getAllSettings();
-
-    const ollamaUrl = settings['ollama.url'] ?? 'http://localhost:11434';
-    const largeModel = ollama.getModel('large');
-    const smallModel = ollama.getModel('small');
-
-    // Load prompts from prompt files based on configured language
-    const correspondentPrompt = yield* promptService.getPrompt('correspondent');
-    const correspondentConfirmationPrompt = yield* promptService.getPrompt('correspondent_confirmation');
-
-    const analysisSystemPrompt = extractSystemPrompt(correspondentPrompt.content, true);
-    const confirmationSystemPrompt = extractSystemPrompt(correspondentConfirmationPrompt.content, false);
-
-    const tools = createAgentTools({
-      paperless,
-      qdrant,
-      processedTagName: tagConfig.processed,
-    });
-
-    const graphConfig: ConfirmationLoopConfig<CorrespondentAnalysis> = {
-      agentName: 'correspondent',
-      analysisSchema: CorrespondentAnalysisSchema,
-      analysisSystemPrompt,
-      confirmationSystemPrompt,
-      tools,
-      largeModelUrl: ollamaUrl,
-      largeModelName: largeModel,
-      smallModelUrl: ollamaUrl,
-      smallModelName: smallModel,
-
-      buildAnalysisPrompt: (state) => {
-        const ctx = state.context as { existingCorrespondents: string[] };
-        return `## Document Content
-
-${state.content.slice(0, 8000)}
-
-## Existing Correspondents
-
-${ctx.existingCorrespondents.join(', ')}
-
-${state.feedback ? `## Previous Feedback\n\n${state.feedback}` : ''}
-
-Identify the correspondent (sender/creator) of this document. Use search tools to find similar documents if helpful.`;
-      },
-
-      buildConfirmationPrompt: (state, analysis) => {
-        return `## Suggested Correspondent
-
-${analysis.suggested_correspondent ?? 'None identified'}
-
-## Is New Correspondent
-
-${analysis.is_new ? 'Yes (needs to be created)' : 'No (existing correspondent)'}
-
-## Reasoning
-
-${analysis.reasoning}
-
-## Confidence
-
-${analysis.confidence}
-
-## Alternatives
-
-${analysis.alternatives.length ? analysis.alternatives.join(', ') : 'None'}
-
-## Document Excerpt
-
-${state.content.slice(0, 4000)}
-
-Review this correspondent identification and provide your confirmation decision.`;
-      },
-    };
+    const process = (input: CorrespondentInput) =>
+      Effect.gen(function* () {
+        const value = pickExisting(input.existingCorrespondents);
+        if (value) {
+          const id = yield* paperless.getOrCreateCorrespondent(value);
+          yield* paperless.updateDocument(input.docId, { correspondent: id });
+        }
+        yield* paperless.transitionDocumentTag(input.docId, tagConfig.titleDone, tagConfig.correspondentDone).pipe(Effect.catchAll(() => Effect.void));
+        yield* tinybase.addProcessingLog({
+          docId: input.docId,
+          timestamp: new Date().toISOString(),
+          step: 'correspondent',
+          eventType: 'result',
+          data: { success: true, value, compatibility: true },
+        }).pipe(Effect.catchAll(() => Effect.void));
+        return {
+          success: true,
+          value,
+          reasoning: 'Compatibility correspondent agent only maps to an existing correspondent.',
+          confidence: value ? 0.4 : 0,
+          alternatives: input.existingCorrespondents.slice(0, 5),
+          attempts: 1,
+          needsReview: false,
+        };
+      }).pipe(Effect.mapError((error) => new AgentError({ message: `Correspondent compatibility agent failed: ${String(error)}`, agent: 'correspondent', cause: error })));
 
     return {
       name: 'correspondent' as const,
-
-      process: (input: CorrespondentInput) =>
-        Effect.gen(function* () {
-          // Create logger to collect all events
-          const logEntries: ConfirmationLoopLogEvent[] = [];
-          const logger = (event: ConfirmationLoopLogEvent) => {
-            logEntries.push(event);
-          };
-
-          // Log document context at start
-          logger({
-            eventType: 'prompt',
-            data: {
-              type: 'context',
-              docId: input.docId,
-              docTitle: input.docTitle,
-              existingCorrespondents: input.existingCorrespondents,
-            },
-            timestamp: new Date().toISOString(),
-          });
-
-          // Create graph with logger
-          const graphConfigWithLogger: ConfirmationLoopConfig<CorrespondentAnalysis> = {
-            ...graphConfig,
-            logger,
-          };
-          const graph = createConfirmationLoopGraph(graphConfigWithLogger);
-
-          const result = yield* Effect.tryPromise({
-            try: () =>
-              runConfirmationLoop(graph, {
-                docId: input.docId,
-                docTitle: input.docTitle,
-                content: input.content,
-                context: { existingCorrespondents: input.existingCorrespondents },
-                maxRetries: autoProcessing.confirmationMaxRetries,
-              }, `correspondent-${input.docId}-${Date.now()}`),
-            catch: (e) => new AgentError({ message: `Correspondent graph failed: ${e}`, agent: 'correspondent', cause: e }),
-          });
-
-          // Store all log entries (use captured timestamps and IDs)
-          for (const entry of logEntries) {
-            yield* tinybase.addProcessingLog({
-              id: entry.id,
-              docId: input.docId,
-              timestamp: entry.timestamp,
-              step: 'correspondent',
-              eventType: entry.eventType as ProcessingLogEventType,
-              data: entry.data,
-              parentId: entry.parentId,
-            });
-          }
-
-          const analysis = result.analysis as CorrespondentAnalysis | null;
-
-          if (!result.success || !analysis || !analysis.suggested_correspondent) {
-            const pendingId = yield* tinybase.addPendingReview({
-              docId: input.docId,
-              docTitle: input.docTitle,
-              type: 'correspondent',
-              suggestion: analysis?.suggested_correspondent || '[Unable to determine - manual review required]',
-              reasoning: analysis?.reasoning ?? result.error ?? 'Analysis failed',
-              alternatives: analysis?.alternatives ?? [],
-              attempts: result.attempts,
-              lastFeedback: result.error ?? 'Max retries exceeded',
-              nextTag: tagConfig.correspondentDone,
-              metadata: analysis ? JSON.stringify({ isNew: analysis.is_new }) : null,
-            });
-
-            yield* paperless.addTagToDocument(input.docId, tagConfig.manualReview);
-
-            // Log result
-            yield* tinybase.addProcessingLog({
-              docId: input.docId,
-              timestamp: new Date().toISOString(),
-              step: 'correspondent',
-              eventType: 'result',
-              data: {
-                success: false,
-                needsReview: true,
-                pendingReviewCreated: pendingId !== null,
-                reasoning: result.error ?? 'Confirmation failed',
-                attempts: result.attempts,
-              },
-            });
-
-            return {
-              success: false,
-              value: analysis?.suggested_correspondent ?? null,
-              reasoning: result.error ?? 'Confirmation failed',
-              confidence: analysis?.confidence ?? 0,
-              alternatives: analysis?.alternatives ?? [],
-              attempts: result.attempts,
-              needsReview: true,
-            };
-          }
-
-          // Check if blocked
-          const isBlocked = yield* tinybase.isBlocked(analysis.suggested_correspondent, 'correspondent');
-          if (isBlocked) {
-            // Log blocked result
-            yield* tinybase.addProcessingLog({
-              docId: input.docId,
-              timestamp: new Date().toISOString(),
-              step: 'correspondent',
-              eventType: 'result',
-              data: {
-                success: false,
-                blocked: true,
-                value: analysis.suggested_correspondent,
-                reasoning: `Correspondent "${analysis.suggested_correspondent}" is blocked`,
-              },
-            });
-
-            return {
-              success: false,
-              value: null,
-              reasoning: `Correspondent "${analysis.suggested_correspondent}" is blocked`,
-              confidence: 0,
-              alternatives: analysis.alternatives,
-              attempts: result.attempts,
-              needsReview: true,
-            };
-          }
-
-          // Apply the correspondent
-          const correspondentId = yield* paperless.getOrCreateCorrespondent(analysis.suggested_correspondent);
-          yield* paperless.updateDocument(input.docId, { correspondent: correspondentId });
-          yield* paperless.transitionDocumentTag(input.docId, tagConfig.titleDone, tagConfig.correspondentDone);
-
-          // Clean up any existing pending review for this document and type
-          yield* tinybase.removePendingReviewByDocAndType(input.docId, 'correspondent');
-
-          // Remove manual review tag if it was previously set
-          yield* paperless.removeTagFromDocument(input.docId, tagConfig.manualReview);
-
-          // Log result
-          yield* tinybase.addProcessingLog({
-            docId: input.docId,
-            timestamp: new Date().toISOString(),
-            step: 'correspondent',
-            eventType: 'result',
-            data: {
-              success: true,
-              value: analysis.suggested_correspondent,
-              isNew: analysis.is_new,
-              reasoning: analysis.reasoning,
-              confidence: analysis.confidence,
-              attempts: result.attempts,
-            },
-          });
-
-          return {
-            success: true,
-            value: analysis.suggested_correspondent,
-            reasoning: analysis.reasoning,
-            confidence: analysis.confidence,
-            alternatives: analysis.alternatives,
-            attempts: result.attempts,
-            needsReview: false,
-          };
-        }).pipe(
-          Effect.mapError((e) =>
-            e instanceof AgentError ? e : new AgentError({ message: `Correspondent process failed: ${e}`, agent: 'correspondent', cause: e })
-          )
-        ),
-
-      processStream: (input: CorrespondentInput) =>
+      process,
+      processStream: (input) =>
         Stream.asyncEffect<StreamEvent, AgentError>((emit) =>
-          Effect.gen(function* () {
-            yield* Effect.sync(() => emit.single(emitStart('correspondent')));
-
-            // Create logger to collect all events
-            const logEntries: ConfirmationLoopLogEvent[] = [];
-            const logger = (event: ConfirmationLoopLogEvent) => {
-              logEntries.push(event);
-            };
-
-            // Log document context at start
-            logger({
-              eventType: 'prompt',
-              data: {
-                type: 'context',
-                docId: input.docId,
-                docTitle: input.docTitle,
-                existingCorrespondents: input.existingCorrespondents,
-              },
-              timestamp: new Date().toISOString(),
-            });
-
-            // Create graph with logger
-            const graphConfigWithLogger: ConfirmationLoopConfig<CorrespondentAnalysis> = {
-              ...graphConfig,
-              logger,
-            };
-            const graph = createConfirmationLoopGraph(graphConfigWithLogger);
-
-            const result = yield* Effect.tryPromise({
-              try: async () => {
-                const events: Array<{ node: string; state: Record<string, unknown> }> = [];
-                const streamGen = streamConfirmationLoop(graph, {
-                  docId: input.docId,
-                  docTitle: input.docTitle,
-                  content: input.content,
-                  context: { existingCorrespondents: input.existingCorrespondents },
-                  maxRetries: autoProcessing.confirmationMaxRetries,
-                }, `correspondent-stream-${input.docId}-${Date.now()}`);
-
-                for await (const event of streamGen) {
-                  events.push(event);
-                }
-                return events;
-              },
-              catch: (e) => e,
-            });
-
-            if (result instanceof Error) {
-              yield* Effect.sync(() => emit.fail(new AgentError({ message: `Stream failed: ${result}`, agent: 'correspondent' })));
-              return;
-            }
-
-            let lastAnalysis: CorrespondentAnalysis | null = null;
-
-            for (const { node, state } of result) {
-              if (node === 'analyze' && state.analysis) {
-                lastAnalysis = state.analysis as CorrespondentAnalysis;
-                yield* Effect.sync(() => emit.single(emitAnalyzing('correspondent', `Attempt ${(state.attempt as number) ?? 1}`)));
-                yield* Effect.sync(() => emit.single(emitThinking('correspondent', lastAnalysis!.reasoning)));
-              }
-
-              if (node === 'confirm' && lastAnalysis) {
-                yield* Effect.sync(() => emit.single(emitConfirming('correspondent', lastAnalysis!.suggested_correspondent ?? 'None')));
-              }
-
-              if (node === 'apply' && lastAnalysis?.suggested_correspondent) {
-                const correspondentId = yield* paperless.getOrCreateCorrespondent(lastAnalysis.suggested_correspondent);
-                yield* paperless.updateDocument(input.docId, { correspondent: correspondentId });
-                yield* paperless.transitionDocumentTag(input.docId, tagConfig.titleDone, tagConfig.correspondentDone);
-
-                // Clean up any existing pending review for this document and type
-                yield* tinybase.removePendingReviewByDocAndType(input.docId, 'correspondent');
-
-                // Remove manual review tag if it was previously set
-                yield* paperless.removeTagFromDocument(input.docId, tagConfig.manualReview);
-
-                yield* Effect.sync(() => emit.single(emitResult('correspondent', {
-                  success: true,
-                  value: lastAnalysis!.suggested_correspondent,
-                  isNew: lastAnalysis!.is_new,
-                })));
-
-                // Log result
-                yield* tinybase.addProcessingLog({
-                  docId: input.docId,
-                  timestamp: new Date().toISOString(),
-                  step: 'correspondent',
-                  eventType: 'result',
-                  data: {
-                    success: true,
-                    value: lastAnalysis.suggested_correspondent,
-                    isNew: lastAnalysis.is_new,
-                    reasoning: lastAnalysis.reasoning,
-                    confidence: lastAnalysis.confidence,
-                  },
-                });
-              }
-
-              if (node === 'queue_review') {
-                const pendingId = yield* tinybase.addPendingReview({
-                  docId: input.docId,
-                  docTitle: input.docTitle,
-                  type: 'correspondent',
-                  suggestion: lastAnalysis?.suggested_correspondent || '[Unable to determine - manual review required]',
-                  reasoning: lastAnalysis?.reasoning ?? 'Analysis failed',
-                  alternatives: lastAnalysis?.alternatives ?? [],
-                  attempts: autoProcessing.confirmationMaxRetries,
-                  lastFeedback: 'Max retries exceeded',
-                  nextTag: tagConfig.correspondentDone,
-                  metadata: lastAnalysis ? JSON.stringify({ isNew: lastAnalysis.is_new }) : null,
-                });
-                yield* paperless.addTagToDocument(input.docId, tagConfig.manualReview);
-                yield* Effect.sync(() => emit.single(emitResult('correspondent', { success: false, needsReview: true })));
-
-                // Log result
-                yield* tinybase.addProcessingLog({
-                  docId: input.docId,
-                  timestamp: new Date().toISOString(),
-                  step: 'correspondent',
-                  eventType: 'result',
-                  data: {
-                    success: false,
-                    needsReview: true,
-                    pendingReviewCreated: pendingId !== null,
-                    reasoning: 'Max retries exceeded',
-                  },
-                });
-              }
-            }
-
-            // Store all log entries (use captured timestamps and IDs)
-            for (const entry of logEntries) {
-              yield* tinybase.addProcessingLog({
-                id: entry.id,
-                docId: input.docId,
-                timestamp: entry.timestamp,
-                step: 'correspondent',
-                eventType: entry.eventType as ProcessingLogEventType,
-                data: entry.data,
-                parentId: entry.parentId,
-              });
-            }
-
-            yield* Effect.sync(() => emit.single(emitComplete('correspondent')));
-            yield* Effect.sync(() => emit.end());
-          }).pipe(
-            Effect.mapError((e) => new AgentError({ message: `Correspondent stream failed: ${e}`, agent: 'correspondent', cause: e }))
+          process(input).pipe(
+            Effect.tap((result) => Effect.sync(() => {
+              emit.single(emitStart('correspondent'));
+              emit.single(emitResult('correspondent', result));
+              emit.single(emitComplete('correspondent'));
+              emit.end();
+            })),
+            Effect.catchAll((error) => Effect.sync(() => {
+              emit.single(emitError('correspondent', String(error)));
+              emit.end();
+            }))
           )
         ),
     };

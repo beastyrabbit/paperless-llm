@@ -36,10 +36,14 @@ import { documentsApi, processingApi, settingsApi, type DocumentDetail } from "@
 function getProcessingStatus(tags: Array<{ id: number; name: string }>): string {
   const tagNames = tags.map((t) => t.name);
   // Check for final/error states first
-  if (tagNames.some((t) => t.includes("processed"))) return "processed";
+  if (tagNames.some((t) => t === "llm-done" || t.includes("processed"))) return "done";
   if (tagNames.some((t) => t.includes("failed"))) return "failed";
-  if (tagNames.some((t) => t.includes("manual-review"))) return "manual_review";
+  if (tagNames.some((t) => t === "llm-review" || t.includes("manual-review"))) return "review";
   // Check pipeline states in reverse order (most advanced first)
+  if (tagNames.some((t) => t === "llm-index")) return "index";
+  if (tagNames.some((t) => t === "llm-metadata")) return "metadata";
+  if (tagNames.some((t) => t === "llm-ocr")) return "ocr";
+  if (tagNames.some((t) => t === "llm-todo")) return "todo";
   if (tagNames.some((t) => t.includes("tags-done"))) return "tags_done";
   if (tagNames.some((t) => t.includes("document-type-done"))) return "document_type_done";
   if (tagNames.some((t) => t.includes("correspondent-done"))) return "correspondent_done";
@@ -53,17 +57,28 @@ function getProcessingStatus(tags: Array<{ id: number; name: string }>): string 
 
 // Check if OCR is done (content accordion should be collapsed)
 function isOcrComplete(status: string): boolean {
-  return !["pending", "unknown"].includes(status);
+  return !["todo", "pending", "unknown"].includes(status);
 }
 
 // Get the next processing step based on current status
 function getNextStep(status: string): { step: string; label: string } | null {
-  switch (status) {
-    case "pending":
-    case "unknown":
-      return { step: "ocr", label: "OCR" };
-    case "ocr_done":
-      return { step: "summary", label: "Summary" };
+	  switch (status) {
+	    case "todo":
+	    case "pending":
+	    case "unknown":
+	      return { step: "ocr", label: "OCR" };
+	    case "ocr":
+	      return { step: "metadata", label: "Metadata" };
+	    case "metadata":
+	      return { step: "metadata", label: "Metadata" };
+	    case "index":
+	      return { step: "index", label: "Index" };
+	    case "review":
+	      return { step: "review", label: "Review" };
+	    case "done":
+	      return null;
+	    case "ocr_done":
+	      return { step: "metadata", label: "Metadata" };
     case "summary_done":
       return { step: "title", label: "Title" };
     case "schema_review":
@@ -76,16 +91,16 @@ function getNextStep(status: string): { step: string; label: string } | null {
       return { step: "tags", label: "Tags" };
     case "tags_done":
       return { step: "custom_fields", label: "Custom Fields" };
-    case "processed":
-      return null; // Already fully processed
+	    case "processed":
+	      return null; // Already fully processed
     case "failed":
       return { step: "retry", label: "Retry" };
-    case "manual_review":
-      return { step: "review", label: "Review" };
-    default:
-      return { step: "title", label: "Title" };
-  }
-}
+	    case "manual_review":
+	      return { step: "review", label: "Review" };
+	    default:
+	      return { step: "metadata", label: "Metadata" };
+	  }
+	}
 
 export default function DocumentDetailPage({
   params,
@@ -228,7 +243,7 @@ export default function DocumentDetailPage({
 
   const processingStatus = document ? getProcessingStatus(document.tags) : "unknown";
   const nextStep = getNextStep(processingStatus);
-  const isProcessed = processingStatus === "processed";
+  const isProcessed = processingStatus === "done" || processingStatus === "processed";
   const pdfUrl = documentsApi.getPdfUrl(docId);
 
   if (loading) {

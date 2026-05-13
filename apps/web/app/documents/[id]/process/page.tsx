@@ -45,13 +45,30 @@ import { useTinyBase } from "@/lib/tinybase";
 // Step configuration for icons and labels
 const stepConfig: Record<string, { icon: typeof FileText; label: string; color: string }> = {
   ocr: { icon: FileText, label: "OCR", color: "text-blue-500" },
+  document_agent: { icon: Brain, label: "Document Agent", color: "text-purple-500" },
+  review_agent: { icon: MessageSquare, label: "Review Agent", color: "text-cyan-500" },
+  consolidation_agent: { icon: Sparkles, label: "Consolidation Agent", color: "text-amber-500" },
   title: { icon: Sparkles, label: "Title", color: "text-purple-500" },
   correspondent: { icon: User, label: "Correspondent", color: "text-pink-500" },
   document_type: { icon: FileType, label: "Document Type", color: "text-indigo-500" },
   tags: { icon: Tag, label: "Tags", color: "text-orange-500" },
   custom_fields: { icon: Wrench, label: "Custom Fields", color: "text-teal-500" },
+  qdrant_index: { icon: Search, label: "Vector Index", color: "text-emerald-500" },
   pipeline: { icon: ArrowRight, label: "Pipeline", color: "text-emerald-500" },
 };
+
+function findLastLog(
+  logs: ProcessingLogEntry[],
+  predicate: (log: ProcessingLogEntry) => boolean
+): ProcessingLogEntry | undefined {
+  for (let index = logs.length - 1; index >= 0; index--) {
+    const log = logs[index];
+    if (predicate(log)) {
+      return log;
+    }
+  }
+  return undefined;
+}
 
 // Get icon for log event type
 function getLogIcon(eventType: string) {
@@ -353,8 +370,24 @@ export default function ProcessingPage({
 
   // Get steps in order
   const steps = useMemo(() => {
-    const orderedSteps = ["ocr", "summary", "schema_analysis", "title", "correspondent", "document_type", "tags", "custom_fields", "qdrant_index", "pipeline"];
-    return orderedSteps.filter(step => logsByStep[step]?.length > 0);
+    const orderedSteps = [
+      "ocr",
+      "document_agent",
+      "review_agent",
+      "consolidation_agent",
+      "summary",
+      "schema_analysis",
+      "title",
+      "correspondent",
+      "document_type",
+      "tags",
+      "custom_fields",
+      "qdrant_index",
+      "pipeline",
+    ];
+    const ordered = orderedSteps.filter(step => logsByStep[step]?.length > 0);
+    const remaining = Object.keys(logsByStep).filter(step => !orderedSteps.includes(step));
+    return [...ordered, ...remaining];
   }, [logsByStep]);
 
   const handleRefresh = async () => {
@@ -501,9 +534,18 @@ export default function ProcessingPage({
 
                 // Check if step had errors
                 const hasError = stepLogs.some(l => l.eventType === "error");
-                const hasResult = stepLogs.some(l => l.eventType === "result");
+                const hasResult = stepLogs.some(l => l.eventType === "result" || l.eventType === "tool_result" || l.eventType === "state_transition");
                 const resultLog = stepLogs.find(l => l.eventType === "result");
-                const resultSuccess = Boolean(resultLog?.data?.success);
+                const finalToolLog = findLastLog(stepLogs, l =>
+                  l.eventType === "tool_result" &&
+                  (l.data?.toolName === "finish_document_metadata" || l.data?.toolName === "request_human_decision")
+                );
+                const stateTransitionLog = findLastLog(stepLogs, l => l.eventType === "state_transition");
+                const resultSuccess = Boolean(
+                  resultLog?.data?.success ??
+                  (finalToolLog ? !finalToolLog.data?.isError : undefined) ??
+                  stateTransitionLog
+                );
 
                 return (
                   <div key={step} className="border rounded-lg overflow-hidden bg-card">

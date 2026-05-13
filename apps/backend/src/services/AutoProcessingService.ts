@@ -97,25 +97,19 @@ export const AutoProcessingServiceLive = Layer.effect(
           continue;
         }
 
-        // Check for documents at any pipeline stage (not just pending)
-        // Priority order: pending first, then intermediate stages
-        // Map tag -> what step will be processed next
-        // Pipeline order: OCR -> Summary -> Title -> Correspondent -> DocType -> Tags
+        // Check for documents at any Pi pipeline stage.
         const pipelineStages: Array<{ tag: string; processingStep: string }> = [
-          { tag: tagConfig.pending, processingStep: 'ocr' },
-          { tag: tagConfig.ocrDone, processingStep: 'summary' },
-          { tag: tagConfig.summaryDone, processingStep: 'title' },
-          { tag: tagConfig.titleDone, processingStep: 'correspondent' },
-          { tag: tagConfig.correspondentDone, processingStep: 'document_type' },
-          { tag: tagConfig.documentTypeDone, processingStep: 'tags' },
-          { tag: tagConfig.tagsDone, processingStep: 'finalizing' },
+          { tag: tagConfig.todo, processingStep: 'ocr' },
+          { tag: tagConfig.ocr, processingStep: 'metadata' },
+          { tag: tagConfig.metadata, processingStep: 'metadata' },
+          { tag: tagConfig.index, processingStep: 'index' },
         ];
 
         let docToProcess: { id: number; title: string; tags: readonly number[] } | null = null;
         let currentStep: string | null = null;
 
         // Get the processed tag ID so we can filter it out
-        const processedTagOption = yield* paperless.getTagByName(tagConfig.processed).pipe(
+        const processedTagOption = yield* paperless.getTagByName(tagConfig.done).pipe(
           Effect.catchAll(() => Effect.succeed(Option.none<{ id: number }>()))
         );
         const processedTagId = Option.isSome(processedTagOption) ? processedTagOption.value.id : null;

@@ -16,20 +16,30 @@ import { sampleCorrespondents, sampleDocumentTypes, sampleTags } from '../setup.
 // ===========================================================================
 
 const createMockPaperlessService = (overrides = {}) => {
-  const defaultMocks = {
-    getCorrespondents: Effect.succeed(sampleCorrespondents()),
-    getDocumentTypes: Effect.succeed(sampleDocumentTypes()),
-    getTags: Effect.succeed(sampleTags()),
+	  const defaultMocks = {
+	    getDocuments: vi.fn(() => Effect.succeed([
+	      { id: 1, title: 'Document 1' },
+	      { id: 2, title: 'Document 2' },
+	    ])),
+	    getTotalDocumentCount: vi.fn(() => Effect.succeed(2)),
+	    getCorrespondents: Effect.succeed(sampleCorrespondents()),
+	    getDocumentTypes: Effect.succeed(sampleDocumentTypes()),
+	    getTags: Effect.succeed(sampleTags()),
   };
 
-  return Layer.succeed(
-    PaperlessService,
-    {
-      ...defaultMocks,
-      ...overrides,
-    } as unknown as PaperlessService
-  );
-};
+	  const mocks = { ...defaultMocks, ...overrides } as Record<string, unknown>;
+	  for (const key of ['getDocuments', 'getTotalDocumentCount', 'getCorrespondents', 'getDocumentTypes', 'getTags']) {
+	    if (typeof mocks[key] !== 'function') {
+	      const effect = mocks[key];
+	      mocks[key] = vi.fn(() => effect);
+	    }
+	  }
+
+	  return Layer.succeed(
+	    PaperlessService,
+	    mocks as unknown as PaperlessService
+	  );
+	};
 
 // ===========================================================================
 // Test Suites

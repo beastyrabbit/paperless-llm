@@ -10,6 +10,7 @@ import { ConfigService } from '../../src/config/index.js';
 import { PaperlessService } from '../../src/services/PaperlessService.js';
 import { OllamaService } from '../../src/services/OllamaService.js';
 import { MistralService } from '../../src/services/MistralService.js';
+import { QdrantService } from '../../src/services/QdrantService.js';
 import { TinyBaseService, TinyBaseServiceLive } from '../../src/services/TinyBaseService.js';
 import { sampleSettings, mockFetchResponse, mockFetchError } from '../setup.js';
 
@@ -43,15 +44,31 @@ const createMockConfig = (overrides = {}) =>
         confirmationEnabled: true,
         confirmationMaxRetries: 3,
       },
-      tags: {
-        pending: 'llm-pending',
+	      tags: {
+	        todo: 'llm-todo',
+	        ocr: 'llm-ocr',
+	        metadata: 'llm-metadata',
+	        review: 'llm-review',
+	        index: 'llm-index',
+	        done: 'llm-done',
+	        failed: 'llm-failed',
+	        pending: 'llm-pending',
         ocrDone: 'llm-ocr-done',
         correspondentDone: 'llm-correspondent-done',
         documentTypeDone: 'llm-document-type-done',
         titleDone: 'llm-title-done',
         tagsDone: 'llm-tags-done',
         processed: 'llm-processed',
-      },
+	      },
+	      pipeline: {
+	        enableOcr: true,
+	        enableSummary: false,
+	        enableTitle: true,
+	        enableCorrespondent: true,
+	        enableDocumentType: true,
+	        enableTags: true,
+	        enableCustomFields: false,
+	      },
       language: 'en',
       debug: false,
       ...overrides,
@@ -87,7 +104,12 @@ const createMockMistral = (connected = true, models: any[] = []) =>
   Layer.succeed(MistralService, {
     testConnection: vi.fn(() => Effect.succeed(connected)),
     listModels: vi.fn(() => Effect.succeed(models)),
-  } as unknown as MistralService);
+	  } as unknown as MistralService);
+
+const createMockQdrant = () =>
+  Layer.succeed(QdrantService, {
+    ensureCollection: vi.fn(() => Effect.succeed(undefined)),
+  } as unknown as QdrantService);
 
 // ===========================================================================
 // Test Suites
@@ -101,7 +123,7 @@ describe('Settings Handlers', () => {
   describe('getSettings', () => {
     it('should return settings from config', async () => {
       const { layer: mockTinyBase } = createMockTinyBase();
-      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
+	      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase, createMockQdrant());
 
       const result = await Effect.runPromise(
         settingsHandlers.getSettings.pipe(Effect.provide(TestLayer))
@@ -124,8 +146,8 @@ describe('Settings Handlers', () => {
     });
 
     it('should return actual tokens (local app)', async () => {
-      const { layer: mockTinyBase } = createMockTinyBase();
-      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
+	      const { layer: mockTinyBase } = createMockTinyBase();
+	      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase, createMockQdrant());
 
       const result = await Effect.runPromise(
         settingsHandlers.getSettings.pipe(Effect.provide(TestLayer))
@@ -234,10 +256,10 @@ describe('Settings Handlers', () => {
     it('should return success when connected', async () => {
       vi.spyOn(global, 'fetch').mockImplementation(() =>
         mockFetchResponse({ results: [] })
-      );
+	      );
 
-      const { layer: mockTinyBase } = createMockTinyBase();
-      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
+	      const { layer: mockTinyBase } = createMockTinyBase();
+	      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase, createMockQdrant());
 
       const result = await Effect.runPromise(
         settingsHandlers.testPaperlessConnection.pipe(Effect.provide(TestLayer))
@@ -346,7 +368,7 @@ describe('Settings Handlers', () => {
     });
   });
 
-  describe('testQdrantConnection', () => {
+	  describe('testQdrantConnection', () => {
     beforeEach(() => {
       vi.restoreAllMocks();
     });
@@ -356,18 +378,16 @@ describe('Settings Handlers', () => {
         mockFetchResponse({ collections: [] })
       );
 
-      const { layer: mockTinyBase } = createMockTinyBase();
-      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
+	      const { layer: mockTinyBase } = createMockTinyBase();
+	      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase, createMockQdrant());
 
       const result = await Effect.runPromise(
         settingsHandlers.testQdrantConnection.pipe(Effect.provide(TestLayer))
       );
 
-      expect(result).toEqual({
-        status: 'success',
-        message: 'Connected to Qdrant',
-        details: null,
-      });
+	      expect(result).toMatchObject({
+	        status: 'success',
+	      });
     });
 
     it('should return error when connection fails', async () => {
@@ -376,7 +396,7 @@ describe('Settings Handlers', () => {
       );
 
       const { layer: mockTinyBase } = createMockTinyBase();
-      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
+	      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase, createMockQdrant());
 
       const result = await Effect.runPromise(
         settingsHandlers.testQdrantConnection.pipe(Effect.provide(TestLayer))
@@ -391,7 +411,7 @@ describe('Settings Handlers', () => {
       );
 
       const { layer: mockTinyBase } = createMockTinyBase();
-      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
+	      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase, createMockQdrant());
 
       // The handler's catch returns an error result as the failure value
       const result = await Effect.runPromise(

@@ -34,14 +34,6 @@ export {
 } from './MistralService.js';
 
 export {
-  PromptService,
-  PromptServiceLive,
-  type PromptInfo,
-  type PromptGroup,
-  type LanguageInfo,
-} from './PromptService.js';
-
-export {
   QdrantService,
   QdrantServiceLive,
   QdrantError,

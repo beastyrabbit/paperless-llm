@@ -22,15 +22,61 @@ import type {
 // Common error type for all Paperless operations
 type PaperlessErrorType = PaperlessError | NotFoundError;
 
+export interface PaperlessApiVersionInfo {
+  api_version?: number;
+  version?: string;
+  paperless_version?: string;
+  [key: string]: unknown;
+}
+
+export interface PaperlessDocumentVersion {
+  id: number;
+  document?: number;
+  version?: number;
+  label?: string | null;
+  version_label?: string | null;
+  content?: string | null;
+  added?: string;
+  created?: string;
+  modified?: string;
+  checksum?: string;
+  is_root?: boolean;
+  [key: string]: unknown;
+}
+
+export interface PaperlessVersionUploadResult {
+  id?: number;
+  version_id?: number;
+  task_id?: string;
+  document?: number;
+  label?: string | null;
+  version_label?: string | null;
+  [key: string]: unknown;
+}
+
 export interface PaperlessService {
   // Document operations
   readonly getDocument: (id: number) => Effect.Effect<Document, PaperlessErrorType>;
   readonly getDocuments: (params?: { page?: number; pageSize?: number }) => Effect.Effect<Document[], PaperlessErrorType>;
+  readonly getSimilarDocuments: (docId: number, limit?: number) => Effect.Effect<Document[], PaperlessErrorType>;
   readonly getDocumentsByTag: (tagName: string, limit?: number) => Effect.Effect<Document[], PaperlessErrorType>;
   readonly getDocumentsByTags: (tagNames: string[], limit?: number) => Effect.Effect<Document[], PaperlessErrorType>;
   readonly updateDocument: (id: number, updates: DocumentUpdate) => Effect.Effect<Document, PaperlessErrorType>;
-  readonly downloadPdf: (id: number) => Effect.Effect<Uint8Array, PaperlessErrorType>;
+  readonly downloadPdf: (id: number, versionId?: number) => Effect.Effect<Uint8Array, PaperlessErrorType>;
   readonly getDocumentContent: (id: number) => Effect.Effect<string, PaperlessErrorType>;
+
+  // Paperless v3/version-aware document operations
+  readonly getApiVersion: () => Effect.Effect<PaperlessApiVersionInfo, PaperlessErrorType>;
+  readonly getDocumentVersions: (docId: number) => Effect.Effect<PaperlessDocumentVersion[], PaperlessErrorType>;
+  readonly getDocumentVersion: (docId: number, versionId: number) => Effect.Effect<PaperlessDocumentVersion, PaperlessErrorType>;
+  readonly downloadVersionPdf: (docId: number, versionId: number) => Effect.Effect<Uint8Array, PaperlessErrorType>;
+  readonly patchVersionContent: (docId: number, versionId: number, content: string) => Effect.Effect<PaperlessDocumentVersion, PaperlessErrorType>;
+  readonly uploadOcrPdfVersion: (docId: number, pdfBytes: Uint8Array, label?: string) => Effect.Effect<PaperlessVersionUploadResult, PaperlessErrorType>;
+  readonly updateVersionLabel: (docId: number, versionId: number, label: string) => Effect.Effect<PaperlessDocumentVersion, PaperlessErrorType>;
+  readonly pollVersionCreation: (
+    docId: number,
+    options?: { knownVersionIds?: number[]; timeoutMs?: number; intervalMs?: number }
+  ) => Effect.Effect<PaperlessDocumentVersion | null, PaperlessErrorType>;
 
   // Tag operations
   readonly getTags: () => Effect.Effect<Tag[], PaperlessErrorType>;
@@ -41,6 +87,7 @@ export interface PaperlessService {
   readonly removeTagFromDocument: (docId: number, tagName: string) => Effect.Effect<void, PaperlessErrorType>;
   readonly transitionDocumentTag: (docId: number, fromTagName: string, toTagName: string) => Effect.Effect<void, PaperlessErrorType>;
   readonly deleteTag: (id: number) => Effect.Effect<void, PaperlessErrorType>;
+  readonly renameTag: (id: number, name: string) => Effect.Effect<Tag, PaperlessErrorType>;
   readonly updateTagColor: (id: number, color: string) => Effect.Effect<void, PaperlessErrorType>;
   readonly mergeTags: (sourceId: number, targetId: number) => Effect.Effect<void, PaperlessErrorType>;
 
@@ -50,6 +97,7 @@ export interface PaperlessService {
   readonly getCorrespondentByName: (name: string) => Effect.Effect<Option.Option<Correspondent>, PaperlessErrorType>;
   readonly getOrCreateCorrespondent: (name: string) => Effect.Effect<number, PaperlessErrorType>;
   readonly deleteCorrespondent: (id: number) => Effect.Effect<void, PaperlessErrorType>;
+  readonly renameCorrespondent: (id: number, name: string) => Effect.Effect<Correspondent, PaperlessErrorType>;
   readonly mergeCorrespondents: (sourceId: number, targetId: number) => Effect.Effect<void, PaperlessErrorType>;
 
   // Document Type operations
@@ -58,6 +106,7 @@ export interface PaperlessService {
   readonly getDocumentTypeByName: (name: string) => Effect.Effect<Option.Option<DocumentType>, PaperlessErrorType>;
   readonly getOrCreateDocumentType: (name: string) => Effect.Effect<number, PaperlessErrorType>;
   readonly deleteDocumentType: (id: number) => Effect.Effect<void, PaperlessErrorType>;
+  readonly renameDocumentType: (id: number, name: string) => Effect.Effect<DocumentType, PaperlessErrorType>;
   readonly mergeDocumentTypes: (sourceId: number, targetId: number) => Effect.Effect<void, PaperlessErrorType>;
 
   // Custom Field operations
@@ -93,6 +142,24 @@ interface PaginatedResponse<T> {
   results: T[];
 }
 
+type PaperlessDocumentWithVersions = Document & {
+  versions?: PaperlessDocumentVersion[];
+};
+
+const normalizeVersion = (
+  version: PaperlessDocumentVersion,
+  content?: string | null
+): PaperlessDocumentVersion => ({
+  ...version,
+  label: version.label ?? version.version_label ?? null,
+  version_label: version.version_label ?? version.label ?? null,
+  content: content ?? version.content ?? null,
+  created: version.created ?? version.added,
+});
+
+const versionSortKey = (version: PaperlessDocumentVersion): string =>
+  version.created ?? version.added ?? '';
+
 // ===========================================================================
 // Live Implementation
 // ===========================================================================
@@ -118,7 +185,9 @@ export const PaperlessServiceLive = Layer.effect(
         }))
       );
 
-    // Helper for making authenticated requests - reads config dynamically
+    // Helper for making authenticated requests - reads config dynamically.
+    // Paperless v3 exposes API version 10 through content negotiation; these
+    // headers are harmless for older endpoints and required for version APIs.
     const request = <T>(
       method: string,
       path: string,
@@ -147,9 +216,10 @@ export const PaperlessServiceLive = Layer.effect(
               method,
               headers: {
                 Authorization: `Token ${token}`,
+                Accept: 'application/json; version=10',
                 'Content-Type': 'application/json',
               },
-              body: body ? JSON.stringify(body) : undefined,
+              body: body === undefined ? undefined : JSON.stringify(body),
             });
 
             if (!response.ok) {
@@ -177,6 +247,118 @@ export const PaperlessServiceLive = Layer.effect(
             }
             return new PaperlessError({
               message: `Request failed: ${String(error)}`,
+              cause: error,
+            });
+          },
+        });
+      });
+
+    const binaryRequest = (
+      method: string,
+      path: string,
+      params?: Record<string, string | number>
+    ): Effect.Effect<Uint8Array, PaperlessError | NotFoundError> =>
+      Effect.gen(function* () {
+        const { url: baseUrl, token } = yield* getConfig();
+
+        if (!baseUrl || !token) {
+          return yield* Effect.fail(new PaperlessError({
+            message: 'Paperless-ngx not configured',
+          }));
+        }
+
+        return yield* Effect.tryPromise({
+          try: async () => {
+            const url = new URL(`${baseUrl}/api${path}`);
+            if (params) {
+              for (const [key, value] of Object.entries(params)) {
+                url.searchParams.set(key, String(value));
+              }
+            }
+
+            const response = await fetch(url.toString(), {
+              method,
+              headers: {
+                Authorization: `Token ${token}`,
+                Accept: '*/*',
+              },
+            });
+
+            if (!response.ok) {
+              if (response.status === 404) {
+                throw new NotFoundError({
+                  message: `Resource not found at ${path}`,
+                });
+              }
+              throw new PaperlessError({
+                message: `Paperless API error: ${response.status} ${response.statusText}`,
+                statusCode: response.status,
+              });
+            }
+
+            return new Uint8Array(await response.arrayBuffer());
+          },
+          catch: (error) => {
+            if (error instanceof PaperlessError || error instanceof NotFoundError) {
+              return error;
+            }
+            return new PaperlessError({
+              message: `Binary request failed: ${String(error)}`,
+              cause: error,
+            });
+          },
+        });
+      });
+
+    const multipartRequest = <T>(
+      method: string,
+      path: string,
+      formData: FormData
+    ): Effect.Effect<T, PaperlessError | NotFoundError> =>
+      Effect.gen(function* () {
+        const { url: baseUrl, token } = yield* getConfig();
+
+        if (!baseUrl || !token) {
+          return yield* Effect.fail(new PaperlessError({
+            message: 'Paperless-ngx not configured',
+          }));
+        }
+
+        return yield* Effect.tryPromise({
+          try: async () => {
+            const response = await fetch(`${baseUrl}/api${path}`, {
+              method,
+              headers: {
+                Authorization: `Token ${token}`,
+                Accept: 'application/json; version=10',
+              },
+              body: formData,
+            });
+
+            if (!response.ok) {
+              if (response.status === 404) {
+                throw new NotFoundError({
+                  message: `Resource not found at ${path}`,
+                });
+              }
+              throw new PaperlessError({
+                message: `Paperless API error: ${response.status} ${response.statusText}`,
+                statusCode: response.status,
+              });
+            }
+
+            if (response.status === 204) {
+              return undefined as T;
+            }
+
+            return (await response.json()) as T;
+          },
+          catch: (error) => {
+            if (error instanceof PaperlessError || error instanceof NotFoundError) {
+              return error;
+            }
+            return new PaperlessError({
+              message: `Multipart request failed: ${String(error)}`,
               cause: error,
             });
           },
@@ -261,6 +443,15 @@ export const PaperlessServiceLive = Layer.effect(
           Effect.map((response) => response.results)
         ),
 
+      getSimilarDocuments: (docId, limit = 10) =>
+        pipe(
+          request<PaginatedResponse<Document>>('GET', '/documents/', undefined, {
+            more_like_id: docId,
+            page_size: limit,
+          }),
+          Effect.map((response) => response.results)
+        ),
+
       getDocumentsByTag: (tagName, limit = 50) =>
         Effect.gen(function* () {
           const tagId = yield* getTagId(tagName);
@@ -301,40 +492,95 @@ export const PaperlessServiceLive = Layer.effect(
       updateDocument: (id, updates) =>
         request<Document>('PATCH', `/documents/${id}/`, updates),
 
-      downloadPdf: (id) =>
-        Effect.gen(function* () {
-          const { url: baseUrl, token } = yield* getConfig();
-
-          if (!baseUrl || !token) {
-            return yield* Effect.fail(new PaperlessError({
-              message: 'Paperless-ngx not configured',
-            }));
-          }
-
-          return yield* Effect.tryPromise({
-            try: async () => {
-              const url = `${baseUrl}/api/documents/${id}/download/`;
-              const response = await fetch(url, {
-                headers: { Authorization: `Token ${token}` },
-              });
-              if (!response.ok) {
-                throw new Error(`Failed to download: ${response.status}`);
-              }
-              return new Uint8Array(await response.arrayBuffer());
-            },
-            catch: (error) =>
-              new PaperlessError({
-                message: `Failed to download PDF: ${String(error)}`,
-                cause: error,
-              }),
-          });
-        }),
+      downloadPdf: (id, versionId) =>
+        versionId
+          ? binaryRequest('GET', `/documents/${id}/download/`, { version: versionId })
+          : binaryRequest('GET', `/documents/${id}/download/`),
 
       getDocumentContent: (id) =>
         pipe(
           request<Document>('GET', `/documents/${id}/`),
           Effect.map((doc) => doc.content ?? '')
         ),
+
+      getApiVersion: () =>
+        request<PaperlessApiVersionInfo>('GET', '/'),
+
+      getDocumentVersions: (docId) =>
+        pipe(
+          request<PaperlessDocumentWithVersions>('GET', `/documents/${docId}/`),
+          Effect.map((doc) => (doc.versions ?? []).map((version) => normalizeVersion(version)))
+        ),
+
+      getDocumentVersion: (docId, versionId) =>
+        pipe(
+          request<PaperlessDocumentWithVersions>('GET', `/documents/${docId}/`, undefined, { version: versionId }),
+          Effect.map((doc) => {
+            const version = doc.versions?.find((candidate) => candidate.id === versionId) ?? { id: versionId };
+            return normalizeVersion(version, doc.content);
+          })
+        ),
+
+      downloadVersionPdf: (docId, versionId) =>
+        binaryRequest('GET', `/documents/${docId}/download/`, { version: versionId }),
+
+      patchVersionContent: (docId, versionId, content) =>
+        pipe(
+          request<PaperlessDocumentWithVersions>('PATCH', `/documents/${docId}/`, { content }, { version: versionId }),
+          Effect.map((doc) => {
+            const version = doc.versions?.find((candidate) => candidate.id === versionId) ?? { id: versionId };
+            return normalizeVersion(version, doc.content);
+          })
+        ),
+
+      uploadOcrPdfVersion: (docId, pdfBytes, label = 'Mistral OCR searchable PDF') => {
+        const formData = new FormData();
+        const pdfBuffer = Buffer.from(pdfBytes);
+        const pdfArrayBuffer = pdfBuffer.buffer.slice(
+          pdfBuffer.byteOffset,
+          pdfBuffer.byteOffset + pdfBuffer.byteLength
+        ) as ArrayBuffer;
+        formData.set('document', new Blob([pdfArrayBuffer], { type: 'application/pdf' }), `document-${docId}-ocr.pdf`);
+        formData.set('version_label', label);
+        return pipe(
+          multipartRequest<string | PaperlessVersionUploadResult>('POST', `/documents/${docId}/update_version/`, formData),
+          Effect.map((response) => typeof response === 'string' ? { task_id: response } : response)
+        );
+      },
+
+      updateVersionLabel: (docId, versionId, label) =>
+        pipe(
+          request<PaperlessDocumentVersion>(
+            'PATCH',
+            `/documents/${docId}/versions/${versionId}/`,
+            { version_label: label }
+          ),
+          Effect.map((version) => normalizeVersion(version))
+        ),
+
+      pollVersionCreation: (docId, options) =>
+        Effect.gen(function* () {
+          const timeoutMs = options?.timeoutMs ?? 60_000;
+          const intervalMs = options?.intervalMs ?? 2_000;
+          const knownIds = new Set(options?.knownVersionIds ?? []);
+          const deadline = Date.now() + timeoutMs;
+
+          while (Date.now() < deadline) {
+            const versions = yield* pipe(
+              request<PaperlessDocumentWithVersions>('GET', `/documents/${docId}/`),
+              Effect.map((doc) => (doc.versions ?? []).map((version) => normalizeVersion(version)))
+            );
+            const created = versions
+              .filter((version) => !knownIds.has(version.id))
+              .sort((a, b) => versionSortKey(b).localeCompare(versionSortKey(a)))[0];
+            if (created) {
+              return created;
+            }
+            yield* Effect.sleep(`${intervalMs} millis`);
+          }
+
+          return null;
+        }),
 
       // =====================================================================
       // Tag operations
@@ -431,6 +677,8 @@ export const PaperlessServiceLive = Layer.effect(
 
       deleteTag: (id) => request<void>('DELETE', `/tags/${id}/`),
 
+      renameTag: (id, name) => request<Tag>('PATCH', `/tags/${id}/`, { name }),
+
       updateTagColor: (id, color) => request<void>('PATCH', `/tags/${id}/`, { color }),
 
       mergeTags: (sourceId, targetId) =>
@@ -484,6 +732,8 @@ export const PaperlessServiceLive = Layer.effect(
 
       deleteCorrespondent: (id) => request<void>('DELETE', `/correspondents/${id}/`),
 
+      renameCorrespondent: (id, name) => request<Correspondent>('PATCH', `/correspondents/${id}/`, { name }),
+
       mergeCorrespondents: (sourceId, targetId) =>
         Effect.gen(function* () {
           // Get ALL documents with source correspondent (handles pagination)
@@ -528,6 +778,8 @@ export const PaperlessServiceLive = Layer.effect(
         }),
 
       deleteDocumentType: (id) => request<void>('DELETE', `/document_types/${id}/`),
+
+      renameDocumentType: (id, name) => request<DocumentType>('PATCH', `/document_types/${id}/`, { name }),
 
       mergeDocumentTypes: (sourceId, targetId) =>
         Effect.gen(function* () {
@@ -590,18 +842,30 @@ export const PaperlessServiceLive = Layer.effect(
             );
 
           // Run all tag counts in parallel
-          const [
-            pending,
-            ocrDone,
+	          const [
+	            todo,
+	            ocr,
+	            metadata,
+	            review,
+	            index,
+	            done,
+	            pending,
+	            ocrDone,
             titleDone,
             correspondentDone,
             documentTypeDone,
             tagsDone,
             processed,
             failed,
-            manualReview,
-          ] = yield* Effect.all([
-            countByTag(tagConfig.pending),
+	            manualReview,
+	          ] = yield* Effect.all([
+	            countByTag(tagConfig.todo),
+	            countByTag(tagConfig.ocr),
+	            countByTag(tagConfig.metadata),
+	            countByTag(tagConfig.review),
+	            countByTag(tagConfig.index),
+	            countByTag(tagConfig.done),
+	            countByTag(tagConfig.pending),
             countByTag(tagConfig.ocrDone),
             countByTag(tagConfig.titleDone),
             countByTag(tagConfig.correspondentDone),
@@ -612,8 +876,14 @@ export const PaperlessServiceLive = Layer.effect(
             countByTag(tagConfig.manualReview),
           ], { concurrency: 'unbounded' });
 
-          return {
-            pending,
+	          return {
+	            todo,
+	            ocr,
+	            metadata,
+	            review,
+	            index,
+	            done,
+	            pending,
             ocrDone,
             titleDone,
             correspondentDone,
@@ -622,17 +892,16 @@ export const PaperlessServiceLive = Layer.effect(
             processed,
             failed,
             manualReview,
-            total:
-              pending +
-              ocrDone +
-              titleDone +
-              correspondentDone +
-              documentTypeDone +
-              tagsDone +
-              processed +
-              failed +
-              manualReview,
-          };
+	            total:
+	              todo +
+	              ocr +
+	              metadata +
+	              review +
+	              index +
+	              done +
+	              failed +
+	              manualReview,
+	          };
         }),
 
       getTotalDocumentCount: () =>

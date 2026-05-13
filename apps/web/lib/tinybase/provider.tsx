@@ -100,10 +100,17 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
       }
 
       // Handle nested tags object
-      if (settings.tags && typeof settings.tags === 'object') {
-        const tagKeys = [
-          'pending',
-          'ocr_done',
+	      if (settings.tags && typeof settings.tags === 'object') {
+	        const tagKeys = [
+	          'todo',
+	          'ocr',
+	          'metadata',
+	          'review',
+	          'index',
+	          'done',
+	          'failed',
+	          'pending',
+	          'ocr_done',
           'schema_review',
           'correspondent_done',
           'document_type_done',
@@ -304,17 +311,16 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
       }
 
       // Handle tags specially
-      const tags: Record<string, string> = {};
-      const tagKeys = [
-        'pending',
-        'ocr_done',
-        'schema_review',
-        'correspondent_done',
-        'document_type_done',
-        'title_done',
-        'tags_done',
-        'processed',
-      ] as const;
+	      const tags: Record<string, string> = {};
+	      const tagKeys = [
+	        'todo',
+	        'ocr',
+	        'metadata',
+	        'review',
+	        'index',
+	        'done',
+	        'failed',
+	      ] as const;
 
       for (const tagKey of tagKeys) {
         const value = store.getValue(`tags.${tagKey}`);

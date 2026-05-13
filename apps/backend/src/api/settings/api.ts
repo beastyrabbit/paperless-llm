@@ -9,17 +9,23 @@ import { Schema } from 'effect';
 
 export const TagsConfigSchema = Schema.Struct({
   color: Schema.String,
-  pending: Schema.String,
-  ocr_done: Schema.String,
-  summary_done: Schema.String,
-  schema_review: Schema.String,
-  title_done: Schema.String,
-  correspondent_done: Schema.String,
-  document_type_done: Schema.String,
-  tags_done: Schema.String,
-  processed: Schema.String,
+  todo: Schema.String,
+  ocr: Schema.String,
+  metadata: Schema.String,
+  review: Schema.String,
+  index: Schema.String,
+  done: Schema.String,
   failed: Schema.String,
-  manual_review: Schema.String,
+  pending: Schema.String.pipe(Schema.optional),
+  ocr_done: Schema.String.pipe(Schema.optional),
+  summary_done: Schema.String.pipe(Schema.optional),
+  schema_review: Schema.String.pipe(Schema.optional),
+  title_done: Schema.String.pipe(Schema.optional),
+  correspondent_done: Schema.String.pipe(Schema.optional),
+  document_type_done: Schema.String.pipe(Schema.optional),
+  tags_done: Schema.String.pipe(Schema.optional),
+  processed: Schema.String.pipe(Schema.optional),
+  manual_review: Schema.String.pipe(Schema.optional),
 });
 
 export type TagsConfig = Schema.Schema.Type<typeof TagsConfigSchema>;
@@ -45,7 +51,6 @@ export const SettingsSchema = Schema.Struct({
   confirmation_enabled: Schema.Boolean,
   confirmation_max_retries: Schema.Number,
   language: Schema.String,
-  prompt_language: Schema.String,
   debug: Schema.Boolean,
   tags: TagsConfigSchema,
   // Pipeline settings
@@ -81,7 +86,6 @@ export const SettingsUpdateSchema = Schema.Struct({
   confirmation_enabled: Schema.Boolean.pipe(Schema.optional),
   confirmation_max_retries: Schema.Number.pipe(Schema.optional),
   language: Schema.String.pipe(Schema.optional),
-  prompt_language: Schema.String.pipe(Schema.optional),
   debug: Schema.Boolean.pipe(Schema.optional),
   // Pipeline settings
   pipeline_ocr: Schema.Boolean.pipe(Schema.optional),

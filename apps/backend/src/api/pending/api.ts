@@ -11,14 +11,27 @@ export const PendingItemSchema = Schema.Struct({
   id: Schema.String,
   docId: Schema.Number,
   docTitle: Schema.String,
-  type: Schema.Literal('correspondent', 'document_type', 'tag', 'title', 'documentlink', 'schema_merge', 'schema_delete'),
+  type: Schema.Literal(
+    'correspondent',
+    'document_type',
+    'tag',
+    'title',
+    'documentlink',
+    'human_decision',
+    'consolidation',
+    'schema_merge',
+    'schema_delete',
+    'schema_cleanup'
+  ),
   suggestion: Schema.String,
   reasoning: Schema.String,
   alternatives: Schema.Array(Schema.String),
   attempts: Schema.Number,
-  lastFeedback: Schema.NullOr(Schema.String),
-  createdAt: Schema.String,
-});
+	  lastFeedback: Schema.NullOr(Schema.String),
+	  createdAt: Schema.String,
+	  nextTag: Schema.NullOr(Schema.String).pipe(Schema.optional),
+	  metadata: Schema.Unknown.pipe(Schema.optional),
+	});
 
 export type PendingItem = Schema.Schema.Type<typeof PendingItemSchema>;
 
@@ -26,16 +39,25 @@ export const PendingCountsSchema = Schema.Struct({
   correspondent: Schema.Number,
   document_type: Schema.Number,
   tag: Schema.Number,
-  title: Schema.Number,
-  schema: Schema.Number,
-  total: Schema.Number,
-});
+	  title: Schema.Number,
+	  human_decision: Schema.Number.pipe(Schema.optional),
+	  consolidation: Schema.Number.pipe(Schema.optional),
+	  schema_correspondent: Schema.Number.pipe(Schema.optional),
+	  schema_document_type: Schema.Number.pipe(Schema.optional),
+	  schema_tag: Schema.Number.pipe(Schema.optional),
+	  schema_custom_field: Schema.Number.pipe(Schema.optional),
+	  schema_cleanup: Schema.Number.pipe(Schema.optional),
+	  metadata_description: Schema.Number.pipe(Schema.optional),
+	  schema: Schema.Number,
+	  total: Schema.Number,
+	});
 
 export type PendingCounts = Schema.Schema.Type<typeof PendingCountsSchema>;
 
 export const ApproveRequestSchema = Schema.Struct({
   action: Schema.String.pipe(Schema.optional),
   value: Schema.String.pipe(Schema.optional),
+  selected_value: Schema.String.pipe(Schema.optional),
 });
 
 export type ApproveRequest = Schema.Schema.Type<typeof ApproveRequestSchema>;

@@ -113,23 +113,6 @@ export const processingApi = {
   }),
 };
 
-// Prompts API
-export const promptsApi = {
-  list: (lang?: string) =>
-    fetchApi<PromptInfo[]>(`/api/prompts${lang ? `?lang=${lang}` : ""}`),
-  listGroups: (lang?: string) =>
-    fetchApi<PromptGroup[]>(`/api/prompts/groups${lang ? `?lang=${lang}` : ""}`),
-  getPreviewData: () => fetchApi<PreviewData>("/api/prompts/preview-data"),
-  get: (name: string, lang?: string) =>
-    fetchApi<PromptInfo>(`/api/prompts/${name}${lang ? `?lang=${lang}` : ""}`),
-  update: (name: string, content: string, lang?: string) =>
-    fetchApi<PromptInfo>(`/api/prompts/${name}${lang ? `?lang=${lang}` : ""}`, {
-      method: "PUT",
-      body: JSON.stringify({ content }),
-    }),
-  getLanguages: () => fetchApi<AvailableLanguagesResponse>("/api/prompts/languages"),
-};
-
 // Pending Reviews API
 export const pendingApi = {
   list: (type?: PendingItemType) =>
@@ -324,11 +307,6 @@ export const translationApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  translatePrompts: (sourceLang: string, targetLang: string) =>
-    fetchApi<TranslatePromptsResponse>("/api/translation/translate/prompts", {
-      method: "POST",
-      body: JSON.stringify({ source_lang: sourceLang, target_lang: targetLang }),
-    }),
   getTranslations: (targetLang: string, contentType?: string) =>
     fetchApi<{ translations: TranslationEntry[] }>(
       `/api/translation/translations/${targetLang}${contentType ? `?content_type=${contentType}` : ""}`
@@ -351,21 +329,30 @@ export interface Settings {
   ollama_model_large: string;
   ollama_model_small: string;
   ollama_model_translation: string;
-  qdrant_url: string;
-  qdrant_collection: string;
+	  qdrant_url: string;
+	  qdrant_collection: string;
   auto_processing_enabled: boolean;
   auto_processing_interval_minutes: number;
-  prompt_language: string;
+  language: string;
   pipeline_custom_fields: boolean;
   tags: {
+    todo: string;
+    ocr: string;
+    metadata: string;
+    review: string;
+    index: string;
+    done: string;
+    failed: string;
     pending: string;
     ocr_done: string;
+    summary_done: string;
+    schema_review: string;
     correspondent_done: string;
     document_type_done: string;
     title_done: string;
     tags_done: string;
-    custom_fields_done: string;
     processed: string;
+    manual_review: string;
   };
 }
 
@@ -377,6 +364,12 @@ export interface ConnectionTest {
 }
 
 export interface QueueStats {
+  todo?: number;
+  ocr?: number;
+  metadata?: number;
+  review?: number;
+  index?: number;
+  done?: number;
   pending: number;
   ocr_done: number;
   correspondent_done: number;
@@ -454,64 +447,37 @@ export interface OllamaStatus {
   models: OllamaRunningModel[];
 }
 
-export interface PromptInfo {
-  name: string;
-  filename: string;
-  content: string;
-  variables: string[];
-  description: string | null;
-}
-
-export interface PromptGroup {
-  name: string;
-  category: 'document' | 'system';
-  main: PromptInfo;
-  confirmation: PromptInfo | null;
-}
-
-export interface PreviewData {
-  document_content: string;
-  existing_correspondents: string;
-  existing_types: string;
-  existing_tags: string;
-  similar_docs: string;
-  similar_titles: string;
-  feedback: string;
-  analysis_result: string;
-  document_excerpt: string;
-}
-
-export interface LanguageInfo {
-  code: string;
-  name: string;
-  prompt_count: number;
-  is_complete: boolean;
-}
-
-export interface AvailableLanguagesResponse {
-  languages: LanguageInfo[];
-  default: string;
-  current: string;
-}
-
 // Pending Reviews Types
-export type PendingItemType = "correspondent" | "document_type" | "tag";
-export type SchemaItemType = "schema_correspondent" | "schema_document_type" | "schema_tag" | "schema_custom_field" | "schema_cleanup";
+export type PendingItemType = "correspondent" | "document_type" | "tag" | "human_decision" | "consolidation";
+export type SchemaItemType =
+  | "schema_correspondent"
+  | "schema_document_type"
+  | "schema_tag"
+  | "schema_custom_field"
+  | "schema_cleanup";
 export type AllPendingItemType = PendingItemType | SchemaItemType;
 
 export interface PendingItem {
   id: string;
-  doc_id: number;
-  doc_title: string;
+  docId: number;
+  docTitle: string;
   type: AllPendingItemType;
   suggestion: string;
   reasoning: string;
   alternatives: string[];
   attempts: number;
-  last_feedback: string | null;
-  created_at: string;
+  last_feedback?: string | null;
+  lastFeedback?: string | null;
+  createdAt?: string;
+  created_at?: string;
   metadata: Record<string, unknown>;
+  nextTag?: string | null;
   next_tag?: string;
+}
+
+export interface EntityOption {
+  id: number;
+  name: string;
 }
 
 // Schema cleanup specific types
@@ -561,7 +527,11 @@ export interface PendingCounts {
   correspondent: number;
   document_type: number;
   tag: number;
-  total: number;
+  title?: number;
+  human_decision?: number;
+  consolidation?: number;
+  schema?: number;
+	  total: number;
   // Schema suggestion counts (from bootstrap analysis)
   schema_correspondent: number;
   schema_document_type: number;
@@ -571,11 +541,11 @@ export interface PendingCounts {
   metadata_description: number;
 }
 
-export interface SearchableEntities {
-  correspondents: string[];
-  document_types: string[];
-  tags: string[];
-}
+	export interface SearchableEntities {
+	  correspondents: EntityOption[];
+	  document_types: EntityOption[];
+	  tags: EntityOption[];
+	}
 
 // Pending cleanup (similar suggestions) types
 export interface SimilarGroup {
@@ -691,22 +661,6 @@ export interface TranslateResponse {
   translated_text: string;
   cached: boolean;
   model: string | null;
-}
-
-export interface TranslatePromptsResponse {
-  success: boolean;
-  total: number;
-  successful: number;
-  failed: number;
-  results: Array<{
-    success: boolean;
-    prompt_name?: string;
-    source_lang?: string;
-    target_lang?: string;
-    cached?: boolean;
-    model?: string;
-    error?: string;
-  }>;
 }
 
 export interface TranslationEntry {

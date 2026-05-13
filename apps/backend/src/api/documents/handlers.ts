@@ -18,8 +18,14 @@ export const getQueueStats = Effect.gen(function* () {
   const [stats, totalDocuments] = yield* Effect.all([
     pipe(
       paperless.getQueueStats(),
-      Effect.catchAll(() =>
+	      Effect.catchAll(() =>
         Effect.succeed({
+          todo: 0,
+          ocr: 0,
+          metadata: 0,
+          review: 0,
+          index: 0,
+          done: 0,
           pending: 0,
           ocrDone: 0,
           titleDone: 0,
@@ -40,13 +46,20 @@ export const getQueueStats = Effect.gen(function* () {
   ], { concurrency: 'unbounded' });
 
   // Calculate pipeline total (all stages except processed)
-  const totalInPipeline = stats.pending + stats.ocrDone + stats.titleDone +
-    stats.correspondentDone + stats.documentTypeDone + stats.tagsDone;
+  const totalInPipeline = (stats.todo ?? stats.pending) + (stats.ocr ?? stats.ocrDone) +
+    (stats.metadata ?? stats.titleDone + stats.correspondentDone + stats.documentTypeDone) +
+    (stats.review ?? stats.manualReview) + (stats.index ?? stats.tagsDone);
 
   // Return in format expected by frontend
   return {
     // Fields expected by frontend QueueStats interface
     pending: stats.pending,
+    todo: stats.todo ?? stats.pending,
+    ocr: stats.ocr ?? stats.ocrDone,
+    metadata: stats.metadata ?? stats.titleDone + stats.correspondentDone + stats.documentTypeDone,
+    review: stats.review ?? stats.manualReview,
+    index: stats.index ?? stats.tagsDone,
+    done: stats.done ?? stats.processed,
     ocr_done: stats.ocrDone,
     title_done: stats.titleDone,
     correspondent_done: stats.correspondentDone,
@@ -79,29 +92,22 @@ export const getPendingDocuments = (tag?: string, limit = 50) =>
     if (tag === 'all') {
       // All documents including processed, failed, and manual review
       tagNames = [
-        tagConfig.pending,
-        tagConfig.ocrDone,
-        tagConfig.summaryDone,
-        tagConfig.schemaReview,
-        tagConfig.titleDone,
-        tagConfig.correspondentDone,
-        tagConfig.documentTypeDone,
-        tagConfig.tagsDone,
-        tagConfig.processed,
+        tagConfig.todo,
+        tagConfig.ocr,
+        tagConfig.metadata,
+        tagConfig.review,
+        tagConfig.index,
+        tagConfig.done,
         tagConfig.failed,
-        tagConfig.manualReview,
       ];
     } else if (!tag) {
       // Default: in-progress only (excludes processed, failed, manual review)
       tagNames = [
-        tagConfig.pending,
-        tagConfig.ocrDone,
-        tagConfig.summaryDone,
-        tagConfig.schemaReview,
-        tagConfig.titleDone,
-        tagConfig.correspondentDone,
-        tagConfig.documentTypeDone,
-        tagConfig.tagsDone,
+        tagConfig.todo,
+        tagConfig.ocr,
+        tagConfig.metadata,
+        tagConfig.review,
+        tagConfig.index,
       ];
     } else {
       // Specific tag filter
@@ -149,6 +155,12 @@ export const getPendingDocuments = (tag?: string, limit = 50) =>
 const getProcessingStatus = (
   tagNames: string[],
   tagConfig: {
+    todo: string;
+    ocr: string;
+    metadata: string;
+    review: string;
+    index: string;
+    done: string;
     pending: string;
     ocrDone: string;
     summaryDone: string;
@@ -163,10 +175,16 @@ const getProcessingStatus = (
   }
 ): string | null => {
   // Check final/error states first
+  if (tagNames.includes(tagConfig.done)) return 'done';
   if (tagNames.includes(tagConfig.processed)) return 'processed';
   if (tagNames.includes(tagConfig.failed)) return 'failed';
+  if (tagNames.includes(tagConfig.review)) return 'review';
   if (tagNames.includes(tagConfig.manualReview)) return 'manual_review';
   // Check pipeline states in reverse order (most advanced first)
+  if (tagNames.includes(tagConfig.index)) return 'index';
+  if (tagNames.includes(tagConfig.metadata)) return 'metadata';
+  if (tagNames.includes(tagConfig.ocr)) return 'ocr';
+  if (tagNames.includes(tagConfig.todo)) return 'todo';
   if (tagNames.includes(tagConfig.tagsDone)) return 'tags_done';
   if (tagNames.includes(tagConfig.documentTypeDone)) return 'document_type_done';
   if (tagNames.includes(tagConfig.correspondentDone)) return 'correspondent_done';
@@ -273,7 +291,7 @@ export const cleanupDocumentTags = (id: number, keepLlmTag?: string) =>
     const currentTagNames = doc.tags.map((id) => tagNameById.get(id)).filter((n): n is string => n !== undefined);
     const llmTags = currentTagNames.filter((n) => n.startsWith('llm-'));
 
-    // Determine which llm tag to keep (default: llm-processed if present, otherwise none)
+    // Determine which llm tag to keep (default: llm-done if present, otherwise none)
     const targetTagName = keepLlmTag ?? (currentTagNames.includes(tagConfig.processed) ? tagConfig.processed : null);
     const targetTagId = targetTagName ? tagIdByName.get(targetTagName) : null;
 

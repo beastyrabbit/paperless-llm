@@ -8,7 +8,6 @@ import {
   TinyBaseServiceLive,
   OllamaServiceLive,
   MistralServiceLive,
-  PromptServiceLive,
   QdrantServiceLive,
   AutoProcessingServiceLive,
 } from '../services/index.js';
@@ -20,14 +19,8 @@ import {
 } from '../jobs/index.js';
 import {
   OCRAgentServiceLive,
-  SummaryAgentServiceLive,
-  TitleAgentServiceLive,
-  CorrespondentAgentServiceLive,
-  DocumentTypeAgentServiceLive,
-  TagsAgentServiceLive,
-  CustomFieldsAgentServiceLive,
-  DocumentLinksAgentServiceLive,
-  SchemaAnalysisAgentServiceLive,
+  PiDocumentAgentServiceLive,
+  PiConsolidationAgentServiceLive,
   ProcessingPipelineServiceLive,
 } from '../agents/index.js';
 
@@ -52,8 +45,7 @@ export const DatabaseLayer = Layer.provideMerge(
 export const ExternalServicesLayer = Layer.provideMerge(
   Layer.mergeAll(
     OllamaServiceLive,
-    MistralServiceLive,
-    PromptServiceLive
+    MistralServiceLive
   ),
   ConfigLayer
 );
@@ -63,14 +55,13 @@ export const ExternalServicesLayer = Layer.provideMerge(
  */
 const BaseServicesLayer = Layer.mergeAll(
   OllamaServiceLive,
-  MistralServiceLive,
-  PromptServiceLive
+  MistralServiceLive
 );
 
 /**
  * Core services layer - all fundamental services.
  * QdrantService depends on TinyBaseService + OllamaService, so we build the layers in order:
- * 1. TinyBase + Base services (Ollama, Mistral, Prompt)
+ * 1. TinyBase + Base services (Ollama, Mistral)
  * 2. Then Paperless + Qdrant on top
  */
 const CoreServicesLayer = Layer.provideMerge(
@@ -85,28 +76,25 @@ const CoreServicesLayer = Layer.provideMerge(
 );
 
 /**
- * Jobs layer - requires core services.
- */
-const JobsLayer = Layer.mergeAll(
-  BootstrapJobServiceLive,
-  SchemaCleanupJobServiceLive,
-  BulkOcrJobServiceLive,
-  BulkIngestJobServiceLive
-);
-
-/**
  * Agents layer - all document processing agents.
  */
 const AgentsLayer = Layer.mergeAll(
   OCRAgentServiceLive,
-  SummaryAgentServiceLive,
-  TitleAgentServiceLive,
-  CorrespondentAgentServiceLive,
-  DocumentTypeAgentServiceLive,
-  TagsAgentServiceLive,
-  CustomFieldsAgentServiceLive,
-  DocumentLinksAgentServiceLive,
-  SchemaAnalysisAgentServiceLive
+  PiDocumentAgentServiceLive,
+  PiConsolidationAgentServiceLive
+);
+
+/**
+ * Jobs layer - requires core services and the manual consolidation agent.
+ */
+const JobsLayer = Layer.provideMerge(
+  Layer.mergeAll(
+    BootstrapJobServiceLive,
+    SchemaCleanupJobServiceLive,
+    BulkOcrJobServiceLive,
+    BulkIngestJobServiceLive
+  ),
+  AgentsLayer
 );
 
 /**

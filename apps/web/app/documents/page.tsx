@@ -40,6 +40,12 @@ interface Document {
 }
 
 const statusConfig: Record<string, { labelKey: string; variant: "warning" | "info" | "secondary" | "success" | "destructive" }> = {
+  todo: { labelKey: "statusTodo", variant: "warning" },
+  ocr: { labelKey: "statusOcr", variant: "info" },
+  metadata: { labelKey: "statusMetadata", variant: "secondary" },
+  review: { labelKey: "statusReview", variant: "warning" },
+  index: { labelKey: "statusIndex", variant: "info" },
+  done: { labelKey: "statusDone", variant: "success" },
   pending: { labelKey: "statusPending", variant: "warning" },
   ocr_done: { labelKey: "statusOcrDone", variant: "info" },
   summary_done: { labelKey: "statusSummaryDone", variant: "info" },
@@ -71,9 +77,15 @@ export default function DocumentsPage() {
       try {
         const response = await fetch("/api/settings");
         if (response.ok) {
-          const settings = await response.json();
-          setTagMap({
-            pending: settings.tags.pending,
+	          const settings = await response.json();
+	          setTagMap({
+	            todo: settings.tags.todo,
+	            ocr: settings.tags.ocr,
+	            metadata: settings.tags.metadata,
+	            review: settings.tags.review,
+	            index: settings.tags.index,
+	            done: settings.tags.done,
+	            pending: settings.tags.pending,
             ocr_done: settings.tags.ocr_done,
             summary_done: settings.tags.summary_done,
             schema_review: settings.tags.schema_review,
@@ -213,8 +225,14 @@ export default function DocumentsPage() {
               <SelectValue placeholder={t("filterByStatus")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">{t("allStatus")}</SelectItem>
-              <SelectItem value="pending">{t("statusPending")}</SelectItem>
+	              <SelectItem value="all">{t("allStatus")}</SelectItem>
+	              <SelectItem value="todo">{t("statusTodo")}</SelectItem>
+	              <SelectItem value="ocr">{t("statusOcr")}</SelectItem>
+	              <SelectItem value="metadata">{t("statusMetadata")}</SelectItem>
+	              <SelectItem value="review">{t("statusReview")}</SelectItem>
+	              <SelectItem value="index">{t("statusIndex")}</SelectItem>
+	              <SelectItem value="done">{t("statusDone")}</SelectItem>
+	              <SelectItem value="pending">{t("statusPending")}</SelectItem>
               <SelectItem value="ocr_done">{t("statusOcrDone")}</SelectItem>
               <SelectItem value="summary_done">{t("statusSummaryDone")}</SelectItem>
               <SelectItem value="schema_review">{t("statusSchemaReview")}</SelectItem>
@@ -291,13 +309,13 @@ export default function DocumentsPage() {
 
                       {/* Status */}
                       <div onClick={(e) => {
-                        // Stop propagation for manual_review to allow click through to pending page
-                        if (doc.processing_status === "manual_review") {
-                          e.stopPropagation();
-                        }
-                      }}>
-                        {doc.processing_status && statusConfig[doc.processing_status] && (
-                          doc.processing_status === "manual_review" ? (
+	                        // Stop propagation for review states to allow click through to pending page
+	                        if (doc.processing_status === "review" || doc.processing_status === "manual_review") {
+	                          e.stopPropagation();
+	                        }
+	                      }}>
+	                        {doc.processing_status && statusConfig[doc.processing_status] && (
+	                          (doc.processing_status === "review" || doc.processing_status === "manual_review") ? (
                             <Link href={`/pending?docId=${doc.id}`}>
                               <Badge
                                 variant={statusConfig[doc.processing_status].variant}

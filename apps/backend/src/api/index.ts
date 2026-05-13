@@ -8,7 +8,6 @@ import * as pendingHandlers from './pending/handlers.js';
 import * as jobsHandlers from './jobs/handlers.js';
 import * as documentsHandlers from './documents/handlers.js';
 import * as processingHandlers from './processing/handlers.js';
-import * as promptsHandlers from './prompts/handlers.js';
 import * as metadataHandlers from './metadata/handlers.js';
 import * as schemaHandlers from './schema/handlers.js';
 import * as translationHandlers from './translation/handlers.js';
@@ -330,25 +329,6 @@ addRoute('GET', '/api/processing/auto/status', () => processingHandlers.getAutoP
 addRoute('POST', '/api/processing/auto/trigger', () => processingHandlers.triggerAutoProcessing);
 
 // ===========================================================================
-// Prompts API - /api/prompts
-// ===========================================================================
-
-addRoute('GET', '/api/prompts', () => promptsHandlers.listPrompts());
-
-addRoute('GET', '/api/prompts/groups', () => promptsHandlers.listPromptGroups());
-
-addRoute('GET', '/api/prompts/preview-data', () => promptsHandlers.getPreviewData);
-
-addRoute('GET', '/api/prompts/languages', () => promptsHandlers.getLanguages);
-
-addRoute('GET', '/api/prompts/:name', (params) => promptsHandlers.getPrompt(params.name!));
-
-addRoute('PUT', '/api/prompts/:name', (params, body) => {
-  const { content } = body as { content: string };
-  return promptsHandlers.updatePrompt(params.name!, content);
-});
-
-// ===========================================================================
 // Metadata API - /api/metadata
 // ===========================================================================
 
@@ -432,11 +412,6 @@ addRoute('GET', '/api/schema/blocked/check', () => {
 addRoute('POST', '/api/translation/translate', (_, body) =>
   translationHandlers.translate(body as any)
 );
-
-addRoute('POST', '/api/translation/translate/prompts', (_, body) => {
-  const { source_lang, target_lang } = body as { source_lang: string; target_lang: string };
-  return translationHandlers.translatePrompts(source_lang, target_lang);
-});
 
 addRoute('GET', '/api/translation/translations/:targetLang', (params) =>
   translationHandlers.getTranslations(params.targetLang!)

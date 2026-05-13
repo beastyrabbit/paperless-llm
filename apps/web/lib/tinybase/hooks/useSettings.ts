@@ -138,10 +138,6 @@ export function useAutoProcessingInterval() {
   return useNumberSetting('auto_processing.interval_minutes');
 }
 
-export function usePromptLanguage() {
-  return useStringSetting('prompt_language');
-}
-
 export function useDebugLogLevel() {
   return useStringSetting('debug.log_level');
 }

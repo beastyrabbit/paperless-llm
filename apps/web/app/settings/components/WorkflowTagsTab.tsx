@@ -52,17 +52,13 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 // Tag setting keys mapping
 const TAG_KEYS: { key: string; settingKey: SettingKey }[] = [
-  { key: "pending", settingKey: "tags.pending" },
-  { key: "ocr_done", settingKey: "tags.ocr_done" },
-  { key: "summary_done", settingKey: "tags.summary_done" },
-  { key: "schema_review", settingKey: "tags.schema_review" },
-  { key: "title_done", settingKey: "tags.title_done" },
-  { key: "correspondent_done", settingKey: "tags.correspondent_done" },
-  { key: "document_type_done", settingKey: "tags.document_type_done" },
-  { key: "tags_done", settingKey: "tags.tags_done" },
-  { key: "processed", settingKey: "tags.processed" },
+  { key: "todo", settingKey: "tags.todo" },
+  { key: "ocr", settingKey: "tags.ocr" },
+  { key: "metadata", settingKey: "tags.metadata" },
+  { key: "review", settingKey: "tags.review" },
+  { key: "index", settingKey: "tags.index" },
+  { key: "done", settingKey: "tags.done" },
   { key: "failed", settingKey: "tags.failed" },
-  { key: "manual_review", settingKey: "tags.manual_review" },
 ];
 
 function TagNameInput({ settingKey, label }: { settingKey: SettingKey; label: string }) {

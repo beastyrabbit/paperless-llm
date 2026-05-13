@@ -41,7 +41,6 @@ export {
   useQdrantUrl,
   useAutoProcessingEnabled,
   useAutoProcessingInterval,
-  usePromptLanguage,
   useDebugLogLevel,
   usePipelineOcr,
   usePipelineTitle,

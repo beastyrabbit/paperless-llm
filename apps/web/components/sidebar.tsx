@@ -9,8 +9,6 @@ import {
   FileText,
   Settings,
   Clock,
-  Code2,
-  Cog,
   Zap,
   Search,
   MessageSquare,
@@ -24,8 +22,6 @@ const navigation = [
   { key: "pending", href: "/pending", icon: Clock },
   { key: "search", href: "/search", icon: Search },
   { key: "chat", href: "/chat", icon: MessageSquare },
-  { key: "documentPrompts", href: "/prompts?category=document", icon: Code2 },
-  { key: "systemPrompts", href: "/prompts?category=system", icon: Cog },
   { key: "settings", href: "/settings", icon: Settings },
 ] as const;
 

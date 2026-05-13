@@ -169,6 +169,28 @@ export const storeSchema = {
     createdAt: { type: 'string' as const },
     updatedAt: { type: 'string' as const },
   },
+  documentMemory: {
+    docId: { type: 'number' as const },
+    sessionId: { type: 'string' as const },
+    ocrVersionIds: { type: 'string' as const }, // JSON number[]
+    extractedFacts: { type: 'string' as const }, // JSON
+    candidateEntities: { type: 'string' as const }, // JSON
+    finalDecisions: { type: 'string' as const }, // JSON
+    humanDecisions: { type: 'string' as const }, // JSON array
+    reviewFeedback: { type: 'string' as const }, // JSON array
+    runSummaries: { type: 'string' as const }, // JSON array
+    transcript: { type: 'string' as const }, // JSON AgentMessage[]
+    createdAt: { type: 'string' as const },
+    updatedAt: { type: 'string' as const },
+  },
+  consolidationReports: {
+    id: { type: 'string' as const },
+    status: { type: 'string' as const },
+    proposals: { type: 'string' as const }, // JSON
+    summary: { type: 'string' as const },
+    createdAt: { type: 'string' as const },
+    updatedAt: { type: 'string' as const },
+  },
 };
 
 // ===========================================================================
@@ -270,6 +292,19 @@ export interface TinyBaseService {
   readonly hasDocumentOcrContent: (docId: number) => Effect.Effect<boolean, DatabaseError>;
   readonly deleteDocumentOcrContent: (docId: number) => Effect.Effect<void, DatabaseError>;
   readonly getDocumentOcrContentStats: () => Effect.Effect<{ totalDocuments: number; totalCharacters: number }, DatabaseError>;
+
+  // Document Memory
+  readonly getDocumentMemory: (docId: number) => Effect.Effect<DocumentMemory | null, DatabaseError>;
+  readonly upsertDocumentMemory: (memory: DocumentMemory) => Effect.Effect<void, DatabaseError>;
+  readonly patchDocumentMemory: (docId: number, updates: Partial<DocumentMemory>) => Effect.Effect<DocumentMemory, DatabaseError>;
+  readonly appendHumanDecision: (docId: number, decision: HumanDecisionRecord) => Effect.Effect<DocumentMemory, DatabaseError>;
+  readonly appendReviewFeedback: (docId: number, feedback: ReviewFeedbackRecord) => Effect.Effect<DocumentMemory, DatabaseError>;
+  readonly appendRunSummary: (docId: number, summary: RunSummaryRecord) => Effect.Effect<DocumentMemory, DatabaseError>;
+
+  // Consolidation Reports
+  readonly saveConsolidationReport: (report: ConsolidationReportRecord) => Effect.Effect<void, DatabaseError>;
+  readonly getConsolidationReport: (id: string) => Effect.Effect<ConsolidationReportRecord | null, DatabaseError>;
+  readonly getConsolidationReports: () => Effect.Effect<ConsolidationReportRecord[], DatabaseError>;
 }
 
 // ===========================================================================
@@ -289,6 +324,58 @@ const generateId = (): string => {
 const normalizeString = (str: string): string => {
   return str.toLowerCase().trim().replace(/\s+/g, ' ');
 };
+
+export interface HumanDecisionRecord {
+  id: string;
+  pendingId?: string;
+  type: string;
+  question: string;
+  suggestion: string;
+  answer: 'create' | 'map' | 'edit' | 'skip' | 'reject';
+  value: string | null;
+  feedback?: string | null;
+  decidedAt: string;
+}
+
+export interface ReviewFeedbackRecord {
+  id: string;
+  pendingId?: string;
+  feedback: string;
+  category?: string | null;
+  createdAt: string;
+}
+
+export interface RunSummaryRecord {
+  id: string;
+  agent: string;
+  status: string;
+  summary: string;
+  createdAt: string;
+}
+
+export interface DocumentMemory {
+  docId: number;
+  sessionId: string;
+  ocrVersionIds: number[];
+  extractedFacts: Record<string, unknown>;
+  candidateEntities: Record<string, unknown>;
+  finalDecisions: Record<string, unknown>;
+  humanDecisions: HumanDecisionRecord[];
+  reviewFeedback: ReviewFeedbackRecord[];
+  runSummaries: RunSummaryRecord[];
+  transcript: unknown[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConsolidationReportRecord {
+  id: string;
+  status: 'draft' | 'ready' | 'partially_approved' | 'applied' | 'rejected';
+  proposals: unknown[];
+  summary: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 /**
  * TinyBase cells cannot be null, so we convert nulls to empty strings or 0
@@ -313,6 +400,15 @@ const sanitizeForStorage = <T extends Record<string, unknown>>(obj: T): Record<s
  */
 const emptyToNull = (value: unknown): unknown => {
   return value === '' ? null : value;
+};
+
+const parseJsonValue = <T>(value: unknown, fallback: T): T => {
+  if (typeof value !== 'string' || value.length === 0) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
 };
 
 /**
@@ -416,10 +512,80 @@ export const TinyBaseServiceLive = Layer.effect(
     }
 
     // Set up auto-persistence on any store change
-    store.addTablesListener(() => {
-      debouncedPersist(store);
-    });
-    console.log('[TinyBase] Auto-persistence enabled');
+	    store.addTablesListener(() => {
+	      debouncedPersist(store);
+	    });
+	    console.log('[TinyBase] Auto-persistence enabled');
+
+	    const createEmptyMemory = (docId: number): DocumentMemory => {
+	      const now = new Date().toISOString();
+	      return {
+	        docId,
+	        sessionId: `doc-${docId}-${generateId()}`,
+	        ocrVersionIds: [],
+	        extractedFacts: {},
+	        candidateEntities: {},
+	        finalDecisions: {},
+	        humanDecisions: [],
+	        reviewFeedback: [],
+	        runSummaries: [],
+	        transcript: [],
+	        createdAt: now,
+	        updatedAt: now,
+	      };
+	    };
+
+	    const rowToMemory = (rowId: string): DocumentMemory | null => {
+	      const row = store.getRow('documentMemory', rowId);
+	      if (!row || Object.keys(row).length === 0) return null;
+	      return {
+	        docId: row['docId'] as number,
+	        sessionId: row['sessionId'] as string,
+	        ocrVersionIds: parseJsonValue<number[]>(row['ocrVersionIds'], []),
+	        extractedFacts: parseJsonValue<Record<string, unknown>>(row['extractedFacts'], {}),
+	        candidateEntities: parseJsonValue<Record<string, unknown>>(row['candidateEntities'], {}),
+	        finalDecisions: parseJsonValue<Record<string, unknown>>(row['finalDecisions'], {}),
+	        humanDecisions: parseJsonValue<HumanDecisionRecord[]>(row['humanDecisions'], []),
+	        reviewFeedback: parseJsonValue<ReviewFeedbackRecord[]>(row['reviewFeedback'], []),
+	        runSummaries: parseJsonValue<RunSummaryRecord[]>(row['runSummaries'], []),
+	        transcript: parseJsonValue<unknown[]>(row['transcript'], []),
+	        createdAt: row['createdAt'] as string,
+	        updatedAt: row['updatedAt'] as string,
+	      };
+	    };
+
+	    const writeMemory = (memory: DocumentMemory): void => {
+	      store.setRow('documentMemory', String(memory.docId), {
+	        docId: memory.docId,
+	        sessionId: memory.sessionId,
+	        ocrVersionIds: JSON.stringify(memory.ocrVersionIds),
+	        extractedFacts: JSON.stringify(memory.extractedFacts),
+	        candidateEntities: JSON.stringify(memory.candidateEntities),
+	        finalDecisions: JSON.stringify(memory.finalDecisions),
+	        humanDecisions: JSON.stringify(memory.humanDecisions),
+	        reviewFeedback: JSON.stringify(memory.reviewFeedback),
+	        runSummaries: JSON.stringify(memory.runSummaries),
+	        transcript: JSON.stringify(memory.transcript),
+	        createdAt: memory.createdAt,
+	        updatedAt: memory.updatedAt,
+	      });
+	    };
+
+	    const getOrCreateMemory = (docId: number): DocumentMemory =>
+	      rowToMemory(String(docId)) ?? createEmptyMemory(docId);
+
+	    const rowToConsolidationReport = (rowId: string): ConsolidationReportRecord | null => {
+	      const row = store.getRow('consolidationReports', rowId);
+	      if (!row || Object.keys(row).length === 0) return null;
+	      return {
+	        id: row['id'] as string,
+	        status: row['status'] as ConsolidationReportRecord['status'],
+	        proposals: parseJsonValue<unknown[]>(row['proposals'], []),
+	        summary: row['summary'] as string,
+	        createdAt: row['createdAt'] as string,
+	        updatedAt: row['updatedAt'] as string,
+	      };
+	    };
 
     return {
       store,
@@ -566,21 +732,52 @@ export const TinyBaseServiceLive = Layer.effect(
             let document_type = 0;
             let tag = 0;
             let title = 0;
+            let human_decision = 0;
+            let consolidation = 0;
+            let schema_correspondent = 0;
+            let schema_document_type = 0;
+            let schema_tag = 0;
+            let schema_custom_field = 0;
+            let schema_cleanup = 0;
+            let metadata_description = 0;
             let schema = 0;
             let total = 0;
 
             for (const row of rows) {
               const rowType = row?.['type'] as string;
-              if (rowType === 'correspondent') correspondent++;
-              else if (rowType === 'document_type') document_type++;
+	              if (rowType === 'correspondent') correspondent++;
+	              else if (rowType === 'document_type') document_type++;
               else if (rowType === 'tag') tag++;
               else if (rowType === 'title') title++;
-              else if (rowType?.startsWith('schema_')) schema++;
+              else if (rowType === 'human_decision') human_decision++;
+              else if (rowType === 'consolidation') consolidation++;
+              else if (rowType === 'schema_correspondent') schema_correspondent++;
+              else if (rowType === 'schema_document_type') schema_document_type++;
+              else if (rowType === 'schema_tag') schema_tag++;
+              else if (rowType === 'schema_custom_field') schema_custom_field++;
+              else if (rowType === 'schema_cleanup') schema_cleanup++;
+              else if (rowType === 'metadata_description') metadata_description++;
+              if (rowType?.startsWith('schema_')) schema++;
               // Note: documentlink items are no longer queued for review
               total++;
             }
 
-            return { correspondent, document_type, tag, title, schema, total };
+            return {
+              correspondent,
+              document_type,
+              tag,
+              title,
+              human_decision,
+              consolidation,
+              schema_correspondent,
+              schema_document_type,
+              schema_tag,
+              schema_custom_field,
+              schema_cleanup,
+              metadata_description,
+              schema,
+              total,
+            };
           },
           catch: (e) => new DatabaseError({ message: `Failed to get pending counts: ${e}`, operation: 'getPendingCounts', cause: e }),
         }),
@@ -1126,11 +1323,11 @@ export const TinyBaseServiceLive = Layer.effect(
           catch: (e) => new DatabaseError({ message: `Failed to delete document OCR content: ${e}`, operation: 'deleteDocumentOcrContent', cause: e }),
         }),
 
-      getDocumentOcrContentStats: () =>
-        Effect.try({
-          try: () => {
-            const table = store.getTable('documentOcrContent') ?? {};
-            const rows = Object.values(table);
+	      getDocumentOcrContentStats: () =>
+	        Effect.try({
+	          try: () => {
+	            const table = store.getTable('documentOcrContent') ?? {};
+	            const rows = Object.values(table);
             let totalCharacters = 0;
             for (const row of rows) {
               const content = row?.['content'] as string;
@@ -1142,9 +1339,133 @@ export const TinyBaseServiceLive = Layer.effect(
               totalDocuments: rows.length,
               totalCharacters,
             };
-          },
-          catch: (e) => new DatabaseError({ message: `Failed to get document OCR content stats: ${e}`, operation: 'getDocumentOcrContentStats', cause: e }),
-        }),
-    };
+	          },
+	          catch: (e) => new DatabaseError({ message: `Failed to get document OCR content stats: ${e}`, operation: 'getDocumentOcrContentStats', cause: e }),
+	        }),
+
+	      // =====================================================================
+	      // Document Memory
+	      // =====================================================================
+
+	      getDocumentMemory: (docId) =>
+	        Effect.try({
+	          try: () => rowToMemory(String(docId)),
+	          catch: (e) => new DatabaseError({ message: `Failed to get document memory: ${e}`, operation: 'getDocumentMemory', cause: e }),
+	        }),
+
+	      upsertDocumentMemory: (memory) =>
+	        Effect.try({
+	          try: () => writeMemory({ ...memory, updatedAt: new Date().toISOString() }),
+	          catch: (e) => new DatabaseError({ message: `Failed to upsert document memory: ${e}`, operation: 'upsertDocumentMemory', cause: e }),
+	        }),
+
+	      patchDocumentMemory: (docId, updates) =>
+	        Effect.try({
+	          try: () => {
+	            const current = getOrCreateMemory(docId);
+	            const next: DocumentMemory = {
+	              ...current,
+	              ...updates,
+	              docId,
+	              sessionId: updates.sessionId ?? current.sessionId,
+	              ocrVersionIds: updates.ocrVersionIds ?? current.ocrVersionIds,
+	              extractedFacts: updates.extractedFacts ?? current.extractedFacts,
+	              candidateEntities: updates.candidateEntities ?? current.candidateEntities,
+	              finalDecisions: updates.finalDecisions ?? current.finalDecisions,
+	              humanDecisions: updates.humanDecisions ?? current.humanDecisions,
+	              reviewFeedback: updates.reviewFeedback ?? current.reviewFeedback,
+	              runSummaries: updates.runSummaries ?? current.runSummaries,
+	              transcript: updates.transcript ?? current.transcript,
+	              createdAt: current.createdAt,
+	              updatedAt: new Date().toISOString(),
+	            };
+	            writeMemory(next);
+	            return next;
+	          },
+	          catch: (e) => new DatabaseError({ message: `Failed to patch document memory: ${e}`, operation: 'patchDocumentMemory', cause: e }),
+	        }),
+
+	      appendHumanDecision: (docId, decision) =>
+	        Effect.try({
+	          try: () => {
+	            const current = getOrCreateMemory(docId);
+	            const next = {
+	              ...current,
+	              humanDecisions: [...current.humanDecisions, decision],
+	              updatedAt: new Date().toISOString(),
+	            };
+	            writeMemory(next);
+	            return next;
+	          },
+	          catch: (e) => new DatabaseError({ message: `Failed to append human decision: ${e}`, operation: 'appendHumanDecision', cause: e }),
+	        }),
+
+	      appendReviewFeedback: (docId, feedback) =>
+	        Effect.try({
+	          try: () => {
+	            const current = getOrCreateMemory(docId);
+	            const next = {
+	              ...current,
+	              reviewFeedback: [...current.reviewFeedback, feedback],
+	              updatedAt: new Date().toISOString(),
+	            };
+	            writeMemory(next);
+	            return next;
+	          },
+	          catch: (e) => new DatabaseError({ message: `Failed to append review feedback: ${e}`, operation: 'appendReviewFeedback', cause: e }),
+	        }),
+
+	      appendRunSummary: (docId, summary) =>
+	        Effect.try({
+	          try: () => {
+	            const current = getOrCreateMemory(docId);
+	            const next = {
+	              ...current,
+	              runSummaries: [...current.runSummaries, summary],
+	              updatedAt: new Date().toISOString(),
+	            };
+	            writeMemory(next);
+	            return next;
+	          },
+	          catch: (e) => new DatabaseError({ message: `Failed to append run summary: ${e}`, operation: 'appendRunSummary', cause: e }),
+	        }),
+
+	      // =====================================================================
+	      // Consolidation Reports
+	      // =====================================================================
+
+	      saveConsolidationReport: (report) =>
+	        Effect.try({
+	          try: () => {
+	            store.setRow('consolidationReports', report.id, {
+	              id: report.id,
+	              status: report.status,
+	              proposals: JSON.stringify(report.proposals),
+	              summary: report.summary,
+	              createdAt: report.createdAt,
+	              updatedAt: report.updatedAt,
+	            });
+	          },
+	          catch: (e) => new DatabaseError({ message: `Failed to save consolidation report: ${e}`, operation: 'saveConsolidationReport', cause: e }),
+	        }),
+
+	      getConsolidationReport: (id) =>
+	        Effect.try({
+	          try: () => rowToConsolidationReport(id),
+	          catch: (e) => new DatabaseError({ message: `Failed to get consolidation report: ${e}`, operation: 'getConsolidationReport', cause: e }),
+	        }),
+
+	      getConsolidationReports: () =>
+	        Effect.try({
+	          try: () => {
+	            const table = store.getTable('consolidationReports') ?? {};
+	            return Object.keys(table)
+	              .map(rowToConsolidationReport)
+	              .filter((row): row is ConsolidationReportRecord => row !== null)
+	              .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+	          },
+	          catch: (e) => new DatabaseError({ message: `Failed to get consolidation reports: ${e}`, operation: 'getConsolidationReports', cause: e }),
+	        }),
+	    };
   })
 );

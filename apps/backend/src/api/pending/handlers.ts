@@ -3,6 +3,7 @@
  */
 import { Effect, pipe, Option } from 'effect';
 import { TinyBaseService, PaperlessService, ConfigService } from '../../services/index.js';
+import { ProcessingPipelineService } from '../../agents/ProcessingPipeline.js';
 import { NotFoundError, ValidationError } from '../../errors/index.js';
 import type {
   PendingItem,
@@ -17,58 +18,190 @@ import type {
 // Helper Functions
 // ===========================================================================
 
+const parseMetadata = (metadataJson: string | null): Record<string, unknown> => {
+  if (!metadataJson) return {};
+  try {
+    const parsed = JSON.parse(metadataJson) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+};
+
 /**
  * Apply a document link from pending review metadata.
  * Returns true if the link was applied, false if skipped (invalid metadata).
  */
 const applyDocumentLink = (docId: number, metadataJson: string | null) =>
   Effect.gen(function* () {
-    // Parse metadata to get the target document ID and field ID
-    let metadata: Record<string, unknown> = {};
-    try {
-      metadata = metadataJson ? JSON.parse(metadataJson) : {};
-    } catch {
-      // Malformed metadata, skip processing
-      return false;
-    }
+    const metadata = parseMetadata(metadataJson);
+    const targetDocId = metadata['targetDocId'] as number | undefined;
+    const fieldId = metadata['fieldId'] as number | undefined;
 
-    const targetDocId = metadata.targetDocId as number | undefined;
-    const fieldId = metadata.fieldId as number | undefined;
-
-    if (!targetDocId || !fieldId) {
-      return false;
-    }
+    if (!targetDocId || !fieldId) return false;
 
     const paperless = yield* PaperlessService;
-
-    // Get current document custom fields
     const doc = yield* paperless.getDocument(docId);
-    const currentFields = (doc.custom_fields ?? []) as Array<{
-      field: number;
-      value: unknown;
-    }>;
-
-    // Find or create the field entry
+    const currentFields = (doc.custom_fields ?? []) as Array<{ field: number; value: unknown }>;
     const existingField = currentFields.find((cf) => cf.field === fieldId);
     const existingLinks = Array.isArray(existingField?.value)
       ? (existingField.value as number[])
       : [];
 
-    // Add the new link if not already present
     if (!existingLinks.includes(targetDocId)) {
-      const newLinks = [...existingLinks, targetDocId];
       const newCustomFields = currentFields.filter((cf) => cf.field !== fieldId);
-      newCustomFields.push({
-        field: fieldId,
-        value: newLinks,
-      });
-
-      yield* paperless.updateDocument(docId, {
-        custom_fields: newCustomFields,
-      });
+      newCustomFields.push({ field: fieldId, value: [...existingLinks, targetDocId] });
+      yield* paperless.updateDocument(docId, { custom_fields: newCustomFields });
     }
 
     return true;
+  });
+
+const applyHumanDecision = (
+  docId: number,
+  pendingId: string,
+  metadataJson: string | null,
+  value: string,
+  answer: 'create' | 'map' | 'edit' | 'skip' | 'reject',
+  feedback?: string | null
+) =>
+  Effect.gen(function* () {
+    const tinybase = yield* TinyBaseService;
+    const paperless = yield* PaperlessService;
+    const metadata = parseMetadata(metadataJson);
+    const entityKind = metadata['entityKind'] as string | undefined;
+    const question = metadata['question'] as string | undefined;
+
+    yield* tinybase.appendHumanDecision(docId, {
+      id: `decision-${Date.now()}`,
+      pendingId,
+      type: entityKind ?? 'unknown',
+      question: question ?? 'Human decision',
+      suggestion: value,
+      answer,
+      value: answer === 'skip' || answer === 'reject' ? null : value,
+      feedback,
+      decidedAt: new Date().toISOString(),
+    }).pipe(Effect.catchAll(() => Effect.void));
+
+    if (answer === 'skip' || answer === 'reject') {
+      return;
+    }
+
+    const numericValue = Number(value);
+    switch (entityKind) {
+      case 'correspondent': {
+        const correspondentId = Number.isFinite(numericValue)
+          ? numericValue
+          : yield* paperless.getOrCreateCorrespondent(value);
+        yield* paperless.updateDocument(docId, { correspondent: correspondentId });
+        break;
+      }
+      case 'document_type': {
+        const documentTypeId = Number.isFinite(numericValue)
+          ? numericValue
+          : yield* paperless.getOrCreateDocumentType(value);
+        yield* paperless.updateDocument(docId, { document_type: documentTypeId });
+        break;
+      }
+      case 'tag': {
+        if (Number.isFinite(numericValue)) {
+          const doc = yield* paperless.getDocument(docId);
+          if (!doc.tags.includes(numericValue)) {
+            yield* paperless.updateDocument(docId, { tags: [...doc.tags, numericValue] });
+          }
+        } else {
+          yield* paperless.addTagToDocument(docId, value);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  });
+
+const applyConsolidationProposal = (metadataJson: string | null, finalName?: string) =>
+  Effect.gen(function* () {
+    const paperless = yield* PaperlessService;
+    const metadata = parseMetadata(metadataJson);
+    const proposal = metadata['proposal'] as {
+      action?: string;
+      attributeType?: string;
+      sourceIds?: number[];
+      targetId?: number;
+      proposedName?: string;
+    } | undefined;
+
+    if (!proposal) return false;
+
+    const sourceIds = proposal.sourceIds ?? [];
+    const targetId = proposal.targetId;
+    const name = finalName ?? proposal.proposedName;
+
+    const applyMerge = (sourceId: number, mergeTargetId: number) => {
+      switch (proposal.attributeType) {
+        case 'correspondent':
+          return paperless.mergeCorrespondents(sourceId, mergeTargetId);
+        case 'document_type':
+          return paperless.mergeDocumentTypes(sourceId, mergeTargetId);
+        case 'tag':
+          return paperless.mergeTags(sourceId, mergeTargetId);
+        default:
+          return Effect.void;
+      }
+    };
+
+    const applyDelete = (sourceId: number) => {
+      switch (proposal.attributeType) {
+        case 'correspondent':
+          return paperless.deleteCorrespondent(sourceId);
+        case 'document_type':
+          return paperless.deleteDocumentType(sourceId);
+        case 'tag':
+          return paperless.deleteTag(sourceId);
+        default:
+          return Effect.void;
+      }
+    };
+
+    const applyRename = (renameTargetId: number, rename: string) => {
+      switch (proposal.attributeType) {
+        case 'correspondent':
+          return paperless.renameCorrespondent(renameTargetId, rename).pipe(Effect.asVoid);
+        case 'document_type':
+          return paperless.renameDocumentType(renameTargetId, rename).pipe(Effect.asVoid);
+        case 'tag':
+          return paperless.renameTag(renameTargetId, rename).pipe(Effect.asVoid);
+        default:
+          return Effect.void;
+      }
+    };
+
+    if (proposal.action === 'merge' && targetId) {
+      for (const sourceId of sourceIds) {
+        yield* applyMerge(sourceId, targetId);
+      }
+      if (name) {
+        yield* applyRename(targetId, name).pipe(Effect.catchAll(() => Effect.void));
+      }
+      return true;
+    }
+
+    if (proposal.action === 'delete') {
+      for (const sourceId of sourceIds) {
+        yield* applyDelete(sourceId);
+      }
+      return true;
+    }
+
+    if (proposal.action === 'rename' && targetId && name) {
+      yield* applyRename(targetId, name);
+      return true;
+    }
+
+    return false;
   });
 
 // ===========================================================================
@@ -80,19 +213,21 @@ export const listPendingItems = (type?: string) =>
     const tinybase = yield* TinyBaseService;
     const items = yield* tinybase.getPendingReviews(type);
 
-    return items.map((item): PendingItem => ({
-      id: item.id,
-      docId: item.docId,
-      docTitle: item.docTitle,
-      type: item.type,
-      suggestion: item.suggestion,
-      reasoning: item.reasoning,
-      alternatives: item.alternatives,
-      attempts: item.attempts,
-      lastFeedback: item.lastFeedback,
-      createdAt: item.createdAt,
-    }));
-  });
+	    return items.map((item): PendingItem => ({
+	      id: item.id,
+	      docId: item.docId,
+	      docTitle: item.docTitle,
+	      type: item.type,
+	      suggestion: item.suggestion,
+	      reasoning: item.reasoning,
+	      alternatives: item.alternatives,
+	      attempts: item.attempts,
+	      lastFeedback: item.lastFeedback,
+	      createdAt: item.createdAt,
+	      nextTag: item.nextTag,
+	      metadata: parseMetadata(item.metadata),
+	    }));
+	  });
 
 // ===========================================================================
 // Get Pending Counts
@@ -135,8 +270,8 @@ export const approvePendingItem = (id: string, request: ApproveRequest) =>
     const paperless = yield* PaperlessService;
     const config = yield* ConfigService;
 
-    const item = yield* tinybase.getPendingReview(id);
-    if (!item) {
+	    const item = yield* tinybase.getPendingReview(id);
+	    if (!item) {
       return yield* Effect.fail(
         new NotFoundError({
           message: `Pending item '${id}' not found`,
@@ -146,10 +281,21 @@ export const approvePendingItem = (id: string, request: ApproveRequest) =>
       );
     }
 
-    const value = request.value ?? item.suggestion;
+    const value = request.selected_value ?? request.value ?? item.suggestion;
+    const metadata = parseMetadata(item.metadata);
+    const isPiHumanDecision = item.type === 'human_decision' || metadata['kind'] === 'pi_human_decision';
 
     // Apply the change based on type
     switch (item.type) {
+      case 'human_decision': {
+        const answer = (request.action as 'create' | 'map' | 'edit' | 'skip' | 'reject' | undefined) ?? 'create';
+        yield* applyHumanDecision(item.docId, item.id, item.metadata, value, answer);
+        break;
+      }
+      case 'consolidation': {
+        yield* applyConsolidationProposal(item.metadata, value);
+        break;
+      }
       case 'correspondent': {
         const corrId = yield* paperless.getOrCreateCorrespondent(value);
         yield* paperless.updateDocument(item.docId, { correspondent: corrId });
@@ -174,17 +320,29 @@ export const approvePendingItem = (id: string, request: ApproveRequest) =>
       }
       case 'schema_merge':
       case 'schema_delete':
+      case 'schema_cleanup':
         // These are handled separately
         break;
     }
 
-    // Move to next tag if specified
-    if (item.nextTag) {
-      yield* paperless.addTagToDocument(item.docId, item.nextTag);
-    }
+	    // Move to next tag if specified
+	    if (item.nextTag) {
+	      if (typeof paperless.transitionDocumentTag === 'function') {
+	        yield* paperless.transitionDocumentTag(item.docId, config.config.tags.review, item.nextTag).pipe(
+	          Effect.catchAll(() => paperless.addTagToDocument(item.docId, item.nextTag!))
+	        );
+	      } else {
+	        yield* paperless.addTagToDocument(item.docId, item.nextTag);
+	      }
+	    }
 
     // Remove the pending item
     yield* tinybase.removePendingReview(id);
+
+    if (isPiHumanDecision && item.docId > 0) {
+      const pipeline = yield* ProcessingPipelineService;
+      yield* pipeline.processDocument({ docId: item.docId, resume: true }).pipe(Effect.catchAll(() => Effect.void));
+    }
 
     return { success: true };
   });
@@ -208,6 +366,33 @@ export const rejectPendingItem = (id: string, request: RejectRequest) =>
           id,
         })
       );
+    }
+
+    const metadata = parseMetadata(item.metadata);
+    const isPiHumanDecision = item.type === 'human_decision' || metadata['kind'] === 'pi_human_decision';
+
+    if (isPiHumanDecision) {
+      yield* applyHumanDecision(item.docId, item.id, item.metadata, item.suggestion, 'reject', request.feedback ?? null).pipe(
+        Effect.catchAll(() => Effect.void)
+      );
+      if (request.feedback) {
+        yield* tinybase.appendReviewFeedback(item.docId, {
+          id: `feedback-${Date.now()}`,
+          pendingId: item.id,
+          feedback: request.feedback,
+          category: request.category ?? null,
+          createdAt: new Date().toISOString(),
+        }).pipe(Effect.catchAll(() => Effect.void));
+      }
+      yield* tinybase.removePendingReview(id);
+		      if (typeof paperless.transitionDocumentTag === 'function') {
+		        yield* paperless.transitionDocumentTag(item.docId, config.config.tags.review, config.config.tags.metadata).pipe(
+		          Effect.catchAll(() => Effect.void)
+		        );
+		      }
+      const pipeline = yield* ProcessingPipelineService;
+      yield* pipeline.processDocument({ docId: item.docId, resume: true }).pipe(Effect.catchAll(() => Effect.void));
+      return { success: true };
     }
 
     // Block globally if requested
@@ -437,10 +622,38 @@ export const rejectWithFeedback = (id: string, request: RejectWithFeedbackReques
           resource: 'pending',
           id,
         })
-      );
-    }
+	      );
+	    }
 
-    // Add feedback to blocked suggestions if block_type is provided
+	    const metadata = parseMetadata(item.metadata);
+	    const isPiHumanDecision = item.type === 'human_decision' || metadata['kind'] === 'pi_human_decision';
+
+	    if (isPiHumanDecision) {
+	      const feedback = request.rejection_reason ?? request.feedback ?? null;
+	      yield* applyHumanDecision(item.docId, item.id, item.metadata, item.suggestion, 'reject', feedback).pipe(
+	        Effect.catchAll(() => Effect.void)
+	      );
+	      if (feedback) {
+	        yield* tinybase.appendReviewFeedback(item.docId, {
+	          id: `feedback-${Date.now()}`,
+	          pendingId: item.id,
+	          feedback,
+	          category: request.rejection_category ?? request.category ?? null,
+	          createdAt: new Date().toISOString(),
+	        }).pipe(Effect.catchAll(() => Effect.void));
+	      }
+	      yield* tinybase.removePendingReview(id);
+	      if (typeof paperless.transitionDocumentTag === 'function') {
+	        yield* paperless.transitionDocumentTag(item.docId, config.config.tags.review, config.config.tags.metadata).pipe(
+	          Effect.catchAll(() => Effect.void)
+	        );
+	      }
+	      const pipeline = yield* ProcessingPipelineService;
+	      yield* pipeline.processDocument({ docId: item.docId, resume: true }).pipe(Effect.catchAll(() => Effect.void));
+	      return { success: true, blocked: false };
+	    }
+
+	    // Add feedback to blocked suggestions if block_type is provided
     // Support both field naming conventions (feedback/category and rejection_reason/rejection_category)
     if (request.block_type) {
       yield* tinybase.addBlockedSuggestion({
@@ -565,12 +778,24 @@ export const approveCleanup = (id: string, finalName?: string) =>
 
     const value = finalName ?? item.suggestion;
 
-    // Handle schema cleanup types
-    if (item.type === 'schema_merge') {
-      // Merge logic would go here
-      // For now just mark as processed
-    } else if (item.type === 'schema_delete') {
-      // Delete logic would go here
+    if (item.type === 'consolidation') {
+      yield* applyConsolidationProposal(item.metadata, value);
+    } else if (item.type === 'schema_merge' || item.type === 'schema_delete' || item.type === 'schema_cleanup') {
+      const metadata = parseMetadata(item.metadata);
+      const entityType = metadata['entityType'] as string | undefined;
+      const sourceId = metadata['sourceId'] as number | undefined;
+      const targetId = metadata['targetId'] as number | undefined;
+
+      if (item.type === 'schema_merge' && sourceId && targetId) {
+        if (entityType === 'correspondent') yield* paperless.mergeCorrespondents(sourceId, targetId);
+        if (entityType === 'document_type') yield* paperless.mergeDocumentTypes(sourceId, targetId);
+        if (entityType === 'tag') yield* paperless.mergeTags(sourceId, targetId);
+      }
+      if (item.type === 'schema_delete' && sourceId) {
+        if (entityType === 'correspondent') yield* paperless.deleteCorrespondent(sourceId);
+        if (entityType === 'document_type') yield* paperless.deleteDocumentType(sourceId);
+        if (entityType === 'tag') yield* paperless.deleteTag(sourceId);
+      }
     }
 
     // Remove the pending item

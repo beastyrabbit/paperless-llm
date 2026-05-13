@@ -181,75 +181,50 @@ export const createHttpServer = (port: number) =>
             const tagMap = new Map(allTags.map((t) => [t.id, t.name]));
             const tagNames = (doc.tags ?? []).map((id) => tagMap.get(id)).filter((n): n is string => n !== undefined);
 
-            // Determine current state from tags using exact match (consistent with ProcessingPipeline)
-            let currentState = 'pending';
-            if (tagNames.includes(tagConfig.processed)) {
-              currentState = 'processed';
-            } else if (tagNames.includes(tagConfig.tagsDone)) {
-              currentState = 'tags_done';
-            } else if (tagNames.includes(tagConfig.documentTypeDone)) {
-              currentState = 'document_type_done';
-            } else if (tagNames.includes(tagConfig.correspondentDone)) {
-              currentState = 'correspondent_done';
-            } else if (tagNames.includes(tagConfig.titleDone)) {
-              currentState = 'title_done';
-            } else if (tagNames.includes(tagConfig.schemaReview)) {
-              currentState = 'schema_review';
-            } else if (tagNames.includes(tagConfig.summaryDone)) {
-              currentState = 'summary_done';
-            } else if (tagNames.includes(tagConfig.ocrDone)) {
-              currentState = 'ocr_done';
-            } else if (tagNames.includes(tagConfig.pending)) {
-              currentState = 'pending';
-            }
-
             sendEvent(createEvent({ type: 'pipeline_start', docId }));
 
             // Helper function to determine next step based on state
             const getNextStepForState = (state: string): string | null => {
               switch (state) {
-                case 'pending':
+                case 'todo':
                   return 'ocr';
-                case 'ocr_done':
-                  return 'summary';
-                case 'summary_done':
-                  return 'schema_analysis';
-                case 'schema_review':
-                  return 'title'; // After schema analysis (with or without review), continue to title
-                case 'schema_analysis_done':
-                  return 'title';
-                case 'title_done':
-                  return 'correspondent';
-                case 'correspondent_done':
-                  return 'document_type';
-                case 'document_type_done':
-                  return 'tags';
-                case 'tags_done':
-                  return 'custom_fields';
-                case 'processed':
+                case 'ocr':
+                  return 'metadata';
+                case 'metadata':
+                  return 'metadata';
+                case 'index':
+                  return 'index';
+                case 'review':
+                case 'done':
+                case 'failed':
                   return null;
                 default:
-                  return 'title'; // Default to title if state unclear
+                  return 'ocr';
               }
             };
 
             // Helper to get current state from document tags (accepts tagMap for refresh support)
             const getStateFromTags = (docTags: readonly number[], currentTagMap: Map<number, string>): string => {
               const docTagNames = docTags.map((id) => currentTagMap.get(id)).filter((n): n is string => n !== undefined);
-              if (docTagNames.includes(tagConfig.processed)) return 'processed';
-              if (docTagNames.includes(tagConfig.tagsDone)) return 'tags_done';
-              if (docTagNames.includes(tagConfig.documentTypeDone)) return 'document_type_done';
-              if (docTagNames.includes(tagConfig.correspondentDone)) return 'correspondent_done';
-              if (docTagNames.includes(tagConfig.titleDone)) return 'title_done';
-              if (docTagNames.includes(tagConfig.schemaReview)) return 'schema_review';
-              if (docTagNames.includes(tagConfig.summaryDone)) return 'summary_done';
-              if (docTagNames.includes(tagConfig.ocrDone)) return 'ocr_done';
-              if (docTagNames.includes(tagConfig.pending)) return 'pending';
-              return 'pending';
+              if (docTagNames.includes(tagConfig.failed)) return 'failed';
+              if (docTagNames.includes(tagConfig.done) || docTagNames.includes(tagConfig.processed)) return 'done';
+              if (docTagNames.includes(tagConfig.review) || docTagNames.includes(tagConfig.manualReview) || docTagNames.includes(tagConfig.schemaReview)) return 'review';
+              if (docTagNames.includes(tagConfig.index) || docTagNames.includes(tagConfig.tagsDone)) return 'index';
+              if (
+                docTagNames.includes(tagConfig.metadata) ||
+                docTagNames.includes(tagConfig.summaryDone) ||
+                docTagNames.includes(tagConfig.titleDone) ||
+                docTagNames.includes(tagConfig.correspondentDone) ||
+                docTagNames.includes(tagConfig.documentTypeDone)
+              ) return 'metadata';
+              if (docTagNames.includes(tagConfig.ocr) || docTagNames.includes(tagConfig.ocrDone)) return 'ocr';
+              return 'todo';
             };
 
+            const currentState = getStateFromTags(doc.tags ?? [], tagMap);
+
             // Check if already processed
-            if (currentState === 'processed') {
+            if (currentState === 'done') {
               sendEvent(createEvent({ type: 'pipeline_complete', docId, message: 'Already processed' }));
               return;
             }
@@ -300,26 +275,7 @@ export const createHttpServer = (port: number) =>
                   const updatedDoc = yield* paperless.getDocument(docId);
                   const updatedState = getStateFromTags(updatedDoc.tags ?? [], currentTagMap);
 
-                  // Handle summary step when it might not update tags (e.g., disabled or error recovery)
-                  if (nextStep === 'summary' && updatedState === 'ocr_done') {
-                    // Summary step ran but state didn't change - could be disabled or skipped
-                    // Check if we should advance to schema_analysis
-                    nextStep = 'schema_analysis';
-                  }
-                  // Handle schema_analysis completion - it doesn't update tags, advance to title
-                  // This handles both when summary is enabled (state = summary_done) and when disabled (state = ocr_done)
-                  else if (nextStep === 'schema_analysis' && (updatedState === 'summary_done' || updatedState === 'ocr_done')) {
-                    // schema_analysis completed but no state change - advance to title
-                    nextStep = 'title';
-                  }
-                  // Handle custom_fields completion -> transition to processed
-                  else if (nextStep === 'custom_fields' && updatedState === 'tags_done') {
-                    // custom_fields completed but no state change - transition to processed
-                    yield* paperless.transitionDocumentTag(docId, tagConfig.tagsDone, tagConfig.processed);
-                    nextStep = null; // Pipeline complete
-                  } else {
-                    nextStep = getNextStepForState(updatedState);
-                  }
+                  nextStep = getNextStepForState(updatedState);
                 }
               }
 

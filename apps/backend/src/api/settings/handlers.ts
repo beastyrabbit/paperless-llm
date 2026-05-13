@@ -33,7 +33,16 @@ export const getSettings = Effect.gen(function* () {
     return isNaN(num) ? fallback : num;
   };
 
-  const { paperless, ollama, mistral, qdrant, autoProcessing, tags, language, debug, pipeline } = config.config;
+  const { paperless, ollama, mistral, qdrant, autoProcessing, tags, language, debug } = config.config;
+  const pipeline = config.config.pipeline ?? {
+    enableOcr: true,
+    enableSummary: false,
+    enableTitle: true,
+    enableCorrespondent: true,
+    enableDocumentType: true,
+    enableTags: true,
+    enableCustomFields: false,
+  };
 
   // Merge DB settings with config defaults
   const paperlessUrl = get('paperless.url', paperless.url || '');
@@ -51,6 +60,16 @@ export const getSettings = Effect.gen(function* () {
   const vectorSearchEnabled = getBool('vector_search.enabled', false);
   const vectorSearchTopK = getNum('vector_search.top_k', 5);
   const vectorSearchMinScore = parseFloat(get('vector_search.min_score', '0.7')) || 0.7;
+
+  const workflowTags = {
+    todo: get('tags.todo', tags.todo),
+    ocr: get('tags.ocr', tags.ocr),
+    metadata: get('tags.metadata', tags.metadata),
+    review: get('tags.review', tags.review),
+    index: get('tags.index', tags.index),
+    done: get('tags.done', tags.done),
+    failed: get('tags.failed', tags.failed),
+  };
 
   // Return actual values - this is a local application, no need to mask secrets
   const settings: Settings = {
@@ -74,22 +93,22 @@ export const getSettings = Effect.gen(function* () {
     confirmation_enabled: getBool('auto_processing.confirmation_enabled', autoProcessing.confirmationEnabled),
     confirmation_max_retries: getNum('auto_processing.confirmation_max_retries', autoProcessing.confirmationMaxRetries),
     language: get('language', language),
-    prompt_language: get('prompt_language', language),
     debug: getBool('debug', debug),
     // Include tags configuration for frontend filtering
     tags: {
       color: get('tags.color', '#1e88e5'),
-      pending: get('tags.pending', tags.pending),
-      ocr_done: get('tags.ocr_done', tags.ocrDone),
-      summary_done: get('tags.summary_done', tags.summaryDone),
-      schema_review: get('tags.schema_review', tags.schemaReview),
-      title_done: get('tags.title_done', tags.titleDone),
-      correspondent_done: get('tags.correspondent_done', tags.correspondentDone),
-      document_type_done: get('tags.document_type_done', tags.documentTypeDone),
-      tags_done: get('tags.tags_done', tags.tagsDone),
-      processed: get('tags.processed', tags.processed),
-      failed: get('tags.failed', tags.failed),
-      manual_review: get('tags.manual_review', tags.manualReview),
+      ...workflowTags,
+      // Compatibility aliases for settings imported from the pre-Pi workflow.
+      pending: get('tags.pending', workflowTags.todo),
+      ocr_done: get('tags.ocr_done', workflowTags.ocr),
+      summary_done: get('tags.summary_done', workflowTags.metadata),
+      schema_review: get('tags.schema_review', workflowTags.review),
+      title_done: get('tags.title_done', workflowTags.metadata),
+      correspondent_done: get('tags.correspondent_done', workflowTags.metadata),
+      document_type_done: get('tags.document_type_done', workflowTags.metadata),
+      tags_done: get('tags.tags_done', workflowTags.index),
+      processed: get('tags.processed', workflowTags.done),
+      manual_review: get('tags.manual_review', workflowTags.review),
     },
     // Pipeline settings
     pipeline_ocr: getBool('pipeline.ocr', pipeline.enableOcr),
@@ -133,7 +152,6 @@ const SETTINGS_KEY_MAP: Record<string, string> = {
   confirmation_max_retries: 'auto_processing.confirmation_max_retries',
   // Language
   language: 'language',
-  prompt_language: 'prompt_language',
   // Debug
   debug: 'debug',
   'debug.log_level': 'debug.log_level',
@@ -163,6 +181,20 @@ const SETTINGS_KEY_MAP: Record<string, string> = {
   // Workflow tags - passthrough
   'tags.color': 'tags.color',
   tags_color: 'tags.color',
+  'tags.todo': 'tags.todo',
+  tags_todo: 'tags.todo',
+  'tags.ocr': 'tags.ocr',
+  tags_ocr: 'tags.ocr',
+  'tags.metadata': 'tags.metadata',
+  tags_metadata: 'tags.metadata',
+  'tags.review': 'tags.review',
+  tags_review: 'tags.review',
+  'tags.index': 'tags.index',
+  tags_index: 'tags.index',
+  'tags.done': 'tags.done',
+  tags_done: 'tags.done',
+  'tags.failed': 'tags.failed',
+  tags_failed: 'tags.failed',
   'tags.pending': 'tags.pending',
   'tags.ocr_done': 'tags.ocr_done',
   'tags.summary_done': 'tags.summary_done',
@@ -172,7 +204,6 @@ const SETTINGS_KEY_MAP: Record<string, string> = {
   'tags.title_done': 'tags.title_done',
   'tags.tags_done': 'tags.tags_done',
   'tags.processed': 'tags.processed',
-  'tags.failed': 'tags.failed',
   'tags.manual_review': 'tags.manual_review',
 };
 
@@ -183,6 +214,15 @@ export const updateSettings = (updates: SettingsUpdate) =>
     // Store updates in TinyBase settings table
     for (const [key, value] of Object.entries(updates)) {
       if (value === undefined) continue;
+
+      if (key === 'tags' && value && typeof value === 'object' && !Array.isArray(value)) {
+        for (const [tagKey, tagValue] of Object.entries(value as Record<string, unknown>)) {
+          if (tagValue === undefined || tagValue === null) continue;
+          const dbKey = SETTINGS_KEY_MAP[`tags.${tagKey}`] ?? `tags.${tagKey}`;
+          yield* tinybase.setSetting(dbKey, String(tagValue));
+        }
+        continue;
+      }
 
       // Map frontend key to TinyBase key
       const dbKey = SETTINGS_KEY_MAP[key] ?? key;
@@ -548,10 +588,6 @@ export const checkAndImportSettings = Effect.gen(function* () {
 // Workflow Tags
 // ===========================================================================
 
-// Convert camelCase to snake_case
-const toSnakeCase = (str: string): string =>
-  str.replace(/([A-Z])/g, '_$1').toLowerCase();
-
 export const getTagsStatus = Effect.gen(function* () {
   const config = yield* ConfigService;
   const paperless = yield* PaperlessService;
@@ -560,6 +596,15 @@ export const getTagsStatus = Effect.gen(function* () {
   const tagConfig = config.config.tags;
   const dbSettings = yield* tinybase.getAllSettings();
   const expectedColor = dbSettings['tags.color'] ?? '#1e88e5';
+  const workflowTags = {
+    todo: dbSettings['tags.todo'] ?? tagConfig.todo,
+    ocr: dbSettings['tags.ocr'] ?? tagConfig.ocr,
+    metadata: dbSettings['tags.metadata'] ?? tagConfig.metadata,
+    review: dbSettings['tags.review'] ?? tagConfig.review,
+    index: dbSettings['tags.index'] ?? tagConfig.index,
+    done: dbSettings['tags.done'] ?? tagConfig.done,
+    failed: dbSettings['tags.failed'] ?? tagConfig.failed,
+  };
 
   const existingTagsResult = yield* pipe(
     paperless.getTags(),
@@ -571,7 +616,7 @@ export const getTagsStatus = Effect.gen(function* () {
   );
 
   // Build tags array with key (snake_case), name, exists, tag_id, color info
-  const tags = Object.entries(tagConfig).map(([key, name]) => {
+  const tags = Object.entries(workflowTags).map(([key, name]) => {
     const tagInfo = existingTagsMap.get(name);
     const actualColor = tagInfo?.color ?? null;
     // Normalize colors to lowercase for comparison
@@ -579,7 +624,7 @@ export const getTagsStatus = Effect.gen(function* () {
       actualColor.toLowerCase() === expectedColor.toLowerCase();
 
     return {
-      key: toSnakeCase(key),
+      key,
       name,
       exists: existingTagsMap.has(name),
       tag_id: tagInfo?.id ?? null,
@@ -619,9 +664,17 @@ export const fixWorkflowTagColors = Effect.gen(function* () {
   const tinybase = yield* TinyBaseService;
   const config = yield* ConfigService;
 
-  const tagConfig = config.config.tags;
   const dbSettings = yield* tinybase.getAllSettings();
   const expectedColor = dbSettings['tags.color'] ?? '#1e88e5';
+  const workflowTags = {
+    todo: dbSettings['tags.todo'] ?? config.config.tags.todo,
+    ocr: dbSettings['tags.ocr'] ?? config.config.tags.ocr,
+    metadata: dbSettings['tags.metadata'] ?? config.config.tags.metadata,
+    review: dbSettings['tags.review'] ?? config.config.tags.review,
+    index: dbSettings['tags.index'] ?? config.config.tags.index,
+    done: dbSettings['tags.done'] ?? config.config.tags.done,
+    failed: dbSettings['tags.failed'] ?? config.config.tags.failed,
+  };
 
   const existingTags = yield* pipe(
     paperless.getTags(),
@@ -635,7 +688,7 @@ export const fixWorkflowTagColors = Effect.gen(function* () {
   const failed: string[] = [];
 
   // Update color for each workflow tag that exists but has wrong color
-  for (const [, name] of Object.entries(tagConfig)) {
+  for (const name of Object.values(workflowTags)) {
     const tagInfo = existingTagsMap.get(name);
     if (!tagInfo) continue; // Tag doesn't exist, skip
 

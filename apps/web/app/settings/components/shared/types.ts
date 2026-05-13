@@ -69,8 +69,6 @@ export interface Settings {
   vector_search_enabled: boolean;
   vector_search_top_k: number;
   vector_search_min_score: number;
-  // Language
-  prompt_language: string;
   // Debug
   debug_log_level: "DEBUG" | "INFO" | "WARNING" | "ERROR";
   debug_log_prompts: boolean;
@@ -78,6 +76,13 @@ export interface Settings {
   debug_save_processing_history: boolean;
   // Tags
   tags: {
+    todo: string;
+    ocr: string;
+    metadata: string;
+    review: string;
+    index: string;
+    done: string;
+    failed: string;
     pending: string;
     ocr_done: string;
     schema_review: string;
@@ -154,19 +159,25 @@ export const DEFAULT_SETTINGS: Settings = {
   vector_search_enabled: true,
   vector_search_top_k: 5,
   vector_search_min_score: 0.7,
-  prompt_language: "en",
   debug_log_level: "INFO",
   debug_log_prompts: false,
   debug_log_responses: false,
   debug_save_processing_history: true,
   tags: {
-    pending: "llm-pending",
-    ocr_done: "llm-ocr-done",
-    schema_review: "llm-schema-review",
-    correspondent_done: "llm-correspondent-done",
-    document_type_done: "llm-document-type-done",
-    title_done: "llm-title-done",
-    tags_done: "llm-tags-done",
-    processed: "llm-processed",
+    todo: "llm-todo",
+    ocr: "llm-ocr",
+    metadata: "llm-metadata",
+    review: "llm-review",
+    index: "llm-index",
+    done: "llm-done",
+    failed: "llm-failed",
+    pending: "llm-todo",
+    ocr_done: "llm-ocr",
+    schema_review: "llm-review",
+    correspondent_done: "llm-metadata",
+    document_type_done: "llm-metadata",
+    title_done: "llm-metadata",
+    tags_done: "llm-index",
+    processed: "llm-done",
   },
 };
