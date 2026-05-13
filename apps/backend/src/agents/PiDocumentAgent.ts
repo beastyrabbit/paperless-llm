@@ -558,6 +558,14 @@ export const PiDocumentAgentServiceLive = Layer.effect(
             ...metadata,
           }),
         });
+        if (!pendingId) {
+          return yield* Effect.fail(
+            new AgentError({
+              message: "Human decision request did not return a pending review id.",
+              agent: "document_agent",
+            }),
+          );
+        }
 
         yield* paperless
           .transitionDocumentTag(doc.id, tagConfig.metadata, tagConfig.review)
@@ -782,6 +790,7 @@ export const PiDocumentAgentServiceLive = Layer.effect(
                   if (!dryRun && Object.keys(updates).length > 0) {
                     yield* paperless.updateDocument(doc.id, updates);
                   }
+                  pausedRef.current = true;
                   return { applied, pendingId, paused: true };
                 });
 
@@ -812,7 +821,6 @@ export const PiDocumentAgentServiceLive = Layer.effect(
                     },
                     dryRun,
                   );
-                  pausedRef.current = true;
                   return yield* pauseWithPendingDecision(pendingId);
                 }
                 updates["correspondent"] = params.correspondentId;
@@ -838,7 +846,6 @@ export const PiDocumentAgentServiceLive = Layer.effect(
                       },
                       dryRun,
                     );
-                    pausedRef.current = true;
                     return yield* pauseWithPendingDecision(pendingId);
                   }
                   updates["correspondent"] = existing.value.id;
@@ -854,7 +861,6 @@ export const PiDocumentAgentServiceLive = Layer.effect(
                     { requestedAction: "create" },
                     dryRun,
                   );
-                  pausedRef.current = true;
                   return yield* pauseWithPendingDecision(pendingId);
                 }
               }
@@ -878,7 +884,6 @@ export const PiDocumentAgentServiceLive = Layer.effect(
                     },
                     dryRun,
                   );
-                  pausedRef.current = true;
                   return yield* pauseWithPendingDecision(pendingId);
                 }
                 updates["document_type"] = params.documentTypeId;
@@ -904,7 +909,6 @@ export const PiDocumentAgentServiceLive = Layer.effect(
                       },
                       dryRun,
                     );
-                    pausedRef.current = true;
                     return yield* pauseWithPendingDecision(pendingId);
                   }
                   updates["document_type"] = existing.value.id;
@@ -920,7 +924,6 @@ export const PiDocumentAgentServiceLive = Layer.effect(
                     { requestedAction: "create" },
                     dryRun,
                   );
-                  pausedRef.current = true;
                   return yield* pauseWithPendingDecision(pendingId);
                 }
               }
@@ -976,7 +979,6 @@ export const PiDocumentAgentServiceLive = Layer.effect(
                         { requestedAction: "create" },
                         dryRun,
                       );
-                      pausedRef.current = true;
                       return yield* pauseWithPendingDecision(pendingId);
                     }
                   }
