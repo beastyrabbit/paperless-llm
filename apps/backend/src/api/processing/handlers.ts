@@ -17,7 +17,7 @@ export const startProcessing = (docId: number, step?: string, dryRun?: boolean) 
 
     if (step && step !== "all") {
       // Process a specific step
-      const result = yield* pipeline.processStep(docId, step);
+      const result = yield* pipeline.processStep(docId, step, dryRun);
       return {
         status: result.success ? "completed" : "failed",
         doc_id: docId,

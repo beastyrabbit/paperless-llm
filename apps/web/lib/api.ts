@@ -82,10 +82,11 @@ export const processingApi = {
       method: "POST",
       body: JSON.stringify({ step, dryRun }),
     }),
-  stream: (docId: number, options?: { step?: string; full?: boolean }) => {
+  stream: (docId: number, options?: { step?: string; full?: boolean; dryRun?: boolean }) => {
     const params = new URLSearchParams();
     if (options?.step) params.set("step", options.step);
     if (options?.full) params.set("full", "true");
+    if (options?.dryRun) params.set("dryRun", "true");
     const query = params.toString();
     const url = `${API_BASE}/api/processing/${docId}/stream${query ? `?${query}` : ""}`;
     return new EventSource(url);

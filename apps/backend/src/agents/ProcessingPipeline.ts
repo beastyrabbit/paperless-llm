@@ -75,10 +75,12 @@ export interface ProcessingPipelineService {
   readonly processStep: (
     docId: number,
     step: string,
+    dryRun?: boolean,
   ) => Effect.Effect<PipelineStepResult, AgentError>;
   readonly processStepStream: (
     docId: number,
     step: string,
+    dryRun?: boolean,
   ) => Stream.Stream<PipelineStreamEvent, AgentError>;
   readonly getCurrentState: (doc: Document) => ProcessingState;
 }
@@ -507,7 +509,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
           ),
         ),
 
-      processStep: (docId, step) =>
+      processStep: (docId, step, dryRun) =>
         withDocumentLock(
           docId,
           Effect.gen(function* () {
@@ -539,7 +541,13 @@ export const ProcessingPipelineServiceLive = Layer.effect(
               return { step: "ocr", success: result.success, data: result };
             }
             if (normalized === "metadata") {
-              const result = yield* processMetadata(docId, pipelineConfig.metadataPolicy);
+              const result = yield* processMetadata(
+                docId,
+                pipelineConfig.metadataPolicy,
+                undefined,
+                undefined,
+                dryRun,
+              );
               return { step, success: result.success, data: result };
             }
             const result = yield* processIndex(docId);
@@ -605,7 +613,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
           ),
         ),
 
-      processStepStream: (docId, step) =>
+      processStepStream: (docId, step, dryRun) =>
         Stream.asyncEffect<PipelineStreamEvent, AgentError>((emit) =>
           Effect.gen(function* () {
             yield* Effect.sync(() => emit.single(event({ type: "step_start", docId, step })));
@@ -621,7 +629,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                         pipelineConfig.metadataPolicy,
                         undefined,
                         undefined,
-                        undefined,
+                        dryRun,
                         (agentEvent) => emit.single(agentEvent),
                       );
                       return {
@@ -632,7 +640,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                       };
                     }),
                   )
-                : yield* service.processStep(docId, step);
+                : yield* service.processStep(docId, step, dryRun);
             yield* Effect.sync(() => {
               const data = result.data as { needsReview?: boolean; paused?: boolean } | undefined;
               if (data?.needsReview || data?.paused) {

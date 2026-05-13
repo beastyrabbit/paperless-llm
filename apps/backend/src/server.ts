@@ -157,6 +157,7 @@ export const createHttpServer = (port: number, host = "127.0.0.1") =>
       res: ServerResponse,
       docId: number,
       fullPipeline: boolean = false,
+      dryRun: boolean = false,
     ): Promise<void> => {
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
@@ -312,7 +313,7 @@ export const createHttpServer = (port: number, host = "127.0.0.1") =>
                 iterationCount++;
 
                 yield* pipe(
-                  pipeline.processStepStream(docId, nextStep),
+                  pipeline.processStepStream(docId, nextStep, dryRun),
                   Stream.tap((event) =>
                     Effect.sync(() => {
                       sendEvent(event);
@@ -371,7 +372,7 @@ export const createHttpServer = (port: number, host = "127.0.0.1") =>
             } else {
               // Single step mode: run only the next step
               yield* pipe(
-                pipeline.processStepStream(docId, nextStep),
+                pipeline.processStepStream(docId, nextStep, dryRun),
                 Stream.tap((event) =>
                   Effect.sync(() => {
                     sendEvent(event);
@@ -444,7 +445,8 @@ export const createHttpServer = (port: number, host = "127.0.0.1") =>
         }
         // Check for full pipeline mode
         const fullPipeline = url.searchParams.get("full") === "true";
-        await handleSSEStream(res, docId, fullPipeline);
+        const dryRun = url.searchParams.get("dryRun") === "true";
+        await handleSSEStream(res, docId, fullPipeline, dryRun);
         return;
       }
 
