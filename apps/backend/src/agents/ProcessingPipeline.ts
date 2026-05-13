@@ -253,6 +253,8 @@ export const ProcessingPipelineServiceLive = Layer.effect(
         }
         yield* refreshTagMap;
       });
+    const transitionUnlessDryRun = (docId: number, toTag: string, dryRun?: boolean) =>
+      dryRun ? Effect.void : transition(docId, toTag);
 
     const indexDocument = (docId: number) =>
       Effect.gen(function* () {
@@ -328,7 +330,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
       onAgentEvent?: (event: PipelineStreamEvent) => void,
     ) =>
       Effect.gen(function* () {
-        yield* transition(docId, tagConfig.metadata);
+        yield* transitionUnlessDryRun(docId, tagConfig.metadata, dryRun);
         const result = yield* documentAgent.processDocument({
           docId,
           auto,
@@ -340,17 +342,18 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             : undefined,
         });
         if (result.needsReview) {
-          yield* transition(docId, tagConfig.review);
+          yield* transitionUnlessDryRun(docId, tagConfig.review, dryRun);
         } else if (!result.success) {
-          yield* transition(docId, tagConfig.failed);
+          yield* transitionUnlessDryRun(docId, tagConfig.failed, dryRun);
         } else {
-          yield* transition(docId, tagConfig.index);
+          yield* transitionUnlessDryRun(docId, tagConfig.index, dryRun);
         }
         return result;
       });
 
-    const processIndex = (docId: number) =>
+    const processIndex = (docId: number, dryRun?: boolean) =>
       Effect.gen(function* () {
+        if (dryRun) return { indexed: false, dryRun: true, error: undefined };
         yield* transition(docId, tagConfig.index);
         const result = yield* indexDocument(docId);
         if (result.error) {
@@ -387,6 +390,28 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             const pipelineConfig = yield* getPipelineConfig();
             let doc = yield* paperless.getDocument(input.docId);
             let state = getCurrentState(doc);
+
+            if (input.dryRun) {
+              if (!pipelineConfig.enableMetadata) {
+                return { docId: input.docId, success: true, needsReview: false, steps };
+              }
+              const result = yield* processMetadata(
+                input.docId,
+                pipelineConfig.metadataPolicy,
+                input.auto,
+                input.resume,
+                true,
+                input.onAgentEvent,
+              );
+              steps["metadata"] = { step: "metadata", success: result.success, data: result };
+              return {
+                docId: input.docId,
+                success: result.success,
+                needsReview: result.needsReview,
+                steps,
+                error: result.error,
+              };
+            }
 
             if (state === "done") {
               return { docId: input.docId, success: true, needsReview: false, steps };
@@ -477,7 +502,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             }
 
             if (state === "index") {
-              const result = yield* processIndex(input.docId);
+              const result = yield* processIndex(input.docId, input.dryRun);
               steps["index"] = {
                 step: "index",
                 success: !result.error,
@@ -516,6 +541,20 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             const normalized = normalizeStep(step);
             const pipelineConfig = yield* getPipelineConfig();
             if (normalized === "ocr") {
+              if (dryRun) {
+                return {
+                  step: "ocr",
+                  success: true,
+                  data: {
+                    success: true,
+                    docId,
+                    textLength: 0,
+                    pages: 0,
+                    skipped: true,
+                    dryRun: true,
+                  },
+                };
+              }
               const doc = yield* paperless.getDocument(docId);
               if (getCurrentState(doc) === "ocr") {
                 return {
@@ -550,7 +589,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
               );
               return { step, success: result.success, data: result };
             }
-            const result = yield* processIndex(docId);
+            const result = yield* processIndex(docId, dryRun);
             return { step: "index", success: !result.error, data: result, error: result.error };
           }).pipe(
             Effect.mapError((error) =>
