@@ -1,6 +1,5 @@
 "use client";
 
-import { useTranslations } from "next-intl";
 import {
   Card,
   CardContent,
@@ -8,16 +7,17 @@ import {
   CardHeader,
   CardTitle,
   Label,
-  Switch,
-  Separator,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Separator,
+  Switch,
 } from "@repo/ui";
-import { useTinyBase, useBooleanSetting, useStringSetting } from "@/lib/tinybase";
+import { useTranslations } from "next-intl";
 import type { SettingKey } from "@/lib/tinybase";
+import { useBooleanSetting, useStringSetting, useTinyBase } from "@/lib/tinybase";
 
 interface DebugSwitchItem {
   key: SettingKey;
@@ -54,10 +54,7 @@ function DebugSwitch({ item }: { item: DebugSwitchItem }) {
         <Label>{t(item.labelKey)}</Label>
         <p className="text-xs text-zinc-500">{t(item.descKey)}</p>
       </div>
-      <Switch
-        checked={checked}
-        onCheckedChange={(v) => updateSetting(item.key, v)}
-      />
+      <Switch checked={checked} onCheckedChange={(v) => updateSetting(item.key, v)} />
     </div>
   );
 }
@@ -76,10 +73,7 @@ export function AdvancedTab() {
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <Label>{t("debug.logLevel")}</Label>
-          <Select
-            value={logLevel}
-            onValueChange={(v) => updateSetting("debug.log_level", v)}
-          >
+          <Select value={logLevel} onValueChange={(v) => updateSetting("debug.log_level", v)}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>

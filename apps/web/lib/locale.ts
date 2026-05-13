@@ -2,7 +2,7 @@
  * Client-side locale utilities for managing UI language preference.
  */
 
-import { locales, type Locale } from "@/i18n/config";
+import { type Locale, locales } from "@/i18n/config";
 
 export const LOCALE_COOKIE_NAME = "NEXT_LOCALE";
 

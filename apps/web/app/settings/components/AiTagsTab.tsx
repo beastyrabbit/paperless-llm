@@ -1,31 +1,31 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useTranslations, useLocale } from "next-intl";
-import { localeNames, type Locale } from "@/i18n/config";
 import {
-  Tag,
-  RefreshCw,
-  Loader2,
-  AlertCircle,
-  Check,
-  ChevronUp,
-  ChevronDown,
-  Sparkles,
-  Languages,
-} from "lucide-react";
-import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-  Button,
-  Alert,
-  AlertDescription,
-  AlertTitle,
-  Badge,
 } from "@repo/ui";
+import {
+  AlertCircle,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Languages,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+  Tag,
+} from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
+import { useCallback, useEffect, useState } from "react";
+import { type Locale, localeNames } from "@/i18n/config";
 
 interface PaperlessTag {
   id: number;
@@ -35,7 +35,7 @@ interface PaperlessTag {
   document_count: number;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE = "";
 
 export function AiTagsTab() {
   const t = useTranslations("settings");
@@ -51,7 +51,9 @@ export function AiTagsTab() {
 
   // Tag descriptions and translations
   const [tagDescriptions, setTagDescriptions] = useState<Record<number, string>>({});
-  const [tagTranslations, setTagTranslations] = useState<Record<number, Record<string, string>>>({});
+  const [tagTranslations, setTagTranslations] = useState<Record<number, Record<string, string>>>(
+    {},
+  );
   const [tagTranslatedLangs, setTagTranslatedLangs] = useState<Record<number, string[]>>({});
   const [expandedTagId, setExpandedTagId] = useState<number | null>(null);
   const [_tagDescriptionsHasChanges, setTagDescriptionsHasChanges] = useState(false);
@@ -95,7 +97,7 @@ export function AiTagsTab() {
           for (const tagId of tagsWithDescriptions) {
             try {
               const transResponse = await fetch(
-                `${API_BASE}/api/metadata/tags/${tagId}/translations`
+                `${API_BASE}/api/metadata/tags/${tagId}/translations`,
               );
               if (transResponse.ok) {
                 const transData = await transResponse.json();
@@ -163,23 +165,19 @@ export function AiTagsTab() {
 
   // Optimize a tag description using AI
   const optimizeTagDescription = async (tagId: number, tagName: string) => {
-    const description =
-      tagTranslations[tagId]?.[currentLocale] ?? tagDescriptions[tagId];
+    const description = tagTranslations[tagId]?.[currentLocale] ?? tagDescriptions[tagId];
     if (!description?.trim()) return;
 
     setOptimizingTagId(tagId);
     try {
-      const response = await fetch(
-        `${API_BASE}/api/metadata/tags/${tagId}/optimize-description`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            description,
-            tag_name: tagName,
-          }),
-        }
-      );
+      const response = await fetch(`${API_BASE}/api/metadata/tags/${tagId}/optimize-description`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description,
+          tag_name: tagName,
+        }),
+      });
 
       if (response.ok) {
         const data = await response.json();
@@ -208,23 +206,19 @@ export function AiTagsTab() {
 
   // Translate a tag description to all other languages
   const translateTagDescription = async (tagId: number) => {
-    const description =
-      tagTranslations[tagId]?.[currentLocale] ?? tagDescriptions[tagId];
+    const description = tagTranslations[tagId]?.[currentLocale] ?? tagDescriptions[tagId];
     if (!description?.trim()) return;
 
     setTranslatingTagId(tagId);
     try {
-      const response = await fetch(
-        `${API_BASE}/api/metadata/tags/${tagId}/translate-description`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            description,
-            source_lang: currentLocale,
-          }),
-        }
-      );
+      const response = await fetch(`${API_BASE}/api/metadata/tags/${tagId}/translate-description`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description,
+          source_lang: currentLocale,
+        }),
+      });
 
       if (response.ok) {
         const data = await response.json();
@@ -263,16 +257,9 @@ export function AiTagsTab() {
                 <Tag className="h-5 w-5" />
                 {t("aiTags.title")}
               </CardTitle>
-              <CardDescription className="mt-1">
-                {t("aiTags.description")}
-              </CardDescription>
+              <CardDescription className="mt-1">{t("aiTags.description")}</CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchAiTags}
-              disabled={loading}
-            >
+            <Button variant="outline" size="sm" onClick={fetchAiTags} disabled={loading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
               {tCommon("refresh")}
             </Button>
@@ -344,8 +331,12 @@ export function AiTagsTab() {
                 <div key={tag.id} className="py-3 first:pt-0 last:pb-0 -mx-4 px-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div
-                        className={`h-5 w-5 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={selectedAiTags.includes(tag.id)}
+                        aria-label={tag.name}
+                        className={`h-5 w-5 rounded border-2 flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 ${
                           selectedAiTags.includes(tag.id)
                             ? "bg-emerald-600 border-emerald-600"
                             : "border-zinc-300 dark:border-zinc-600"
@@ -355,7 +346,7 @@ export function AiTagsTab() {
                         {selectedAiTags.includes(tag.id) && (
                           <Check className="h-3 w-3 text-white" />
                         )}
-                      </div>
+                      </button>
                       <div className="flex items-center gap-3">
                         <div
                           className="h-8 w-8 rounded-full flex items-center justify-center"
@@ -363,10 +354,7 @@ export function AiTagsTab() {
                             backgroundColor: tag.color ? `${tag.color}20` : undefined,
                           }}
                         >
-                          <Tag
-                            className="h-4 w-4"
-                            style={{ color: tag.color || undefined }}
-                          />
+                          <Tag className="h-4 w-4" style={{ color: tag.color || undefined }} />
                         </div>
                         <div>
                           <p className="font-medium">{tag.name}</p>
@@ -398,9 +386,11 @@ export function AiTagsTab() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() =>
-                          setExpandedTagId(expandedTagId === tag.id ? null : tag.id)
-                        }
+                        onClick={() => setExpandedTagId(expandedTagId === tag.id ? null : tag.id)}
+                        aria-label={`${expandedTagId === tag.id ? "Collapse" : "Expand"} ${
+                          tag.name
+                        }`}
+                        aria-expanded={expandedTagId === tag.id}
                         className="h-8 w-8 p-0"
                       >
                         {expandedTagId === tag.id ? (
@@ -479,16 +469,18 @@ function ExpandedTagDescription({
   onDescriptionChange,
   t,
 }: ExpandedTagDescriptionProps) {
-  const currentValue =
-    tagTranslations[tag.id]?.[currentLocale] ?? tagDescriptions[tag.id] ?? "";
-  const otherLangs =
-    tagTranslatedLangs[tag.id]?.filter((l) => l !== currentLocale) ?? [];
+  const currentValue = tagTranslations[tag.id]?.[currentLocale] ?? tagDescriptions[tag.id] ?? "";
+  const otherLangs = tagTranslatedLangs[tag.id]?.filter((l) => l !== currentLocale) ?? [];
+  const descriptionId = `tag-description-${tag.id}-${currentLocale}`;
 
   return (
     <div className="mt-3 pl-9">
       <div className="flex items-center justify-between mb-2">
         <div>
-          <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <label
+            htmlFor={descriptionId}
+            className="text-sm font-medium text-zinc-700 dark:text-zinc-300"
+          >
             {t("aiTags.descriptionLabel")}
             <span className="ml-2 text-xs font-normal text-blue-600 dark:text-blue-400">
               ({t("aiTags.editingIn", { lang: localeNames[currentLocale] })})
@@ -528,6 +520,7 @@ function ExpandedTagDescription({
         </div>
       </div>
       <textarea
+        id={descriptionId}
         className="w-full p-2 text-sm border rounded-md bg-white dark:bg-zinc-900 border-zinc-300 dark:border-zinc-700 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
         rows={2}
         placeholder={t("aiTags.descriptionPlaceholder")}
@@ -538,9 +531,7 @@ function ExpandedTagDescription({
       {otherLangs.length > 0 && (
         <p className="mt-2 text-xs text-zinc-500">
           {t("aiTags.alsoAvailableIn", {
-            langs: otherLangs
-              .map((l) => localeNames[l as Locale] || l)
-              .join(", "),
+            langs: otherLangs.map((l) => localeNames[l as Locale] || l).join(", "),
           })}
         </p>
       )}

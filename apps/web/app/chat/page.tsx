@@ -1,29 +1,29 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { useTranslations } from "next-intl";
 import {
-  MessageSquare,
-  Send,
-  Loader2,
-  AlertCircle,
-  FileText,
-  User,
-  Bot,
-  ExternalLink,
-  Trash2,
-} from "lucide-react";
-import {
+  Badge,
+  Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-  Button,
   Input,
-  Badge,
   ScrollArea,
 } from "@repo/ui";
-import { chatApi, ChatMessage, SearchResult, settingsApi } from "@/lib/api";
+import {
+  AlertCircle,
+  Bot,
+  ExternalLink,
+  FileText,
+  Loader2,
+  MessageSquare,
+  Send,
+  Trash2,
+  User,
+} from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useEffect, useRef, useState } from "react";
+import { ChatMessage, chatApi, SearchResult, settingsApi } from "@/lib/api";
 
 interface DisplayMessage extends ChatMessage {
   sources?: SearchResult[];
@@ -185,7 +185,10 @@ export default function ChatPage() {
                                 >
                                   <FileText className="h-3 w-3 flex-shrink-0" />
                                   <span className="truncate">{source.title}</span>
-                                  <Badge variant="outline" className="text-xs ml-auto flex-shrink-0">
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs ml-auto flex-shrink-0"
+                                  >
                                     {(source.score * 100).toFixed(0)}%
                                   </Badge>
                                   <ExternalLink className="h-3 w-3 flex-shrink-0" />
@@ -241,6 +244,7 @@ export default function ChatPage() {
             <CardContent className="p-3">
               <div className="flex gap-3">
                 <Input
+                  aria-label={t("inputPlaceholder")}
                   placeholder={t("inputPlaceholder")}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
@@ -248,7 +252,11 @@ export default function ChatPage() {
                   disabled={loading}
                   className="flex-1"
                 />
-                <Button onClick={handleSend} disabled={loading || !input.trim()}>
+                <Button
+                  aria-label="Send message"
+                  onClick={handleSend}
+                  disabled={loading || !input.trim()}
+                >
                   {loading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (

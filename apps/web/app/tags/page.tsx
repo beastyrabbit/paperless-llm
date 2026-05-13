@@ -1,28 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import {
-  Tag,
-  Check,
-  X,
-  RefreshCw,
-  Plus,
-  AlertCircle,
-  CheckCircle2,
-  Loader2,
-} from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  Button,
-  Badge,
   Alert,
   AlertDescription,
   AlertTitle,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
 } from "@repo/ui";
+import { AlertCircle, Check, CheckCircle2, Loader2, Plus, RefreshCw, Tag, X } from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface TagStatus {
   key: string;
@@ -84,9 +75,7 @@ export default function TagsPage() {
   const createMissingTags = async () => {
     if (!tagsStatus) return;
 
-    const missingTags = tagsStatus.tags
-      .filter((t) => !t.exists)
-      .map((t) => t.name);
+    const missingTags = tagsStatus.tags.filter((t) => !t.exists).map((t) => t.name);
 
     if (missingTags.length === 0) return;
 
@@ -140,21 +129,12 @@ export default function TagsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchTagsStatus}
-              disabled={loading}
-            >
+            <Button variant="outline" size="sm" onClick={fetchTagsStatus} disabled={loading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
               Refresh
             </Button>
             {tagsStatus && tagsStatus.missing_count > 0 && (
-              <Button
-                size="sm"
-                onClick={createMissingTags}
-                disabled={creating}
-              >
+              <Button size="sm" onClick={createMissingTags} disabled={creating}>
                 {creating ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
@@ -284,11 +264,17 @@ export default function TagsPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       {tag.exists ? (
-                        <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                        <Badge
+                          variant="secondary"
+                          className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                        >
                           Exists
                         </Badge>
                       ) : (
-                        <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                        <Badge
+                          variant="secondary"
+                          className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                        >
                           Missing
                         </Badge>
                       )}
@@ -308,24 +294,37 @@ export default function TagsPage() {
           <CardContent className="pt-6">
             <h3 className="font-medium mb-2">How Workflow Tags Work</h3>
             <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
-              The LLM processing pipeline uses these tags to track which stage each document has completed.
-              When a document is added to Paperless with the <code className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">pending</code> tag,
-              it enters the processing queue.
+              The LLM processing pipeline uses these tags to track which stage each document has
+              completed. When a document is added to Paperless with the{" "}
+              <code className="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">pending</code> tag, it
+              enters the processing queue.
             </p>
             <div className="flex items-center gap-2 text-sm text-zinc-500">
               <span className="font-medium">Pipeline flow:</span>
               <div className="flex items-center gap-1">
-                <Badge variant="outline" className="text-xs">pending</Badge>
+                <Badge variant="outline" className="text-xs">
+                  pending
+                </Badge>
                 <span>→</span>
-                <Badge variant="outline" className="text-xs">ocr_done</Badge>
+                <Badge variant="outline" className="text-xs">
+                  ocr_done
+                </Badge>
                 <span>→</span>
-                <Badge variant="outline" className="text-xs">title_done</Badge>
+                <Badge variant="outline" className="text-xs">
+                  title_done
+                </Badge>
                 <span>→</span>
-                <Badge variant="outline" className="text-xs">correspondent_done</Badge>
+                <Badge variant="outline" className="text-xs">
+                  correspondent_done
+                </Badge>
                 <span>→</span>
-                <Badge variant="outline" className="text-xs">tags_done</Badge>
+                <Badge variant="outline" className="text-xs">
+                  tags_done
+                </Badge>
                 <span>→</span>
-                <Badge variant="outline" className="text-xs">processed</Badge>
+                <Badge variant="outline" className="text-xs">
+                  processed
+                </Badge>
               </div>
             </div>
           </CardContent>

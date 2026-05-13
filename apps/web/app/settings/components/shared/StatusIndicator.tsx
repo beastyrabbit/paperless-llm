@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { type ConnectionStatus } from "./types";
 
 interface StatusIndicatorProps {
@@ -16,8 +16,6 @@ export function StatusIndicator({ status }: StatusIndicatorProps) {
     case "error":
       return <XCircle className="h-4 w-4 text-red-500" />;
     default:
-      return (
-        <div className="h-4 w-4 rounded-full bg-zinc-300 dark:bg-zinc-600" />
-      );
+      return <div className="h-4 w-4 rounded-full bg-zinc-300 dark:bg-zinc-600" />;
   }
 }

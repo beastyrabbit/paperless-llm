@@ -1,12 +1,12 @@
 /**
  * Application error types.
  */
-import { Data } from 'effect';
+import { Data } from "effect";
 
 /**
  * Base error class with common properties.
  */
-export class AppError extends Data.TaggedError('AppError')<{
+export class AppError extends Data.TaggedError("AppError")<{
   readonly message: string;
   readonly cause?: unknown;
 }> {}
@@ -14,7 +14,7 @@ export class AppError extends Data.TaggedError('AppError')<{
 /**
  * Paperless API errors.
  */
-export class PaperlessError extends Data.TaggedError('PaperlessError')<{
+export class PaperlessError extends Data.TaggedError("PaperlessError")<{
   readonly message: string;
   readonly statusCode?: number;
   readonly cause?: unknown;
@@ -23,7 +23,7 @@ export class PaperlessError extends Data.TaggedError('PaperlessError')<{
 /**
  * Ollama service errors.
  */
-export class OllamaError extends Data.TaggedError('OllamaError')<{
+export class OllamaError extends Data.TaggedError("OllamaError")<{
   readonly message: string;
   readonly model?: string;
   readonly cause?: unknown;
@@ -32,7 +32,7 @@ export class OllamaError extends Data.TaggedError('OllamaError')<{
 /**
  * Mistral service errors.
  */
-export class MistralError extends Data.TaggedError('MistralError')<{
+export class MistralError extends Data.TaggedError("MistralError")<{
   readonly message: string;
   readonly cause?: unknown;
 }> {}
@@ -40,7 +40,7 @@ export class MistralError extends Data.TaggedError('MistralError')<{
 /**
  * Qdrant service errors.
  */
-export class QdrantError extends Data.TaggedError('QdrantError')<{
+export class QdrantError extends Data.TaggedError("QdrantError")<{
   readonly message: string;
   readonly cause?: unknown;
 }> {}
@@ -48,7 +48,7 @@ export class QdrantError extends Data.TaggedError('QdrantError')<{
 /**
  * Database/TinyBase errors.
  */
-export class DatabaseError extends Data.TaggedError('DatabaseError')<{
+export class DatabaseError extends Data.TaggedError("DatabaseError")<{
   readonly message: string;
   readonly operation?: string;
   readonly cause?: unknown;
@@ -57,7 +57,7 @@ export class DatabaseError extends Data.TaggedError('DatabaseError')<{
 /**
  * Validation errors.
  */
-export class ValidationError extends Data.TaggedError('ValidationError')<{
+export class ValidationError extends Data.TaggedError("ValidationError")<{
   readonly message: string;
   readonly field?: string;
   readonly value?: unknown;
@@ -66,7 +66,7 @@ export class ValidationError extends Data.TaggedError('ValidationError')<{
 /**
  * Agent processing errors.
  */
-export class AgentError extends Data.TaggedError('AgentError')<{
+export class AgentError extends Data.TaggedError("AgentError")<{
   readonly message: string;
   readonly agent?: string;
   readonly step?: string;
@@ -76,7 +76,7 @@ export class AgentError extends Data.TaggedError('AgentError')<{
 /**
  * Job errors.
  */
-export class JobError extends Data.TaggedError('JobError')<{
+export class JobError extends Data.TaggedError("JobError")<{
   readonly message: string;
   readonly jobName?: string;
   readonly cause?: unknown;
@@ -85,7 +85,7 @@ export class JobError extends Data.TaggedError('JobError')<{
 /**
  * Not found errors.
  */
-export class NotFoundError extends Data.TaggedError('NotFoundError')<{
+export class NotFoundError extends Data.TaggedError("NotFoundError")<{
   readonly message: string;
   readonly resource?: string;
   readonly id?: string | number;

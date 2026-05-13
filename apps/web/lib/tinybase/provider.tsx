@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 /**
  * TinyBase Provider Component
@@ -11,24 +11,24 @@
 
 import {
   createContext,
+  type ReactNode,
+  useCallback,
   useContext,
   useEffect,
-  useState,
-  useCallback,
   useRef,
-  type ReactNode,
-} from 'react';
-import { Provider as TinyBaseProvider } from 'tinybase/ui-react';
-import { Store } from 'tinybase';
-import { createAppStore } from './store';
+  useState,
+} from "react";
+import { Store } from "tinybase";
+import { Provider as TinyBaseProvider } from "tinybase/ui-react";
 import {
-  type SettingKey,
   API_TO_STORE_KEY_MAP,
+  type SettingKey,
   STORE_TO_API_KEY_MAP,
   valuesSchema,
-} from './schemas';
+} from "./schemas";
+import { createAppStore } from "./store";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+const API_BASE = "";
 
 // Sync interval in milliseconds (30 seconds)
 const SYNC_INTERVAL_MS = 30000;
@@ -68,8 +68,8 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
     if (!mountedRef.current) return;
 
     setIsSyncing(true);
-    store.setValue('_syncing', true);
-    store.setValue('_error', '');
+    store.setValue("_syncing", true);
+    store.setValue("_error", "");
 
     try {
       const response = await fetch(`${API_BASE}/api/settings`);
@@ -89,9 +89,9 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
           const expectedType = schemaEntry.type;
 
           // Convert value to correct type
-          if (expectedType === 'boolean') {
+          if (expectedType === "boolean") {
             store.setValue(storeKey, Boolean(value));
-          } else if (expectedType === 'number') {
+          } else if (expectedType === "number") {
             store.setValue(storeKey, Number(value));
           } else {
             store.setValue(storeKey, String(value));
@@ -100,16 +100,24 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
       }
 
       // Handle nested tags object
-      if (settings.tags && typeof settings.tags === 'object') {
+      if (settings.tags && typeof settings.tags === "object") {
         const tagKeys = [
-          'pending',
-          'ocr_done',
-          'schema_review',
-          'correspondent_done',
-          'document_type_done',
-          'title_done',
-          'tags_done',
-          'processed',
+          "color",
+          "todo",
+          "ocr",
+          "metadata",
+          "review",
+          "index",
+          "done",
+          "failed",
+          "pending",
+          "ocr_done",
+          "schema_review",
+          "correspondent_done",
+          "document_type_done",
+          "title_done",
+          "tags_done",
+          "processed",
         ] as const;
 
         for (const tagKey of tagKeys) {
@@ -120,18 +128,17 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
         }
       }
 
-      store.setValue('_lastSync', new Date().toISOString());
+      store.setValue("_lastSync", new Date().toISOString());
       setLastSyncError(null);
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Failed to sync settings';
-      store.setValue('_error', errorMessage);
+      const errorMessage = error instanceof Error ? error.message : "Failed to sync settings";
+      store.setValue("_error", errorMessage);
       setLastSyncError(errorMessage);
-      console.error('Settings sync error:', error);
+      console.error("Settings sync error:", error);
     } finally {
       if (mountedRef.current) {
         setIsSyncing(false);
-        store.setValue('_syncing', false);
+        store.setValue("_syncing", false);
       }
     }
   }, [store]);
@@ -142,9 +149,7 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
   const syncLogs = useCallback(
     async (docId: number) => {
       try {
-        const response = await fetch(
-          `${API_BASE}/api/processing/${docId}/logs`
-        );
+        const response = await fetch(`${API_BASE}/api/processing/${docId}/logs`);
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
@@ -153,33 +158,33 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
         const { logs } = await response.json();
 
         // Clear existing logs for this document
-        const existingTable = store.getTable('processingLogs');
+        const existingTable = store.getTable("processingLogs");
         if (existingTable) {
           for (const rowId of Object.keys(existingTable)) {
             const row = existingTable[rowId];
             if (row && row.docId === docId) {
-              store.delRow('processingLogs', rowId);
+              store.delRow("processingLogs", rowId);
             }
           }
         }
 
         // Add new logs
         for (const log of logs || []) {
-          store.setRow('processingLogs', log.id, {
+          store.setRow("processingLogs", log.id, {
             id: log.id,
             docId: log.docId,
             timestamp: log.timestamp,
             step: log.step,
             eventType: log.eventType,
-            data: typeof log.data === 'string' ? log.data : JSON.stringify(log.data),
-            parentId: log.parentId || '',
+            data: typeof log.data === "string" ? log.data : JSON.stringify(log.data),
+            parentId: log.parentId || "",
           });
         }
       } catch (error) {
-        console.error('Failed to sync logs:', error);
+        console.error("Failed to sync logs:", error);
       }
     },
-    [store]
+    [store],
   );
 
   /**
@@ -190,24 +195,24 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
       try {
         // Clear from backend
         await fetch(`${API_BASE}/api/processing/${docId}/logs`, {
-          method: 'DELETE',
+          method: "DELETE",
         });
 
         // Clear from local store
-        const existingTable = store.getTable('processingLogs');
+        const existingTable = store.getTable("processingLogs");
         if (existingTable) {
           for (const rowId of Object.keys(existingTable)) {
             const row = existingTable[rowId];
             if (row && row.docId === docId) {
-              store.delRow('processingLogs', rowId);
+              store.delRow("processingLogs", rowId);
             }
           }
         }
       } catch (error) {
-        console.error('Failed to clear logs:', error);
+        console.error("Failed to clear logs:", error);
       }
     },
-    [store]
+    [store],
   );
 
   /**
@@ -223,8 +228,8 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
 
       try {
         const response = await fetch(`${API_BASE}/api/settings`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ [apiKey]: value }),
         });
 
@@ -232,11 +237,11 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
           throw new Error(`HTTP ${response.status}`);
         }
       } catch (error) {
-        console.error('Failed to update setting:', error);
+        console.error("Failed to update setting:", error);
         // Could implement rollback here if needed
       }
     },
-    [store]
+    [store],
   );
 
   /**
@@ -270,8 +275,8 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
 
       try {
         const response = await fetch(`${API_BASE}/api/settings`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(apiPayload),
         });
 
@@ -279,10 +284,10 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
           throw new Error(`HTTP ${response.status}`);
         }
       } catch (error) {
-        console.error('Failed to update settings:', error);
+        console.error("Failed to update settings:", error);
       }
     },
-    [store]
+    [store],
   );
 
   /**
@@ -306,14 +311,14 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
       // Handle tags specially
       const tags: Record<string, string> = {};
       const tagKeys = [
-        'pending',
-        'ocr_done',
-        'schema_review',
-        'correspondent_done',
-        'document_type_done',
-        'title_done',
-        'tags_done',
-        'processed',
+        "color",
+        "todo",
+        "ocr",
+        "metadata",
+        "review",
+        "index",
+        "done",
+        "failed",
       ] as const;
 
       for (const tagKey of tagKeys) {
@@ -324,12 +329,12 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
       }
 
       if (Object.keys(tags).length > 0) {
-        apiPayload['tags'] = tags;
+        apiPayload["tags"] = tags;
       }
 
       const response = await fetch(`${API_BASE}/api/settings`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(apiPayload),
       });
 
@@ -337,7 +342,7 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
         throw new Error(`HTTP ${response.status}`);
       }
     } catch (error) {
-      console.error('Failed to save settings:', error);
+      console.error("Failed to save settings:", error);
       throw error;
     } finally {
       setIsSyncing(false);
@@ -391,7 +396,7 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
 export function useTinyBase() {
   const context = useContext(TinyBaseContext);
   if (!context) {
-    throw new Error('useTinyBase must be used within AppTinyBaseProvider');
+    throw new Error("useTinyBase must be used within AppTinyBaseProvider");
   }
   return context;
 }

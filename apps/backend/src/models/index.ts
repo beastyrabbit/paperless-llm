@@ -1,7 +1,7 @@
 /**
  * Application data models.
  */
-import { Schema } from 'effect';
+import { Schema } from "effect";
 
 // ===========================================================================
 // Document Models
@@ -23,6 +23,7 @@ export const DocumentSchema = Schema.Struct({
   archive_serial_number: Schema.NullOr(Schema.Number),
   original_file_name: Schema.NullOr(Schema.String),
   archived_file_name: Schema.NullOr(Schema.String),
+  mime_type: Schema.String.pipe(Schema.optional),
   custom_fields: Schema.Array(Schema.Unknown).pipe(Schema.optional),
 });
 
@@ -103,13 +104,21 @@ export type CustomField = Schema.Schema.Type<typeof CustomFieldSchema>;
 // ===========================================================================
 
 export const PendingReviewTypeSchema = Schema.Literal(
-  'correspondent',
-  'document_type',
-  'tag',
-  'title',
-  'documentlink',
-  'schema_merge',
-  'schema_delete'
+  "correspondent",
+  "document_type",
+  "tag",
+  "title",
+  "documentlink",
+  "human_decision",
+  "consolidation",
+  "schema_correspondent",
+  "schema_document_type",
+  "schema_tag",
+  "schema_custom_field",
+  "metadata_description",
+  "schema_merge",
+  "schema_delete",
+  "schema_cleanup",
 );
 
 export type PendingReviewType = Schema.Schema.Type<typeof PendingReviewTypeSchema>;
@@ -136,6 +145,16 @@ export const PendingCountsSchema = Schema.Struct({
   document_type: Schema.Number,
   tag: Schema.Number,
   title: Schema.Number,
+  human_decision: Schema.Number.pipe(Schema.optional),
+  consolidation: Schema.Number.pipe(Schema.optional),
+  schema_correspondent: Schema.Number.pipe(Schema.optional),
+  schema_document_type: Schema.Number.pipe(Schema.optional),
+  schema_tag: Schema.Number.pipe(Schema.optional),
+  schema_custom_field: Schema.Number.pipe(Schema.optional),
+  schema_merge: Schema.Number.pipe(Schema.optional),
+  schema_delete: Schema.Number.pipe(Schema.optional),
+  schema_cleanup: Schema.Number.pipe(Schema.optional),
+  metadata_description: Schema.Number.pipe(Schema.optional),
   schema: Schema.Number,
   total: Schema.Number,
 });
@@ -146,21 +165,19 @@ export type PendingCounts = Schema.Schema.Type<typeof PendingCountsSchema>;
 // Blocked Suggestions Models
 // ===========================================================================
 
-export const BlockTypeSchema = Schema.Literal(
-  'global',
-  'correspondent',
-  'document_type',
-  'tag'
-);
+export const BlockTypeSchema = Schema.Literal("global", "correspondent", "document_type", "tag");
 
 export type BlockType = Schema.Schema.Type<typeof BlockTypeSchema>;
 
 export const RejectionCategorySchema = Schema.Literal(
-  'wrong_suggestion',
-  'low_quality',
-  'duplicate',
-  'not_applicable',
-  'other'
+  "wrong_suggestion",
+  "low_quality",
+  "duplicate",
+  "not_applicable",
+  "too_generic",
+  "irrelevant",
+  "wrong_format",
+  "other",
 );
 
 export type RejectionCategory = Schema.Schema.Type<typeof RejectionCategorySchema>;
@@ -226,11 +243,11 @@ export type Translation = Schema.Schema.Type<typeof TranslationSchema>;
 // ===========================================================================
 
 export const JobStatusValueSchema = Schema.Literal(
-  'idle',
-  'running',
-  'completed',
-  'failed',
-  'cancelled'
+  "idle",
+  "running",
+  "completed",
+  "failed",
+  "cancelled",
 );
 
 export type JobStatusValue = Schema.Schema.Type<typeof JobStatusValueSchema>;
@@ -253,6 +270,12 @@ export type JobStatus = Schema.Schema.Type<typeof JobStatusSchema>;
 // ===========================================================================
 
 export const QueueStatsSchema = Schema.Struct({
+  todo: Schema.Number.pipe(Schema.optional),
+  ocr: Schema.Number.pipe(Schema.optional),
+  metadata: Schema.Number.pipe(Schema.optional),
+  review: Schema.Number.pipe(Schema.optional),
+  index: Schema.Number.pipe(Schema.optional),
+  done: Schema.Number.pipe(Schema.optional),
   pending: Schema.Number,
   ocrDone: Schema.Number,
   titleDone: Schema.Number,
@@ -284,7 +307,7 @@ export const AgentResultSchema = Schema.Struct({
 export type AgentResult = Schema.Schema.Type<typeof AgentResultSchema>;
 
 export const StreamEventSchema = Schema.Struct({
-  type: Schema.Literal('start', 'thinking', 'result', 'error', 'complete'),
+  type: Schema.Literal("start", "thinking", "result", "error", "complete"),
   step: Schema.String,
   data: Schema.NullOr(Schema.Unknown),
   timestamp: Schema.String,
@@ -296,11 +319,7 @@ export type StreamEvent = Schema.Schema.Type<typeof StreamEventSchema>;
 // Document OCR Content Models
 // ===========================================================================
 
-export const DocumentOcrContentSourceSchema = Schema.Literal(
-  'mistral',
-  'paperless',
-  'manual'
-);
+export const DocumentOcrContentSourceSchema = Schema.Literal("mistral", "paperless", "manual");
 
 export type DocumentOcrContentSource = Schema.Schema.Type<typeof DocumentOcrContentSourceSchema>;
 

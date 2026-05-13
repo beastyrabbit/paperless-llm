@@ -1,10 +1,10 @@
 /**
  * Ollama LLM service for local model inference.
  */
-import { Effect, Context, Layer, Stream, pipe } from 'effect';
-import { ConfigService } from '../config/index.js';
-import { TinyBaseService } from './TinyBaseService.js';
-import { OllamaError } from '../errors/index.js';
+import { Context, Effect, Layer, pipe, Stream } from "effect";
+import { ConfigService } from "../config/index.js";
+import { OllamaError } from "../errors/index.js";
+import { TinyBaseService } from "./TinyBaseService.js";
 
 // ===========================================================================
 // Types
@@ -18,7 +18,7 @@ export interface OllamaModel {
 }
 
 export interface OllamaChatMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: "system" | "user" | "assistant";
   content: string;
 }
 
@@ -73,35 +73,33 @@ export interface OllamaService {
   readonly chat: (
     model: string,
     messages: OllamaChatMessage[],
-    options?: OllamaChatOptions
+    options?: OllamaChatOptions,
   ) => Effect.Effect<OllamaChatResponse, OllamaError>;
   readonly chatStream: (
     model: string,
     messages: OllamaChatMessage[],
-    options?: OllamaChatOptions
+    options?: OllamaChatOptions,
   ) => Stream.Stream<OllamaStreamChunk, OllamaError>;
   readonly generate: (
     model: string,
     prompt: string,
-    options?: OllamaChatOptions
+    options?: OllamaChatOptions,
   ) => Effect.Effect<string, OllamaError>;
   readonly generateStream: (
     model: string,
     prompt: string,
-    options?: OllamaChatOptions
+    options?: OllamaChatOptions,
   ) => Stream.Stream<string, OllamaError>;
-  readonly embed: (
-    text: string
-  ) => Effect.Effect<number[], OllamaError>;
+  readonly embed: (text: string) => Effect.Effect<number[], OllamaError>;
   readonly testConnection: () => Effect.Effect<boolean, OllamaError>;
-  readonly getModel: (size: 'large' | 'small' | 'embedding') => string;
+  readonly getModel: (size: "large" | "small" | "embedding") => string;
 }
 
 // ===========================================================================
 // Service Tag
 // ===========================================================================
 
-export const OllamaService = Context.GenericTag<OllamaService>('OllamaService');
+export const OllamaService = Context.GenericTag<OllamaService>("OllamaService");
 
 // ===========================================================================
 // Live Implementation
@@ -116,48 +114,55 @@ export const OllamaServiceLive = Layer.effect(
 
     // Cache initial model names at service creation time
     const dbSettings = yield* tinybaseService.getAllSettings();
-    const cachedModelLarge = dbSettings['ollama.model_large'] ?? configOllama.modelLarge;
-    const cachedModelSmall = dbSettings['ollama.model_small'] ?? configOllama.modelSmall;
-    const cachedModelEmbedding = dbSettings['ollama.embedding_model'] ?? 'nomic-embed-text';
+    const cachedModelLarge = dbSettings["ollama.model_large"] ?? configOllama.modelLarge;
+    const cachedModelSmall = dbSettings["ollama.model_small"] ?? configOllama.modelSmall;
+    const cachedModelEmbedding = dbSettings["ollama.embedding_model"] ?? "nomic-embed-text";
 
     // Helper to get current config from TinyBase with fallback to ConfigService
-    const getConfig = (): Effect.Effect<{ url: string; modelLarge: string; modelSmall: string; modelEmbedding: string }, never> =>
+    const getConfig = (): Effect.Effect<
+      { url: string; modelLarge: string; modelSmall: string; modelEmbedding: string },
+      never
+    > =>
       pipe(
         tinybaseService.getAllSettings(),
         Effect.map((settings) => ({
-          url: settings['ollama.url'] ?? configOllama.url,
-          modelLarge: settings['ollama.model_large'] ?? configOllama.modelLarge,
-          modelSmall: settings['ollama.model_small'] ?? configOllama.modelSmall,
-          modelEmbedding: settings['ollama.embedding_model'] ?? 'nomic-embed-text',
+          url: settings["ollama.url"] ?? configOllama.url,
+          modelLarge: settings["ollama.model_large"] ?? configOllama.modelLarge,
+          modelSmall: settings["ollama.model_small"] ?? configOllama.modelSmall,
+          modelEmbedding: settings["ollama.embedding_model"] ?? "nomic-embed-text",
         })),
-        Effect.catchAll(() => Effect.succeed({
-          url: configOllama.url,
-          modelLarge: configOllama.modelLarge,
-          modelSmall: configOllama.modelSmall,
-          modelEmbedding: 'nomic-embed-text',
-        }))
+        Effect.catchAll(() =>
+          Effect.succeed({
+            url: configOllama.url,
+            modelLarge: configOllama.modelLarge,
+            modelSmall: configOllama.modelSmall,
+            modelEmbedding: "nomic-embed-text",
+          }),
+        ),
       );
 
     // Helper for making requests - reads config dynamically
     const request = <T>(
       method: string,
       path: string,
-      body?: unknown
+      body?: unknown,
     ): Effect.Effect<T, OllamaError> =>
       Effect.gen(function* () {
         const { url: baseUrl } = yield* getConfig();
 
         if (!baseUrl) {
-          return yield* Effect.fail(new OllamaError({
-            message: 'Ollama not configured',
-          }));
+          return yield* Effect.fail(
+            new OllamaError({
+              message: "Ollama not configured",
+            }),
+          );
         }
 
         return yield* Effect.tryPromise({
           try: async () => {
             const response = await fetch(`${baseUrl}${path}`, {
               method,
-              headers: { 'Content-Type': 'application/json' },
+              headers: { "Content-Type": "application/json" },
               body: body ? JSON.stringify(body) : undefined,
             });
 
@@ -178,18 +183,18 @@ export const OllamaServiceLive = Layer.effect(
     return {
       listModels: () =>
         pipe(
-          request<{ models: OllamaModel[] }>('GET', '/api/tags'),
-          Effect.map((response) => response.models)
+          request<{ models: OllamaModel[] }>("GET", "/api/tags"),
+          Effect.map((response) => response.models),
         ),
 
       getRunningModels: () =>
         pipe(
-          request<{ models: OllamaRunningModel[] }>('GET', '/api/ps'),
-          Effect.map((response) => response.models ?? [])
+          request<{ models: OllamaRunningModel[] }>("GET", "/api/ps"),
+          Effect.map((response) => response.models ?? []),
         ),
 
       chat: (model, messages, options = {}) =>
-        request<OllamaChatResponse>('POST', '/api/chat', {
+        request<OllamaChatResponse>("POST", "/api/chat", {
           model,
           messages,
           stream: false,
@@ -211,8 +216,8 @@ export const OllamaServiceLive = Layer.effect(
             (async () => {
               try {
                 const response = await fetch(`${baseUrl}/api/chat`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     model,
                     messages,
@@ -233,18 +238,18 @@ export const OllamaServiceLive = Layer.effect(
                 }
 
                 const reader = response.body?.getReader();
-                if (!reader) throw new Error('No response body');
+                if (!reader) throw new Error("No response body");
 
                 const decoder = new TextDecoder();
-                let buffer = '';
+                let buffer = "";
 
                 while (true) {
                   const { done, value } = await reader.read();
                   if (done) break;
 
                   buffer += decoder.decode(value, { stream: true });
-                  const lines = buffer.split('\n');
-                  buffer = lines.pop() ?? '';
+                  const lines = buffer.split("\n");
+                  buffer = lines.pop() ?? "";
 
                   for (const line of lines) {
                     if (line.trim()) {
@@ -265,7 +270,7 @@ export const OllamaServiceLive = Layer.effect(
                     message: `Stream failed: ${String(error)}`,
                     model,
                     cause: error,
-                  })
+                  }),
                 );
               }
             })();
@@ -273,12 +278,12 @@ export const OllamaServiceLive = Layer.effect(
             return Effect.sync(() => {
               controller.abort();
             });
-          })
+          }),
         ),
 
       generate: (model, prompt, options = {}) =>
         pipe(
-          request<{ response: string }>('POST', '/api/generate', {
+          request<{ response: string }>("POST", "/api/generate", {
             model,
             prompt,
             stream: false,
@@ -290,7 +295,7 @@ export const OllamaServiceLive = Layer.effect(
               stop: options.stop,
             },
           }),
-          Effect.map((response) => response.response)
+          Effect.map((response) => response.response),
         ),
 
       generateStream: (model, prompt, options = {}) =>
@@ -302,8 +307,8 @@ export const OllamaServiceLive = Layer.effect(
             (async () => {
               try {
                 const response = await fetch(`${baseUrl}/api/generate`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     model,
                     prompt,
@@ -324,18 +329,18 @@ export const OllamaServiceLive = Layer.effect(
                 }
 
                 const reader = response.body?.getReader();
-                if (!reader) throw new Error('No response body');
+                if (!reader) throw new Error("No response body");
 
                 const decoder = new TextDecoder();
-                let buffer = '';
+                let buffer = "";
 
                 while (true) {
                   const { done, value } = await reader.read();
                   if (done) break;
 
                   buffer += decoder.decode(value, { stream: true });
-                  const lines = buffer.split('\n');
-                  buffer = lines.pop() ?? '';
+                  const lines = buffer.split("\n");
+                  buffer = lines.pop() ?? "";
 
                   for (const line of lines) {
                     if (line.trim()) {
@@ -356,7 +361,7 @@ export const OllamaServiceLive = Layer.effect(
                     message: `Stream failed: ${String(error)}`,
                     model,
                     cause: error,
-                  })
+                  }),
                 );
               }
             })();
@@ -364,7 +369,7 @@ export const OllamaServiceLive = Layer.effect(
             return Effect.sync(() => {
               controller.abort();
             });
-          })
+          }),
         ),
 
       embed: (text: string) =>
@@ -374,8 +379,8 @@ export const OllamaServiceLive = Layer.effect(
           return yield* Effect.tryPromise({
             try: async () => {
               const response = await fetch(`${baseUrl}/api/embed`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   model: modelEmbedding,
                   input: text,
@@ -399,21 +404,21 @@ export const OllamaServiceLive = Layer.effect(
 
       testConnection: () =>
         pipe(
-          request<{ models: OllamaModel[] }>('GET', '/api/tags'),
+          request<{ models: OllamaModel[] }>("GET", "/api/tags"),
           Effect.map(() => true),
-          Effect.catchAll(() => Effect.succeed(false))
+          Effect.catchAll(() => Effect.succeed(false)),
         ),
 
       getModel: (size) => {
         switch (size) {
-          case 'large':
+          case "large":
             return cachedModelLarge;
-          case 'small':
+          case "small":
             return cachedModelSmall;
-          case 'embedding':
+          case "embedding":
             return cachedModelEmbedding;
         }
       },
     };
-  })
+  }),
 );

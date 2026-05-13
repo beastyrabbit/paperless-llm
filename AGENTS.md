@@ -4,7 +4,7 @@
 OCR + document-processing platform with Next.js frontend and TypeScript/Effect backend.
 
 ## Mandatory Rules
-- Do not hardcode prompts in code; use `PromptService` and structured placeholders.
+- Define Pi agent instructions, tools, schemas, and structured placeholders in TypeScript; do not reintroduce PromptService or prompt-file driven processing paths.
 - Keep local test/build commands passing before changes.
 
 ## Tooling

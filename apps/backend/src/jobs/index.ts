@@ -3,30 +3,28 @@
  */
 
 export {
+  type AnalysisType,
   BootstrapJobService,
   BootstrapJobServiceLive,
   type BootstrapProgress,
-  type AnalysisType,
   type SuggestionsByType,
-} from './BootstrapJob.js';
+} from "./BootstrapJob.js";
+export {
+  BulkIngestJobService,
+  BulkIngestJobServiceLive,
+  type BulkIngestOptions,
+  type BulkIngestProgress,
+} from "./BulkIngestJob.js";
 
+export {
+  BulkOcrJobService,
+  BulkOcrJobServiceLive,
+  type BulkOcrOptions,
+  type BulkOcrProgress,
+} from "./BulkOcrJob.js";
 export {
   SchemaCleanupJobService,
   SchemaCleanupJobServiceLive,
   type SchemaCleanupProgress,
   type SchemaCleanupResult,
-} from './SchemaCleanupJob.js';
-
-export {
-  BulkOcrJobService,
-  BulkOcrJobServiceLive,
-  type BulkOcrProgress,
-  type BulkOcrOptions,
-} from './BulkOcrJob.js';
-
-export {
-  BulkIngestJobService,
-  BulkIngestJobServiceLive,
-  type BulkIngestProgress,
-  type BulkIngestOptions,
-} from './BulkIngestJob.js';
+} from "./SchemaCleanupJob.js";

@@ -1,35 +1,35 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useTranslations } from "next-intl";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "@repo/ui";
 import {
-  FileText,
+  AlertCircle,
+  ArrowRight,
+  Brain,
   CheckCircle2,
   Clock,
-  AlertCircle,
-  Zap,
-  ArrowRight,
-  TrendingUp,
-  RefreshCw,
   Database,
-  Users,
+  FileText,
   FolderOpen,
-  Tags,
-  Sparkles,
   Loader2,
   PlayCircle,
-  Brain,
+  RefreshCw,
+  Sparkles,
+  Tags,
+  TrendingUp,
+  Users,
+  Zap,
 } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Button,
-  Badge,
-} from "@repo/ui";
 import Link from "next/link";
-import { pendingApi, processingApi, settingsApi, PendingCounts, AutoProcessingStatus, OllamaStatus } from "@/lib/api";
+import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useState } from "react";
+import {
+  AutoProcessingStatus,
+  OllamaStatus,
+  PendingCounts,
+  pendingApi,
+  processingApi,
+  settingsApi,
+} from "@/lib/api";
 
 interface QueueStats {
   pending: number;
@@ -80,10 +80,26 @@ export default function Dashboard() {
       if (response.ok) {
         const data = await response.json();
         setServices([
-          { name: tServices("paperless"), key: "paperless", url: data.paperless_url || tCommon("notConfigured") },
-          { name: tServices("ollama"), key: "ollama", url: data.ollama_url || tCommon("notConfigured") },
-          { name: tServices("qdrant"), key: "qdrant", url: data.qdrant_url || tCommon("notConfigured") },
-          { name: tServices("mistral"), key: "mistral", url: data.mistral_api_key ? tCommon("apiKeyConfigured") : tCommon("notConfigured") },
+          {
+            name: tServices("paperless"),
+            key: "paperless",
+            url: data.paperless_url || tCommon("notConfigured"),
+          },
+          {
+            name: tServices("ollama"),
+            key: "ollama",
+            url: data.ollama_url || tCommon("notConfigured"),
+          },
+          {
+            name: tServices("qdrant"),
+            key: "qdrant",
+            url: data.qdrant_url || tCommon("notConfigured"),
+          },
+          {
+            name: tServices("mistral"),
+            key: "mistral",
+            url: data.mistral_api_key ? tCommon("apiKeyConfigured") : tCommon("notConfigured"),
+          },
         ]);
       }
     } catch (err) {
@@ -138,22 +154,27 @@ export default function Dashboard() {
         });
         if (response.ok) {
           const data = await response.json();
-          setConnections(prev => ({
+          setConnections((prev) => ({
             ...prev,
             [service]: data.status === "success" ? "connected" : "disconnected",
           }));
         } else {
-          setConnections(prev => ({ ...prev, [service]: "disconnected" }));
+          setConnections((prev) => ({ ...prev, [service]: "disconnected" }));
         }
       } catch {
-        setConnections(prev => ({ ...prev, [service]: "disconnected" }));
+        setConnections((prev) => ({ ...prev, [service]: "disconnected" }));
       }
     }
   }, []);
 
   // Light refresh - just fetch data that changes frequently (no connection tests)
   const lightRefresh = useCallback(async () => {
-    await Promise.all([fetchQueueStats(), fetchPendingCounts(), fetchAutoProcessingStatus(), fetchOllamaStatus()]);
+    await Promise.all([
+      fetchQueueStats(),
+      fetchPendingCounts(),
+      fetchAutoProcessingStatus(),
+      fetchOllamaStatus(),
+    ]);
   }, [fetchQueueStats, fetchPendingCounts, fetchAutoProcessingStatus, fetchOllamaStatus]);
 
   // Full refresh - includes connection tests (slower)
@@ -165,9 +186,23 @@ export default function Dashboard() {
       qdrant: "checking",
       mistral: "checking",
     });
-    await Promise.all([fetchSettings(), fetchQueueStats(), fetchPendingCounts(), fetchAutoProcessingStatus(), fetchOllamaStatus(), testConnections()]);
+    await Promise.all([
+      fetchSettings(),
+      fetchQueueStats(),
+      fetchPendingCounts(),
+      fetchAutoProcessingStatus(),
+      fetchOllamaStatus(),
+      testConnections(),
+    ]);
     setLoading(false);
-  }, [fetchSettings, fetchQueueStats, fetchPendingCounts, fetchAutoProcessingStatus, fetchOllamaStatus, testConnections]);
+  }, [
+    fetchSettings,
+    fetchQueueStats,
+    fetchPendingCounts,
+    fetchAutoProcessingStatus,
+    fetchOllamaStatus,
+    testConnections,
+  ]);
 
   useEffect(() => {
     // Initial full load
@@ -187,8 +222,8 @@ export default function Dashboard() {
     { name: t("tags"), count: stats?.tags_done ?? 0, color: "bg-orange-500" },
   ];
 
-  const allConnected = Object.values(connections).every(s => s === "connected");
-  const anyChecking = Object.values(connections).some(s => s === "checking");
+  const allConnected = Object.values(connections).every((s) => s === "connected");
+  const anyChecking = Object.values(connections).some((s) => s === "checking");
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-white to-emerald-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-emerald-950/20">
@@ -197,9 +232,7 @@ export default function Dashboard() {
         <div className="flex h-16 items-center justify-between px-8">
           <div>
             <h1 className="text-xl font-bold tracking-tight">{t("title")}</h1>
-            <p className="text-sm text-zinc-500">
-              {t("subtitle")}
-            </p>
+            <p className="text-sm text-zinc-500">{t("subtitle")}</p>
           </div>
           <div className="flex items-center gap-3">
             <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
@@ -258,18 +291,28 @@ export default function Dashboard() {
                       </Badge>
                     )}
                   </div>
-                  <p className="text-base font-semibold truncate" title={autoStatus.currently_processing_doc_title ?? undefined}>
-                    {autoStatus.currently_processing_doc_title || `Document #${autoStatus.currently_processing_doc_id}`}
+                  <p
+                    className="text-base font-semibold truncate"
+                    title={autoStatus.currently_processing_doc_title ?? undefined}
+                  >
+                    {autoStatus.currently_processing_doc_title ||
+                      `Document #${autoStatus.currently_processing_doc_id}`}
                   </p>
                   <div className="flex items-center gap-3 mt-0.5">
                     {autoStatus.current_step && (
                       <span className="text-sm text-zinc-500 flex items-center">
-                        {t("step")}: <Badge variant="secondary" className="ml-1">{autoStatus.current_step}</Badge>
+                        {t("step")}:{" "}
+                        <Badge variant="secondary" className="ml-1">
+                          {autoStatus.current_step}
+                        </Badge>
                       </span>
                     )}
                     {ollamaStatus?.running && ollamaStatus.models[0] && (
                       <span className="text-sm text-zinc-500 flex items-center">
-                        {t("model")}: <Badge variant="outline" className="ml-1">{ollamaStatus.models[0].name}</Badge>
+                        {t("model")}:{" "}
+                        <Badge variant="outline" className="ml-1">
+                          {ollamaStatus.models[0].name}
+                        </Badge>
                       </span>
                     )}
                   </div>
@@ -295,45 +338,33 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">
-                {loading ? "—" : stats?.total_documents ?? 0}
+                {loading ? "—" : (stats?.total_documents ?? 0)}
               </div>
-              <p className="text-xs text-zinc-500 mt-1">
-                {t("inPaperless")}
-              </p>
+              <p className="text-xs text-zinc-500 mt-1">{t("inPaperless")}</p>
             </CardContent>
           </Card>
 
           <Card className="overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-zinc-500">
-                {t("inPipeline")}
-              </CardTitle>
+              <CardTitle className="text-sm font-medium text-zinc-500">{t("inPipeline")}</CardTitle>
               <Clock className="h-4 w-4 text-amber-500" />
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">
-                {loading ? "—" : stats?.total_in_pipeline ?? 0}
+                {loading ? "—" : (stats?.total_in_pipeline ?? 0)}
               </div>
-              <p className="text-xs text-zinc-500 mt-1">
-                {t("documentsBeingProcessed")}
-              </p>
+              <p className="text-xs text-zinc-500 mt-1">{t("documentsBeingProcessed")}</p>
             </CardContent>
           </Card>
 
           <Card className="overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-zinc-500">
-                {t("pendingOcr")}
-              </CardTitle>
+              <CardTitle className="text-sm font-medium text-zinc-500">{t("pendingOcr")}</CardTitle>
               <FileText className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">
-                {loading ? "—" : stats?.pending ?? 0}
-              </div>
-              <p className="text-xs text-zinc-500 mt-1">
-                {t("awaitingProcessing")}
-              </p>
+              <div className="text-3xl font-bold">{loading ? "—" : (stats?.pending ?? 0)}</div>
+              <p className="text-xs text-zinc-500 mt-1">{t("awaitingProcessing")}</p>
             </CardContent>
           </Card>
 
@@ -346,11 +377,9 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-emerald-600">
-                {loading ? "—" : stats?.processed ?? 0}
+                {loading ? "—" : (stats?.processed ?? 0)}
               </div>
-              <p className="text-xs text-zinc-500 mt-1">
-                {t("completedThroughPipeline")}
-              </p>
+              <p className="text-xs text-zinc-500 mt-1">{t("completedThroughPipeline")}</p>
             </CardContent>
           </Card>
 
@@ -362,9 +391,7 @@ export default function Dashboard() {
               <TrendingUp className="h-4 w-4 text-purple-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">
-                {loading ? "—" : stats?.ocr_done ?? 0}
-              </div>
+              <div className="text-3xl font-bold">{loading ? "—" : (stats?.ocr_done ?? 0)}</div>
               <p className="text-xs text-zinc-500 mt-1">{t("readyForTitle")}</p>
             </CardContent>
           </Card>
@@ -416,66 +443,90 @@ export default function Dashboard() {
                     <AlertCircle className="h-5 w-5 text-amber-500" />
                     {t("pendingReviews")}
                   </span>
-                  {pendingCounts && (pendingCounts.correspondent + pendingCounts.document_type + pendingCounts.tag +
-                    pendingCounts.schema_correspondent + pendingCounts.schema_document_type + pendingCounts.schema_tag) > 0 && (
-                    <Badge variant="warning">
-                      {pendingCounts.correspondent + pendingCounts.document_type + pendingCounts.tag +
-                        pendingCounts.schema_correspondent + pendingCounts.schema_document_type + pendingCounts.schema_tag}
-                    </Badge>
-                  )}
+                  {pendingCounts &&
+                    pendingCounts.correspondent +
+                      pendingCounts.document_type +
+                      pendingCounts.tag +
+                      pendingCounts.schema_correspondent +
+                      pendingCounts.schema_document_type +
+                      pendingCounts.schema_tag >
+                      0 && (
+                      <Badge variant="warning">
+                        {pendingCounts.correspondent +
+                          pendingCounts.document_type +
+                          pendingCounts.tag +
+                          pendingCounts.schema_correspondent +
+                          pendingCounts.schema_document_type +
+                          pendingCounts.schema_tag}
+                      </Badge>
+                    )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-4">
                   {/* Pipeline Reviews */}
                   <div className="space-y-3">
-                    <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{t("pipelineReviews")}</p>
+                    <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                      {t("pipelineReviews")}
+                    </p>
                     <div className="flex items-center justify-between rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
                       <div className="flex items-center gap-2">
                         <Users className="h-4 w-4 text-pink-500" />
                         <span className="text-sm">{t("correspondents")}</span>
                       </div>
-                      <Badge variant="secondary">{loading ? "—" : pendingCounts?.correspondent ?? 0}</Badge>
+                      <Badge variant="secondary">
+                        {loading ? "—" : (pendingCounts?.correspondent ?? 0)}
+                      </Badge>
                     </div>
                     <div className="flex items-center justify-between rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
                       <div className="flex items-center gap-2">
                         <FolderOpen className="h-4 w-4 text-indigo-500" />
                         <span className="text-sm">{t("documentTypes")}</span>
                       </div>
-                      <Badge variant="secondary">{loading ? "—" : pendingCounts?.document_type ?? 0}</Badge>
+                      <Badge variant="secondary">
+                        {loading ? "—" : (pendingCounts?.document_type ?? 0)}
+                      </Badge>
                     </div>
                     <div className="flex items-center justify-between rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
                       <div className="flex items-center gap-2">
                         <Tags className="h-4 w-4 text-orange-500" />
                         <span className="text-sm">{t("tags")}</span>
                       </div>
-                      <Badge variant="secondary">{loading ? "—" : pendingCounts?.tag ?? 0}</Badge>
+                      <Badge variant="secondary">{loading ? "—" : (pendingCounts?.tag ?? 0)}</Badge>
                     </div>
                   </div>
 
                   {/* Schema Suggestions */}
                   <div className="space-y-3">
-                    <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{t("schemaSuggestions")}</p>
+                    <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                      {t("schemaSuggestions")}
+                    </p>
                     <div className="flex items-center justify-between rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
                       <div className="flex items-center gap-2">
                         <Sparkles className="h-4 w-4 text-pink-500" />
                         <span className="text-sm">{t("correspondents")}</span>
                       </div>
-                      <Badge variant="secondary">{loading ? "—" : pendingCounts?.schema_correspondent ?? 0}</Badge>
+                      <Badge variant="secondary">
+                        {loading ? "—" : (pendingCounts?.schema_correspondent ?? 0)}
+                      </Badge>
                     </div>
                     <div className="flex items-center justify-between rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
                       <div className="flex items-center gap-2">
                         <Sparkles className="h-4 w-4 text-indigo-500" />
                         <span className="text-sm">{t("documentTypes")}</span>
                       </div>
-                      <Badge variant="secondary">{loading ? "—" : pendingCounts?.schema_document_type ?? 0}</Badge>
+                      <Badge variant="secondary">
+                        {loading ? "—" : (pendingCounts?.schema_document_type ?? 0)}
+                      </Badge>
                     </div>
                     <div className="flex items-center justify-between rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
                       <div className="flex items-center gap-2">
                         <Sparkles className="h-4 w-4 text-orange-500" />
                         <span className="text-sm">{t("tags")}</span>
                       </div>
-                      <Badge variant="secondary">{loading ? "—" : pendingCounts?.schema_tag ?? 0}</Badge>
+                      <Badge variant="secondary">
+                        {loading ? "—" : (pendingCounts?.schema_tag ?? 0)}
+                      </Badge>
                     </div>
                   </div>
                 </div>
@@ -500,8 +551,8 @@ export default function Dashboard() {
                         connections[service.key] === "connected"
                           ? "bg-emerald-500"
                           : connections[service.key] === "checking"
-                          ? "bg-amber-500 animate-pulse"
-                          : "bg-red-500"
+                            ? "bg-amber-500 animate-pulse"
+                            : "bg-red-500"
                       }`}
                     />
                     <div>
@@ -514,15 +565,15 @@ export default function Dashboard() {
                       connections[service.key] === "connected"
                         ? "success"
                         : connections[service.key] === "checking"
-                        ? "warning"
-                        : "destructive"
+                          ? "warning"
+                          : "destructive"
                     }
                   >
                     {connections[service.key] === "connected"
                       ? tCommon("connected")
                       : connections[service.key] === "checking"
-                      ? tCommon("checking")
-                      : tCommon("disconnected")}
+                        ? tCommon("checking")
+                        : tCommon("disconnected")}
                   </Badge>
                 </div>
               ))}

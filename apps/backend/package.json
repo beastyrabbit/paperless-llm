@@ -14,14 +14,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@earendil-works/pi-agent-core": "^0.74.0",
+    "@earendil-works/pi-ai": "^0.74.0",
     "@effect/platform": "^0.94.1",
     "@effect/platform-node": "^0.104.0",
-    "@langchain/core": "^1.1.12",
-    "@langchain/langgraph": "^1.0.14",
-    "@langchain/ollama": "^1.1.0",
     "@qdrant/js-client-rest": "^1.16.2",
     "effect": "^3.19.14",
     "tinybase": "^7.3.1",
+    "typebox": "^1.1.38",
     "yaml": "^2.8.2",
     "zod": "^4.3.5"
   },

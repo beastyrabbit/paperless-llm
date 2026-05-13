@@ -1,17 +1,9 @@
 "use client";
 
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Label, Switch } from "@repo/ui";
 import { useTranslations } from "next-intl";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Label,
-  Switch,
-} from "@repo/ui";
-import { useTinyBase, useBooleanSetting } from "@/lib/tinybase";
 import type { SettingKey } from "@/lib/tinybase";
+import { useBooleanSetting, useTinyBase } from "@/lib/tinybase";
 
 interface PipelineItem {
   key: SettingKey;
@@ -41,6 +33,11 @@ const PIPELINE_ITEMS: PipelineItem[] = [
     descKey: "pipeline.correspondentDesc",
   },
   {
+    key: "pipeline.document_type",
+    labelKey: "pipeline.documentType",
+    descKey: "pipeline.documentTypeDesc",
+  },
+  {
     key: "pipeline.tags",
     labelKey: "pipeline.tags",
     descKey: "pipeline.tagsDesc",
@@ -49,6 +46,11 @@ const PIPELINE_ITEMS: PipelineItem[] = [
     key: "pipeline.custom_fields",
     labelKey: "pipeline.customFields",
     descKey: "pipeline.customFieldsDesc",
+  },
+  {
+    key: "pipeline.document_links",
+    labelKey: "pipeline.documentLinks",
+    descKey: "pipeline.documentLinksDesc",
   },
 ];
 
@@ -60,13 +62,10 @@ function PipelineSwitch({ item }: { item: PipelineItem }) {
   return (
     <div className="flex items-center justify-between rounded-lg border p-4">
       <div className="space-y-0.5">
-        <Label>{t(item.labelKey)}</Label>
+        <Label htmlFor={item.key}>{t(item.labelKey)}</Label>
         <p className="text-xs text-zinc-500">{t(item.descKey)}</p>
       </div>
-      <Switch
-        checked={checked}
-        onCheckedChange={(v) => updateSetting(item.key, v)}
-      />
+      <Switch id={item.key} checked={checked} onCheckedChange={(v) => updateSetting(item.key, v)} />
     </div>
   );
 }

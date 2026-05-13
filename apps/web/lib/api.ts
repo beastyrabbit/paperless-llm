@@ -2,17 +2,14 @@
  * API client for the Paperless Local LLM backend
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE = "";
 
 interface ApiResponse<T> {
   data?: T;
   error?: string;
 }
 
-async function fetchApi<T>(
-  endpoint: string,
-  options?: RequestInit
-): Promise<ApiResponse<T>> {
+async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
   try {
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
@@ -48,16 +45,14 @@ export const settingsApi = {
       method: "POST",
     }),
   // AI Document Types
-  getAiDocumentTypes: () =>
-    fetchApi<AiDocumentTypesResponse>("/api/settings/ai-document-types"),
+  getAiDocumentTypes: () => fetchApi<AiDocumentTypesResponse>("/api/settings/ai-document-types"),
   updateAiDocumentTypes: (selectedTypeIds: number[]) =>
     fetchApi("/api/settings/ai-document-types", {
       method: "PATCH",
       body: JSON.stringify({ selected_type_ids: selectedTypeIds }),
     }),
   // Processing Logs
-  getProcessingLogStats: () =>
-    fetchApi<ProcessingLogStats>("/api/settings/processing-logs/stats"),
+  getProcessingLogStats: () => fetchApi<ProcessingLogStats>("/api/settings/processing-logs/stats"),
   clearAllProcessingLogs: () =>
     fetchApi<{ success: boolean; message: string }>("/api/settings/processing-logs", {
       method: "DELETE",
@@ -72,7 +67,7 @@ export const documentsApi = {
       `/api/documents/pending?${new URLSearchParams({
         ...(tag && { tag }),
         limit: String(limit),
-      })}`
+      })}`,
     ),
   get: (id: number) => fetchApi<DocumentDetail>(`/api/documents/${id}`),
   getContent: (id: number) =>
@@ -82,15 +77,16 @@ export const documentsApi = {
 
 // Processing API
 export const processingApi = {
-  start: (docId: number, step?: string) =>
+  start: (docId: number, step?: string, dryRun?: boolean) =>
     fetchApi(`/api/processing/${docId}/start`, {
       method: "POST",
-      body: JSON.stringify({ step }),
+      body: JSON.stringify({ step, dryRun }),
     }),
-  stream: (docId: number, options?: { step?: string; full?: boolean }) => {
+  stream: (docId: number, options?: { step?: string; full?: boolean; dryRun?: boolean }) => {
     const params = new URLSearchParams();
     if (options?.step) params.set("step", options.step);
     if (options?.full) params.set("full", "true");
+    if (options?.dryRun) params.set("dryRun", "true");
     const query = params.toString();
     const url = `${API_BASE}/api/processing/${docId}/stream${query ? `?${query}` : ""}`;
     return new EventSource(url);
@@ -108,26 +104,10 @@ export const processingApi = {
     }),
   // Auto Processing
   getAutoStatus: () => fetchApi<AutoProcessingStatus>("/api/processing/auto/status"),
-  triggerAuto: () => fetchApi<AutoProcessingTriggerResponse>("/api/processing/auto/trigger", {
-    method: "POST",
-  }),
-};
-
-// Prompts API
-export const promptsApi = {
-  list: (lang?: string) =>
-    fetchApi<PromptInfo[]>(`/api/prompts${lang ? `?lang=${lang}` : ""}`),
-  listGroups: (lang?: string) =>
-    fetchApi<PromptGroup[]>(`/api/prompts/groups${lang ? `?lang=${lang}` : ""}`),
-  getPreviewData: () => fetchApi<PreviewData>("/api/prompts/preview-data"),
-  get: (name: string, lang?: string) =>
-    fetchApi<PromptInfo>(`/api/prompts/${name}${lang ? `?lang=${lang}` : ""}`),
-  update: (name: string, content: string, lang?: string) =>
-    fetchApi<PromptInfo>(`/api/prompts/${name}${lang ? `?lang=${lang}` : ""}`, {
-      method: "PUT",
-      body: JSON.stringify({ content }),
+  triggerAuto: () =>
+    fetchApi<AutoProcessingTriggerResponse>("/api/processing/auto/trigger", {
+      method: "POST",
     }),
-  getLanguages: () => fetchApi<AvailableLanguagesResponse>("/api/prompts/languages"),
 };
 
 // Pending Reviews API
@@ -163,7 +143,7 @@ export const pendingApi = {
   // Pending cleanup (merge similar suggestions)
   findSimilar: (threshold?: number) =>
     fetchApi<SimilarGroupsResponse>(
-      `/api/pending/similar${threshold ? `?threshold=${threshold}` : ""}`
+      `/api/pending/similar${threshold ? `?threshold=${threshold}` : ""}`,
     ),
   mergeSuggestions: (itemIds: string[], finalName: string) =>
     fetchApi<MergePendingResponse>("/api/pending/merge", {
@@ -193,8 +173,7 @@ export const metadataApi = {
     }),
 
   // Custom Fields
-  listCustomFields: () =>
-    fetchApi<CustomFieldMetadata[]>("/api/metadata/custom-fields"),
+  listCustomFields: () => fetchApi<CustomFieldMetadata[]>("/api/metadata/custom-fields"),
   getCustomField: (fieldId: number) =>
     fetchApi<CustomFieldMetadata>(`/api/metadata/custom-fields/${fieldId}`),
   updateCustomField: (fieldId: number, data: CustomFieldMetadataUpdate) =>
@@ -217,7 +196,7 @@ export const metadataApi = {
 export const schemaApi = {
   getBlocked: (blockType?: string) =>
     fetchApi<BlockedSuggestion[]>(
-      `/api/schema/blocked${blockType ? `?block_type=${blockType}` : ""}`
+      `/api/schema/blocked${blockType ? `?block_type=${blockType}` : ""}`,
     ),
   block: (request: BlockSuggestionRequest) =>
     fetchApi<BlockedSuggestion>("/api/schema/blocked", {
@@ -230,15 +209,14 @@ export const schemaApi = {
     }),
   checkBlocked: (name: string, blockType: string) =>
     fetchApi<{ is_blocked: boolean }>(
-      `/api/schema/blocked/check?name=${encodeURIComponent(name)}&block_type=${blockType}`
+      `/api/schema/blocked/check?name=${encodeURIComponent(name)}&block_type=${blockType}`,
     ),
 };
 
 // Jobs API
 export const jobsApi = {
   getStatus: () => fetchApi<Record<string, JobStatus>>("/api/jobs/status"),
-  getJobStatus: (jobName: string) =>
-    fetchApi<JobStatus>(`/api/jobs/status/${jobName}`),
+  getJobStatus: (jobName: string) => fetchApi<JobStatus>(`/api/jobs/status/${jobName}`),
   triggerMetadataEnhancement: () =>
     fetchApi<{ message: string; status: string }>("/api/jobs/metadata-enhancement/run", {
       method: "POST",
@@ -253,22 +231,18 @@ export const jobsApi = {
       method: "POST",
       body: JSON.stringify({ analysis_type: analysisType }),
     }),
-  getBootstrapStatus: () =>
-    fetchApi<BootstrapProgress>("/api/jobs/bootstrap/status"),
+  getBootstrapStatus: () => fetchApi<BootstrapProgress>("/api/jobs/bootstrap/status"),
   cancelBootstrap: () =>
     fetchApi<{ message: string; status: string }>("/api/jobs/bootstrap/cancel", {
       method: "POST",
     }),
   skipBootstrapDocument: (count: number = 1) =>
-    fetchApi<{ message: string; status: string; count?: number }>(
-      `/api/jobs/bootstrap/skip?count=${count}`,
-      {
-        method: "POST",
-      }
-    ),
+    fetchApi<{ message: string; status: string; count?: number }>("/api/jobs/bootstrap/skip", {
+      method: "POST",
+      body: JSON.stringify({ count }),
+    }),
   // Job Schedules
-  getSchedules: () =>
-    fetchApi<JobScheduleStatus>("/api/jobs/schedule"),
+  getSchedules: () => fetchApi<JobScheduleStatus>("/api/jobs/schedule"),
   updateSchedule: (request: ScheduleUpdateRequest) =>
     fetchApi<ScheduleUpdateResponse>("/api/jobs/schedule", {
       method: "PATCH",
@@ -280,8 +254,7 @@ export const jobsApi = {
       method: "POST",
       body: JSON.stringify({ docs_per_second: docsPerSecond, skip_existing: skipExisting }),
     }),
-  getBulkOCRStatus: () =>
-    fetchApi<BulkOCRProgress>("/api/jobs/bulk-ocr/status"),
+  getBulkOCRStatus: () => fetchApi<BulkOCRProgress>("/api/jobs/bulk-ocr/status"),
   cancelBulkOCR: () =>
     fetchApi<{ message: string; status: string }>("/api/jobs/bulk-ocr/cancel", {
       method: "POST",
@@ -292,8 +265,7 @@ export const jobsApi = {
       method: "POST",
       body: JSON.stringify(request),
     }),
-  getBulkIngestStatus: () =>
-    fetchApi<BulkIngestProgress>("/api/jobs/bulk-ingest/status"),
+  getBulkIngestStatus: () => fetchApi<BulkIngestProgress>("/api/jobs/bulk-ingest/status"),
   cancelBulkIngest: () =>
     fetchApi<{ message: string; status: string }>("/api/jobs/bulk-ingest/cancel", {
       method: "POST",
@@ -304,7 +276,7 @@ export const jobsApi = {
 export const searchApi = {
   search: (query: string, limit = 10) =>
     fetchApi<SearchResponse>(
-      `/api/search?${new URLSearchParams({ q: query, limit: String(limit) })}`
+      `/api/search?${new URLSearchParams({ q: query, limit: String(limit) })}`,
     ),
 };
 
@@ -324,14 +296,9 @@ export const translationApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  translatePrompts: (sourceLang: string, targetLang: string) =>
-    fetchApi<TranslatePromptsResponse>("/api/translation/translate/prompts", {
-      method: "POST",
-      body: JSON.stringify({ source_lang: sourceLang, target_lang: targetLang }),
-    }),
   getTranslations: (targetLang: string, contentType?: string) =>
     fetchApi<{ translations: TranslationEntry[] }>(
-      `/api/translation/translations/${targetLang}${contentType ? `?content_type=${contentType}` : ""}`
+      `/api/translation/translations/${targetLang}${contentType ? `?content_type=${contentType}` : ""}`,
     ),
   clearCache: (targetLang?: string, contentType?: string) =>
     fetchApi<{ success: boolean }>("/api/translation/cache/clear", {
@@ -355,17 +322,32 @@ export interface Settings {
   qdrant_collection: string;
   auto_processing_enabled: boolean;
   auto_processing_interval_minutes: number;
-  prompt_language: string;
+  language: string;
+  debug_log_level: string;
+  debug_log_prompts: boolean;
+  debug_log_responses: boolean;
+  debug_save_processing_history: boolean;
   pipeline_custom_fields: boolean;
+  pipeline_document_type: boolean;
+  pipeline_document_links: boolean;
   tags: {
+    todo: string;
+    ocr: string;
+    metadata: string;
+    review: string;
+    index: string;
+    done: string;
+    failed: string;
     pending: string;
     ocr_done: string;
+    summary_done: string;
+    schema_review: string;
     correspondent_done: string;
     document_type_done: string;
     title_done: string;
     tags_done: string;
-    custom_fields_done: string;
     processed: string;
+    manual_review: string;
   };
 }
 
@@ -377,6 +359,12 @@ export interface ConnectionTest {
 }
 
 export interface QueueStats {
+  todo?: number;
+  ocr?: number;
+  metadata?: number;
+  review?: number;
+  index?: number;
+  done?: number;
   pending: number;
   ocr_done: number;
   correspondent_done: number;
@@ -454,64 +442,44 @@ export interface OllamaStatus {
   models: OllamaRunningModel[];
 }
 
-export interface PromptInfo {
-  name: string;
-  filename: string;
-  content: string;
-  variables: string[];
-  description: string | null;
-}
-
-export interface PromptGroup {
-  name: string;
-  category: 'document' | 'system';
-  main: PromptInfo;
-  confirmation: PromptInfo | null;
-}
-
-export interface PreviewData {
-  document_content: string;
-  existing_correspondents: string;
-  existing_types: string;
-  existing_tags: string;
-  similar_docs: string;
-  similar_titles: string;
-  feedback: string;
-  analysis_result: string;
-  document_excerpt: string;
-}
-
-export interface LanguageInfo {
-  code: string;
-  name: string;
-  prompt_count: number;
-  is_complete: boolean;
-}
-
-export interface AvailableLanguagesResponse {
-  languages: LanguageInfo[];
-  default: string;
-  current: string;
-}
-
 // Pending Reviews Types
-export type PendingItemType = "correspondent" | "document_type" | "tag";
-export type SchemaItemType = "schema_correspondent" | "schema_document_type" | "schema_tag" | "schema_custom_field" | "schema_cleanup";
+export type PendingItemType =
+  | "correspondent"
+  | "document_type"
+  | "tag"
+  | "human_decision"
+  | "consolidation";
+export type SchemaItemType =
+  | "schema_correspondent"
+  | "schema_document_type"
+  | "schema_tag"
+  | "schema_custom_field"
+  | "schema_merge"
+  | "schema_delete"
+  | "schema_cleanup";
 export type AllPendingItemType = PendingItemType | SchemaItemType;
 
 export interface PendingItem {
   id: string;
-  doc_id: number;
-  doc_title: string;
+  docId: number;
+  docTitle: string;
   type: AllPendingItemType;
   suggestion: string;
   reasoning: string;
   alternatives: string[];
   attempts: number;
-  last_feedback: string | null;
-  created_at: string;
+  last_feedback?: string | null;
+  lastFeedback?: string | null;
+  createdAt?: string;
+  created_at?: string;
   metadata: Record<string, unknown>;
+  nextTag?: string | null;
   next_tag?: string;
+}
+
+export interface EntityOption {
+  id: number;
+  name: string;
 }
 
 // Schema cleanup specific types
@@ -561,20 +529,26 @@ export interface PendingCounts {
   correspondent: number;
   document_type: number;
   tag: number;
+  title?: number;
+  human_decision?: number;
+  consolidation?: number;
+  schema?: number;
   total: number;
   // Schema suggestion counts (from bootstrap analysis)
   schema_correspondent: number;
   schema_document_type: number;
   schema_tag: number;
   schema_custom_field: number;
+  schema_merge?: number;
+  schema_delete?: number;
   schema_cleanup: number;
   metadata_description: number;
 }
 
 export interface SearchableEntities {
-  correspondents: string[];
-  document_types: string[];
-  tags: string[];
+  correspondents: EntityOption[];
+  document_types: EntityOption[];
+  tags: EntityOption[];
 }
 
 // Pending cleanup (similar suggestions) types
@@ -693,22 +667,6 @@ export interface TranslateResponse {
   model: string | null;
 }
 
-export interface TranslatePromptsResponse {
-  success: boolean;
-  total: number;
-  successful: number;
-  failed: number;
-  results: Array<{
-    success: boolean;
-    prompt_name?: string;
-    source_lang?: string;
-    target_lang?: string;
-    cached?: boolean;
-    model?: string;
-    error?: string;
-  }>;
-}
-
 export interface TranslationEntry {
   source_lang: string;
   target_lang: string;
@@ -797,9 +755,9 @@ export interface BootstrapProgress {
   completed_at: string | null;
   error_message: string | null;
   // Enhanced progress tracking
-  total_documents: number | null;           // Total docs in Paperless (for "covering X documents")
-  current_entity_count: number | null;      // Count of entities in current phase (e.g., 47 correspondents)
-  avg_seconds_per_category: number | null;  // For time estimation
+  total_documents: number | null; // Total docs in Paperless (for "covering X documents")
+  current_entity_count: number | null; // Count of entities in current phase (e.g., 47 correspondents)
+  avg_seconds_per_category: number | null; // For time estimation
   estimated_remaining_seconds: number | null; // ETA calculation
 }
 

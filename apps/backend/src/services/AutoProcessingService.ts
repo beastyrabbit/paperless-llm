@@ -3,11 +3,11 @@
  *
  * Continuously checks for pending documents and processes them through the pipeline.
  */
-import { Effect, Context, Layer, Ref, Fiber, Duration, Deferred, Option } from 'effect';
-import { ConfigService } from '../config/index.js';
-import { PaperlessService } from './PaperlessService.js';
-import { TinyBaseService } from './TinyBaseService.js';
-import { ProcessingPipelineService } from '../agents/ProcessingPipeline.js';
+import { Context, Deferred, Duration, Effect, Fiber, Layer, Option, Ref } from "effect";
+import { ProcessingPipelineService } from "../agents/ProcessingPipeline.js";
+import { ConfigService } from "../config/index.js";
+import { PaperlessService } from "./PaperlessService.js";
+import { TinyBaseService } from "./TinyBaseService.js";
 
 // ===========================================================================
 // Types
@@ -36,7 +36,8 @@ export interface AutoProcessingService {
   readonly trigger: () => Effect.Effect<void, never>;
 }
 
-export const AutoProcessingService = Context.GenericTag<AutoProcessingService>('AutoProcessingService');
+export const AutoProcessingService =
+  Context.GenericTag<AutoProcessingService>("AutoProcessingService");
 
 // ===========================================================================
 // Live Implementation
@@ -67,28 +68,34 @@ export const AutoProcessingServiceLive = Layer.effect(
 
     // Get auto processing settings from TinyBase (runtime configurable)
     const getSettings = Effect.gen(function* () {
-      const enabledStr = yield* tinybase.getSetting('auto_processing.enabled');
-      const intervalStr = yield* tinybase.getSetting('auto_processing.interval_minutes');
+      const enabledStr = yield* tinybase.getSetting("auto_processing.enabled");
+      const intervalStr = yield* tinybase.getSetting("auto_processing.interval_minutes");
 
       // Parse and validate interval - fall back to config default if invalid
       const parsedInterval = intervalStr ? parseInt(intervalStr, 10) : NaN;
-      const intervalMinutes = Number.isFinite(parsedInterval) && parsedInterval > 0
-        ? parsedInterval
-        : config.config.autoProcessing.intervalMinutes;
+      const intervalMinutes =
+        Number.isFinite(parsedInterval) && parsedInterval > 0
+          ? parsedInterval
+          : config.config.autoProcessing.intervalMinutes;
 
       return {
-        enabled: enabledStr === 'true' ? true : enabledStr === 'false' ? false : config.config.autoProcessing.enabled,
+        enabled:
+          enabledStr === "true"
+            ? true
+            : enabledStr === "false"
+              ? false
+              : config.config.autoProcessing.enabled,
         intervalMinutes,
       };
     });
 
     // The main processing loop
     const runLoop: Effect.Effect<void, never, never> = Effect.gen(function* () {
-      console.log('[AutoProcessing] Background loop started');
+      console.log("[AutoProcessing] Background loop started");
 
       while (yield* Ref.get(runningRef)) {
         const settings = yield* getSettings.pipe(
-          Effect.catchAll(() => Effect.succeed({ enabled: false, intervalMinutes: 5 }))
+          Effect.catchAll(() => Effect.succeed({ enabled: false, intervalMinutes: 5 })),
         );
 
         // If not enabled, wait a short time and check again
@@ -97,50 +104,71 @@ export const AutoProcessingServiceLive = Layer.effect(
           continue;
         }
 
-        // Check for documents at any pipeline stage (not just pending)
-        // Priority order: pending first, then intermediate stages
-        // Map tag -> what step will be processed next
-        // Pipeline order: OCR -> Summary -> Title -> Correspondent -> DocType -> Tags
-        const pipelineStages: Array<{ tag: string; processingStep: string }> = [
-          { tag: tagConfig.pending, processingStep: 'ocr' },
-          { tag: tagConfig.ocrDone, processingStep: 'summary' },
-          { tag: tagConfig.summaryDone, processingStep: 'title' },
-          { tag: tagConfig.titleDone, processingStep: 'correspondent' },
-          { tag: tagConfig.correspondentDone, processingStep: 'document_type' },
-          { tag: tagConfig.documentTypeDone, processingStep: 'tags' },
-          { tag: tagConfig.tagsDone, processingStep: 'finalizing' },
+        // Check for documents at any canonical or legacy Pi pipeline stage.
+        const stageTags = (...tagNames: string[]): string[] => [
+          ...new Set(tagNames.filter(Boolean)),
+        ];
+        const pipelineStages: Array<{ tags: string[]; processingStep: string }> = [
+          { tags: stageTags(tagConfig.todo, tagConfig.pending), processingStep: "ocr" },
+          { tags: stageTags(tagConfig.ocr, tagConfig.ocrDone), processingStep: "metadata" },
+          {
+            tags: stageTags(
+              tagConfig.metadata,
+              tagConfig.summaryDone,
+              tagConfig.titleDone,
+              tagConfig.correspondentDone,
+              tagConfig.documentTypeDone,
+            ),
+            processingStep: "metadata",
+          },
+          { tags: stageTags(tagConfig.index, tagConfig.tagsDone), processingStep: "index" },
         ];
 
         let docToProcess: { id: number; title: string; tags: readonly number[] } | null = null;
         let currentStep: string | null = null;
 
-        // Get the processed tag ID so we can filter it out
-        const processedTagOption = yield* paperless.getTagByName(tagConfig.processed).pipe(
-          Effect.catchAll(() => Effect.succeed(Option.none<{ id: number }>()))
-        );
-        const processedTagId = Option.isSome(processedTagOption) ? processedTagOption.value.id : null;
+        // Filter out final-state documents that still have stale stage tags.
+        const finalTagIds = new Set<number>();
+        for (const finalTagName of stageTags(tagConfig.done, tagConfig.processed)) {
+          const finalTag = yield* paperless
+            .getTagByName(finalTagName)
+            .pipe(Effect.catchAll(() => Effect.succeed(Option.none<{ id: number }>())));
+          if (Option.isSome(finalTag)) finalTagIds.add(finalTag.value.id);
+        }
 
         for (const stage of pipelineStages) {
-          // Fetch more docs so we can filter, then take first valid one
-          const docs = yield* paperless.getDocumentsByTag(stage.tag, 10).pipe(
+          // Fetch each pipeline stage with one OR query across canonical and legacy tags.
+          const docs = yield* paperless.getDocumentsByTags(stage.tags, 10).pipe(
             Effect.catchAll((e) => {
-              console.error(`[AutoProcessing] Error fetching documents with tag ${stage.tag}:`, e);
+              console.error(
+                `[AutoProcessing] Error fetching documents with tags ${stage.tags.join(", ")}:`,
+                e,
+              );
               return Effect.succeed([]);
-            })
+            }),
           );
 
-          // Filter out documents that already have the processed tag
-          const eligibleDocs = processedTagId !== null
-            ? docs.filter(d => !d.tags.includes(processedTagId))
-            : docs;
+          // Filter out documents that already have a final-state tag
+          const eligibleDocs =
+            finalTagIds.size > 0
+              ? docs.filter((d) => !d.tags.some((tagId) => finalTagIds.has(tagId)))
+              : docs;
 
           if (eligibleDocs.length > 0) {
             docToProcess = eligibleDocs[0]!;
             currentStep = stage.processingStep;
-            console.log(`[AutoProcessing] Found document at stage "${stage.tag}" - processing: ${stage.processingStep}`);
+            console.log(
+              `[AutoProcessing] Found document at stage "${stage.tags.join(", ")}" - processing: ${
+                stage.processingStep
+              }`,
+            );
             break;
           } else if (docs.length > 0 && eligibleDocs.length === 0) {
-            console.log(`[AutoProcessing] Documents at "${stage.tag}" already have processed tag - skipping`);
+            console.log(
+              `[AutoProcessing] Documents at "${stage.tags.join(
+                ", ",
+              )}" already have processed tag - skipping`,
+            );
           }
         }
 
@@ -164,15 +192,17 @@ export const AutoProcessingServiceLive = Layer.effect(
                 } else if (result.needsReview) {
                   console.log(`[AutoProcessing] Document ${doc.id} needs manual review`);
                 } else {
-                  console.log(`[AutoProcessing] Document ${doc.id} processing failed: ${result.error}`);
+                  console.log(
+                    `[AutoProcessing] Document ${doc.id} processing failed: ${result.error}`,
+                  );
                 }
-              })
+              }),
             ),
             Effect.tap(() => Ref.update(processedCountRef, (n) => n + 1)),
             Effect.catchAll((e) => {
               console.error(`[AutoProcessing] Error processing document ${doc.id}:`, e);
               return Ref.update(errorCountRef, (n) => n + 1);
-            })
+            }),
           );
 
           yield* Ref.set(currentDocRef, null);
@@ -184,7 +214,9 @@ export const AutoProcessingServiceLive = Layer.effect(
         }
 
         // No work found - wait for interval
-        console.log(`[AutoProcessing] No documents in pipeline. Waiting ${settings.intervalMinutes} minutes...`);
+        console.log(
+          `[AutoProcessing] No documents in pipeline. Waiting ${settings.intervalMinutes} minutes...`,
+        );
 
         // Create a deferred for manual trigger interruption
         const triggerDeferred = yield* Deferred.make<void, never>();
@@ -193,13 +225,13 @@ export const AutoProcessingServiceLive = Layer.effect(
         // Wait for either the interval or a manual trigger
         yield* Effect.race(
           Effect.sleep(Duration.minutes(settings.intervalMinutes)),
-          Deferred.await(triggerDeferred)
+          Deferred.await(triggerDeferred),
         );
 
         yield* Ref.set(triggerDeferredRef, null);
       }
 
-      console.log('[AutoProcessing] Background loop stopped');
+      console.log("[AutoProcessing] Background loop stopped");
     }).pipe(Effect.catchAll(() => Effect.void)) as Effect.Effect<void, never, never>;
 
     const service: AutoProcessingService = {
@@ -207,7 +239,7 @@ export const AutoProcessingServiceLive = Layer.effect(
         Effect.gen(function* () {
           const isRunning = yield* Ref.get(runningRef);
           if (isRunning) {
-            console.log('[AutoProcessing] Already running');
+            console.log("[AutoProcessing] Already running");
             return;
           }
 
@@ -219,7 +251,7 @@ export const AutoProcessingServiceLive = Layer.effect(
           const fiber = yield* Effect.forkDaemon(runLoop);
           yield* Ref.set(fiberRef, fiber as Fiber.RuntimeFiber<void, never>);
 
-          console.log('[AutoProcessing] Service started');
+          console.log("[AutoProcessing] Service started");
         }),
 
       stop: () =>
@@ -239,7 +271,7 @@ export const AutoProcessingServiceLive = Layer.effect(
             yield* Ref.set(fiberRef, null);
           }
 
-          console.log('[AutoProcessing] Service stopped');
+          console.log("[AutoProcessing] Service stopped");
         }),
 
       getStatus: () =>
@@ -252,7 +284,7 @@ export const AutoProcessingServiceLive = Layer.effect(
           const processed = yield* Ref.get(processedCountRef);
           const errors = yield* Ref.get(errorCountRef);
           const settings = yield* getSettings.pipe(
-            Effect.catchAll(() => Effect.succeed({ enabled: false, intervalMinutes: 5 }))
+            Effect.catchAll(() => Effect.succeed({ enabled: false, intervalMinutes: 5 })),
           );
 
           return {
@@ -273,13 +305,13 @@ export const AutoProcessingServiceLive = Layer.effect(
           const triggerDeferred = yield* Ref.get(triggerDeferredRef);
           if (triggerDeferred) {
             yield* Deferred.succeed(triggerDeferred, undefined);
-            console.log('[AutoProcessing] Manual trigger - checking for work now');
+            console.log("[AutoProcessing] Manual trigger - checking for work now");
           } else {
-            console.log('[AutoProcessing] Manual trigger - already checking or not waiting');
+            console.log("[AutoProcessing] Manual trigger - already checking or not waiting");
           }
         }),
     };
 
     return service;
-  })
+  }),
 );

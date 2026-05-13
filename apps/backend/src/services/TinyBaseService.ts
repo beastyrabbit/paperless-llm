@@ -1,37 +1,45 @@
 /**
  * TinyBase database service for local state and sync.
  */
-import { Effect, Context, Layer, pipe } from 'effect';
-import { createStore, type Store } from 'tinybase';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { parse as parseYaml } from 'yaml';
-import { DatabaseError } from '../errors/index.js';
+
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { Context, Effect, Layer } from "effect";
+import { createStore, type Store } from "tinybase";
+import { parse as parseYaml } from "yaml";
+import { DatabaseError } from "../errors/index.js";
 import type {
-  PendingReview,
-  PendingCounts,
-  TagMetadata,
-  CustomFieldMetadata,
   BlockedSuggestion,
-  Translation,
-  JobStatus,
   BlockType,
-} from '../models/index.js';
+  CustomFieldMetadata,
+  JobStatus,
+  PendingCounts,
+  PendingReview,
+  TagMetadata,
+  Translation,
+} from "../models/index.js";
 
 // ===========================================================================
 // Persistence Configuration
 // ===========================================================================
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const PERSISTENCE_FILE = path.join(DATA_DIR, 'tinybase.json');
+const getDataDir = (): string =>
+  process.env["PAPERLESS_LLM_TINYBASE_DATA_DIR"]
+    ? path.resolve(process.env["PAPERLESS_LLM_TINYBASE_DATA_DIR"])
+    : path.join(process.cwd(), "data");
+
+const getPersistenceFile = (): string => path.join(getDataDir(), "tinybase.json");
 
 /**
  * Ensure the data directory exists.
  */
 const ensureDataDir = (): void => {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    console.log(`[TinyBase] Created data directory: ${DATA_DIR}`);
+  const dataDir = getDataDir();
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+    console.log(`[TinyBase] Created data directory: ${dataDir}`);
+  } else {
+    fs.chmodSync(dataDir, 0o700);
   }
 };
 
@@ -39,18 +47,27 @@ const ensureDataDir = (): void => {
  * Load persisted store data from disk.
  */
 const loadPersistedData = (store: Store): boolean => {
-  if (!fs.existsSync(PERSISTENCE_FILE)) {
-    console.log('[TinyBase] No persisted data found, starting fresh');
+  const persistenceFile = getPersistenceFile();
+  if (!fs.existsSync(persistenceFile)) {
+    console.log("[TinyBase] No persisted data found, starting fresh");
     return false;
   }
 
   try {
-    const json = fs.readFileSync(PERSISTENCE_FILE, 'utf-8');
+    const json = fs.readFileSync(persistenceFile, "utf-8");
     store.setJson(json);
-    console.log(`[TinyBase] Loaded persisted data from ${PERSISTENCE_FILE}`);
+    console.log(`[TinyBase] Loaded persisted data from ${persistenceFile}`);
     return true;
   } catch (error) {
-    console.error('[TinyBase] Failed to load persisted data:', error);
+    console.error("[TinyBase] Failed to load persisted data:", error);
+    const backupPath = `${persistenceFile}.corrupt-${Date.now()}`;
+    try {
+      fs.copyFileSync(persistenceFile, backupPath);
+      fs.chmodSync(backupPath, 0o600);
+      console.error(`[TinyBase] Backed up corrupt persisted data to ${backupPath}`);
+    } catch (backupError) {
+      console.error("[TinyBase] Failed to back up corrupt persisted data:", backupError);
+    }
     return false;
   }
 };
@@ -61,10 +78,12 @@ const loadPersistedData = (store: Store): boolean => {
 const persistStore = (store: Store): void => {
   try {
     ensureDataDir();
+    const persistenceFile = getPersistenceFile();
     const json = store.getJson();
-    fs.writeFileSync(PERSISTENCE_FILE, json, 'utf-8');
+    fs.writeFileSync(persistenceFile, json, { encoding: "utf-8", mode: 0o600 });
+    fs.chmodSync(persistenceFile, 0o600);
   } catch (error) {
-    console.error('[TinyBase] Failed to persist store:', error);
+    console.error("[TinyBase] Failed to persist store:", error);
   }
 };
 
@@ -88,86 +107,108 @@ const debouncedPersist = (store: Store): void => {
 
 export const storeSchema = {
   pendingReviews: {
-    id: { type: 'string' as const },
-    docId: { type: 'number' as const },
-    docTitle: { type: 'string' as const },
-    type: { type: 'string' as const },
-    suggestion: { type: 'string' as const },
-    reasoning: { type: 'string' as const },
-    alternatives: { type: 'string' as const }, // JSON array
-    attempts: { type: 'number' as const },
-    lastFeedback: { type: 'string' as const },
-    nextTag: { type: 'string' as const },
-    metadata: { type: 'string' as const }, // JSON object
-    createdAt: { type: 'string' as const },
+    id: { type: "string" as const },
+    docId: { type: "number" as const },
+    docTitle: { type: "string" as const },
+    type: { type: "string" as const },
+    suggestion: { type: "string" as const },
+    reasoning: { type: "string" as const },
+    alternatives: { type: "string" as const }, // JSON array
+    attempts: { type: "number" as const },
+    lastFeedback: { type: "string" as const },
+    nextTag: { type: "string" as const },
+    metadata: { type: "string" as const }, // JSON object
+    createdAt: { type: "string" as const },
   },
   tagMetadata: {
-    id: { type: 'number' as const },
-    paperlessTagId: { type: 'number' as const },
-    tagName: { type: 'string' as const },
-    description: { type: 'string' as const },
-    category: { type: 'string' as const },
-    excludeFromAi: { type: 'boolean' as const },
+    id: { type: "number" as const },
+    paperlessTagId: { type: "number" as const },
+    tagName: { type: "string" as const },
+    description: { type: "string" as const },
+    category: { type: "string" as const },
+    excludeFromAi: { type: "boolean" as const },
   },
   customFieldMetadata: {
-    id: { type: 'number' as const },
-    paperlessFieldId: { type: 'number' as const },
-    fieldName: { type: 'string' as const },
-    description: { type: 'string' as const },
-    extractionHints: { type: 'string' as const },
-    valueFormat: { type: 'string' as const },
-    exampleValues: { type: 'string' as const }, // JSON array
+    id: { type: "number" as const },
+    paperlessFieldId: { type: "number" as const },
+    fieldName: { type: "string" as const },
+    description: { type: "string" as const },
+    extractionHints: { type: "string" as const },
+    valueFormat: { type: "string" as const },
+    exampleValues: { type: "string" as const }, // JSON array
   },
   blockedSuggestions: {
-    id: { type: 'number' as const },
-    suggestionName: { type: 'string' as const },
-    normalizedName: { type: 'string' as const },
-    blockType: { type: 'string' as const },
-    rejectionReason: { type: 'string' as const },
-    rejectionCategory: { type: 'string' as const },
-    docId: { type: 'number' as const },
-    createdAt: { type: 'string' as const },
+    id: { type: "number" as const },
+    suggestionName: { type: "string" as const },
+    normalizedName: { type: "string" as const },
+    blockType: { type: "string" as const },
+    rejectionReason: { type: "string" as const },
+    rejectionCategory: { type: "string" as const },
+    docId: { type: "number" as const },
+    createdAt: { type: "string" as const },
   },
   translations: {
-    key: { type: 'string' as const },
-    sourceLang: { type: 'string' as const },
-    targetLang: { type: 'string' as const },
-    sourceText: { type: 'string' as const },
-    translatedText: { type: 'string' as const },
-    modelUsed: { type: 'string' as const },
-    createdAt: { type: 'string' as const },
+    key: { type: "string" as const },
+    sourceLang: { type: "string" as const },
+    targetLang: { type: "string" as const },
+    sourceText: { type: "string" as const },
+    translatedText: { type: "string" as const },
+    modelUsed: { type: "string" as const },
+    createdAt: { type: "string" as const },
   },
   jobStatus: {
-    name: { type: 'string' as const },
-    status: { type: 'string' as const },
-    lastRun: { type: 'string' as const },
-    lastResult: { type: 'string' as const }, // JSON
-    nextRun: { type: 'string' as const },
-    enabled: { type: 'boolean' as const },
-    schedule: { type: 'string' as const },
-    cron: { type: 'string' as const },
+    name: { type: "string" as const },
+    status: { type: "string" as const },
+    lastRun: { type: "string" as const },
+    lastResult: { type: "string" as const }, // JSON
+    nextRun: { type: "string" as const },
+    enabled: { type: "boolean" as const },
+    schedule: { type: "string" as const },
+    cron: { type: "string" as const },
   },
   settings: {
-    key: { type: 'string' as const },
-    value: { type: 'string' as const },
-    updatedAt: { type: 'string' as const },
+    key: { type: "string" as const },
+    value: { type: "string" as const },
+    updatedAt: { type: "string" as const },
   },
   processingLogs: {
-    id: { type: 'string' as const },
-    docId: { type: 'number' as const },
-    timestamp: { type: 'string' as const },
-    step: { type: 'string' as const },
-    eventType: { type: 'string' as const },
-    data: { type: 'string' as const }, // JSON stringified
-    parentId: { type: 'string' as const },
+    id: { type: "string" as const },
+    docId: { type: "number" as const },
+    timestamp: { type: "string" as const },
+    step: { type: "string" as const },
+    eventType: { type: "string" as const },
+    data: { type: "string" as const }, // JSON stringified
+    parentId: { type: "string" as const },
   },
   documentOcrContent: {
-    docId: { type: 'number' as const },
-    content: { type: 'string' as const },
-    pages: { type: 'number' as const },
-    source: { type: 'string' as const }, // 'mistral' | 'paperless' | 'manual'
-    createdAt: { type: 'string' as const },
-    updatedAt: { type: 'string' as const },
+    docId: { type: "number" as const },
+    content: { type: "string" as const },
+    pages: { type: "number" as const },
+    source: { type: "string" as const }, // 'mistral' | 'paperless' | 'manual'
+    createdAt: { type: "string" as const },
+    updatedAt: { type: "string" as const },
+  },
+  documentMemory: {
+    docId: { type: "number" as const },
+    sessionId: { type: "string" as const },
+    ocrVersionIds: { type: "string" as const }, // JSON number[]
+    extractedFacts: { type: "string" as const }, // JSON
+    candidateEntities: { type: "string" as const }, // JSON
+    finalDecisions: { type: "string" as const }, // JSON
+    humanDecisions: { type: "string" as const }, // JSON array
+    reviewFeedback: { type: "string" as const }, // JSON array
+    runSummaries: { type: "string" as const }, // JSON array
+    transcript: { type: "string" as const }, // JSON AgentMessage[]
+    createdAt: { type: "string" as const },
+    updatedAt: { type: "string" as const },
+  },
+  consolidationReports: {
+    id: { type: "string" as const },
+    status: { type: "string" as const },
+    proposals: { type: "string" as const }, // JSON
+    summary: { type: "string" as const },
+    createdAt: { type: "string" as const },
+    updatedAt: { type: "string" as const },
   },
 };
 
@@ -176,17 +217,17 @@ export const storeSchema = {
 // ===========================================================================
 
 export type ProcessingLogEventType =
-  | 'context'
-  | 'prompt'
-  | 'response'
-  | 'thinking'
-  | 'tool_call'
-  | 'tool_result'
-  | 'confirming'
-  | 'retry'
-  | 'result'
-  | 'error'
-  | 'state_transition';
+  | "context"
+  | "prompt"
+  | "response"
+  | "thinking"
+  | "tool_call"
+  | "tool_result"
+  | "confirming"
+  | "retry"
+  | "result"
+  | "error"
+  | "state_transition";
 
 export interface ProcessingLogEntry {
   id: string;
@@ -214,38 +255,63 @@ export interface TinyBaseService {
   // Pending Reviews
   readonly getPendingReviews: (type?: string) => Effect.Effect<PendingReview[], DatabaseError>;
   readonly getPendingReview: (id: string) => Effect.Effect<PendingReview | null, DatabaseError>;
-  readonly addPendingReview: (item: Omit<PendingReview, 'id' | 'createdAt'>) => Effect.Effect<string | null, DatabaseError>;
-  readonly updatePendingReview: (id: string, updates: Partial<PendingReview>) => Effect.Effect<void, DatabaseError>;
+  readonly addPendingReview: (
+    item: Omit<PendingReview, "id" | "createdAt">,
+  ) => Effect.Effect<string | null, DatabaseError>;
+  readonly updatePendingReview: (
+    id: string,
+    updates: Partial<PendingReview>,
+  ) => Effect.Effect<void, DatabaseError>;
   readonly removePendingReview: (id: string) => Effect.Effect<void, DatabaseError>;
-  readonly removePendingReviewByDocAndType: (docId: number, type: PendingReview['type']) => Effect.Effect<void, DatabaseError>;
+  readonly removePendingReviewByDocAndType: (
+    docId: number,
+    type: PendingReview["type"],
+  ) => Effect.Effect<void, DatabaseError>;
   readonly getPendingCounts: () => Effect.Effect<PendingCounts, DatabaseError>;
 
   // Tag Metadata
   readonly getTagMetadata: (tagId: number) => Effect.Effect<TagMetadata | null, DatabaseError>;
   readonly getAllTagMetadata: () => Effect.Effect<TagMetadata[], DatabaseError>;
-  readonly upsertTagMetadata: (data: Omit<TagMetadata, 'id'>) => Effect.Effect<void, DatabaseError>;
+  readonly upsertTagMetadata: (data: Omit<TagMetadata, "id">) => Effect.Effect<void, DatabaseError>;
   readonly deleteTagMetadata: (tagId: number) => Effect.Effect<void, DatabaseError>;
 
   // Custom Field Metadata
-  readonly getCustomFieldMetadata: (fieldId: number) => Effect.Effect<CustomFieldMetadata | null, DatabaseError>;
+  readonly getCustomFieldMetadata: (
+    fieldId: number,
+  ) => Effect.Effect<CustomFieldMetadata | null, DatabaseError>;
   readonly getAllCustomFieldMetadata: () => Effect.Effect<CustomFieldMetadata[], DatabaseError>;
-  readonly upsertCustomFieldMetadata: (data: Omit<CustomFieldMetadata, 'id'>) => Effect.Effect<void, DatabaseError>;
+  readonly upsertCustomFieldMetadata: (
+    data: Omit<CustomFieldMetadata, "id">,
+  ) => Effect.Effect<void, DatabaseError>;
   readonly deleteCustomFieldMetadata: (fieldId: number) => Effect.Effect<void, DatabaseError>;
 
   // Blocked Suggestions
-  readonly getBlockedSuggestions: (type?: BlockType) => Effect.Effect<BlockedSuggestion[], DatabaseError>;
-  readonly addBlockedSuggestion: (item: Omit<BlockedSuggestion, 'id' | 'createdAt' | 'normalizedName'>) => Effect.Effect<number, DatabaseError>;
+  readonly getBlockedSuggestions: (
+    type?: BlockType,
+  ) => Effect.Effect<BlockedSuggestion[], DatabaseError>;
+  readonly addBlockedSuggestion: (
+    item: Omit<BlockedSuggestion, "id" | "createdAt" | "normalizedName">,
+  ) => Effect.Effect<number, DatabaseError>;
   readonly removeBlockedSuggestion: (id: number) => Effect.Effect<void, DatabaseError>;
   readonly isBlocked: (name: string, type: BlockType) => Effect.Effect<boolean, DatabaseError>;
 
   // Translations
-  readonly getTranslation: (sourceLang: string, targetLang: string, sourceText: string) => Effect.Effect<Translation | null, DatabaseError>;
-  readonly setTranslation: (translation: Omit<Translation, 'key' | 'createdAt'>) => Effect.Effect<void, DatabaseError>;
+  readonly getTranslation: (
+    sourceLang: string,
+    targetLang: string,
+    sourceText: string,
+  ) => Effect.Effect<Translation | null, DatabaseError>;
+  readonly setTranslation: (
+    translation: Omit<Translation, "key" | "createdAt">,
+  ) => Effect.Effect<void, DatabaseError>;
 
   // Job Status
   readonly getJobStatus: (name: string) => Effect.Effect<JobStatus | null, DatabaseError>;
   readonly getAllJobStatuses: () => Effect.Effect<JobStatus[], DatabaseError>;
-  readonly updateJobStatus: (name: string, updates: Partial<JobStatus>) => Effect.Effect<void, DatabaseError>;
+  readonly updateJobStatus: (
+    name: string,
+    updates: Partial<JobStatus>,
+  ) => Effect.Effect<void, DatabaseError>;
 
   // Settings
   readonly getSetting: (key: string) => Effect.Effect<string | null, DatabaseError>;
@@ -258,25 +324,71 @@ export interface TinyBaseService {
   readonly loadFromJson: (json: string) => Effect.Effect<void, DatabaseError>;
 
   // Processing Logs
-  readonly addProcessingLog: (entry: Omit<ProcessingLogEntry, 'id'> & { id?: string }) => Effect.Effect<string, DatabaseError>;
+  readonly addProcessingLog: (
+    entry: Omit<ProcessingLogEntry, "id"> & { id?: string },
+  ) => Effect.Effect<string, DatabaseError>;
   readonly getProcessingLogs: (docId: number) => Effect.Effect<ProcessingLogEntry[], DatabaseError>;
   readonly clearProcessingLogs: (docId: number) => Effect.Effect<void, DatabaseError>;
   readonly clearAllProcessingLogs: () => Effect.Effect<void, DatabaseError>;
   readonly getProcessingLogStats: () => Effect.Effect<ProcessingLogStats, DatabaseError>;
 
   // Document OCR Content
-  readonly setDocumentOcrContent: (docId: number, content: string, pages: number, source: 'mistral' | 'paperless' | 'manual') => Effect.Effect<void, DatabaseError>;
-  readonly getDocumentOcrContent: (docId: number) => Effect.Effect<{ content: string; pages: number; source: string; createdAt: string; updatedAt: string } | null, DatabaseError>;
+  readonly setDocumentOcrContent: (
+    docId: number,
+    content: string,
+    pages: number,
+    source: "mistral" | "paperless" | "manual",
+  ) => Effect.Effect<void, DatabaseError>;
+  readonly getDocumentOcrContent: (
+    docId: number,
+  ) => Effect.Effect<
+    { content: string; pages: number; source: string; createdAt: string; updatedAt: string } | null,
+    DatabaseError
+  >;
   readonly hasDocumentOcrContent: (docId: number) => Effect.Effect<boolean, DatabaseError>;
   readonly deleteDocumentOcrContent: (docId: number) => Effect.Effect<void, DatabaseError>;
-  readonly getDocumentOcrContentStats: () => Effect.Effect<{ totalDocuments: number; totalCharacters: number }, DatabaseError>;
+  readonly getDocumentOcrContentStats: () => Effect.Effect<
+    { totalDocuments: number; totalCharacters: number },
+    DatabaseError
+  >;
+
+  // Document Memory
+  readonly getDocumentMemory: (
+    docId: number,
+  ) => Effect.Effect<DocumentMemory | null, DatabaseError>;
+  readonly upsertDocumentMemory: (memory: DocumentMemory) => Effect.Effect<void, DatabaseError>;
+  readonly patchDocumentMemory: (
+    docId: number,
+    updates: Partial<DocumentMemory>,
+  ) => Effect.Effect<DocumentMemory, DatabaseError>;
+  readonly appendHumanDecision: (
+    docId: number,
+    decision: HumanDecisionRecord,
+  ) => Effect.Effect<DocumentMemory, DatabaseError>;
+  readonly appendReviewFeedback: (
+    docId: number,
+    feedback: ReviewFeedbackRecord,
+  ) => Effect.Effect<DocumentMemory, DatabaseError>;
+  readonly appendRunSummary: (
+    docId: number,
+    summary: RunSummaryRecord,
+  ) => Effect.Effect<DocumentMemory, DatabaseError>;
+
+  // Consolidation Reports
+  readonly saveConsolidationReport: (
+    report: ConsolidationReportRecord,
+  ) => Effect.Effect<void, DatabaseError>;
+  readonly getConsolidationReport: (
+    id: string,
+  ) => Effect.Effect<ConsolidationReportRecord | null, DatabaseError>;
+  readonly getConsolidationReports: () => Effect.Effect<ConsolidationReportRecord[], DatabaseError>;
 }
 
 // ===========================================================================
 // Service Tag
 // ===========================================================================
 
-export const TinyBaseService = Context.GenericTag<TinyBaseService>('TinyBaseService');
+export const TinyBaseService = Context.GenericTag<TinyBaseService>("TinyBaseService");
 
 // ===========================================================================
 // Helper Functions
@@ -287,19 +399,73 @@ const generateId = (): string => {
 };
 
 const normalizeString = (str: string): string => {
-  return str.toLowerCase().trim().replace(/\s+/g, ' ');
+  return str.toLowerCase().trim().replace(/\s+/g, " ");
 };
+
+export interface HumanDecisionRecord {
+  id: string;
+  pendingId?: string;
+  type: string;
+  question: string;
+  suggestion: string;
+  answer: "create" | "map" | "edit" | "skip" | "reject";
+  value: string | null;
+  feedback?: string | null;
+  decidedAt: string;
+}
+
+export interface ReviewFeedbackRecord {
+  id: string;
+  pendingId?: string;
+  feedback: string;
+  category?: string | null;
+  createdAt: string;
+}
+
+export interface RunSummaryRecord {
+  id: string;
+  agent: string;
+  status: string;
+  summary: string;
+  createdAt: string;
+}
+
+export interface DocumentMemory {
+  docId: number;
+  sessionId: string;
+  ocrVersionIds: number[];
+  extractedFacts: Record<string, unknown>;
+  candidateEntities: Record<string, unknown>;
+  finalDecisions: Record<string, unknown>;
+  humanDecisions: HumanDecisionRecord[];
+  reviewFeedback: ReviewFeedbackRecord[];
+  runSummaries: RunSummaryRecord[];
+  transcript: unknown[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConsolidationReportRecord {
+  id: string;
+  status: "draft" | "ready" | "partially_approved" | "applied" | "rejected";
+  proposals: unknown[];
+  summary: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 /**
  * TinyBase cells cannot be null, so we convert nulls to empty strings or 0
  * for storage and convert back on retrieval.
  */
-const sanitizeForStorage = <T extends Record<string, unknown>>(obj: T): Record<string, string | number | boolean> => {
+const sanitizeForStorage = <T extends Record<string, unknown>>(
+  obj: T,
+): Record<string, string | number | boolean> => {
   const result: Record<string, string | number | boolean> = {};
   for (const [key, value] of Object.entries(obj)) {
     if (value === null || value === undefined) {
-      result[key] = ''; // TinyBase doesn't accept null, use empty string as sentinel
-    } else if (typeof value === 'object') {
+      result[key] = ""; // TinyBase doesn't accept null, use empty string as sentinel
+    } else if (typeof value === "object") {
       result[key] = JSON.stringify(value);
     } else {
       result[key] = value as string | number | boolean;
@@ -308,20 +474,19 @@ const sanitizeForStorage = <T extends Record<string, unknown>>(obj: T): Record<s
   return result;
 };
 
-/**
- * Convert empty strings back to null for model compatibility.
- */
-const emptyToNull = (value: unknown): unknown => {
-  return value === '' ? null : value;
+const parseJsonValue = <T>(value: unknown, fallback: T): T => {
+  if (typeof value !== "string" || value.length === 0) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
 };
 
 /**
  * Flatten a nested object into key-value pairs with dot notation.
  */
-const flattenObject = (
-  obj: Record<string, unknown>,
-  prefix = ''
-): Record<string, string> => {
+const flattenObject = (obj: Record<string, unknown>, prefix = ""): Record<string, string> => {
   const result: Record<string, string> = {};
 
   for (const [key, value] of Object.entries(obj)) {
@@ -331,7 +496,7 @@ const flattenObject = (
       continue;
     } else if (Array.isArray(value)) {
       result[newKey] = JSON.stringify(value);
-    } else if (typeof value === 'object') {
+    } else if (typeof value === "object") {
       Object.assign(result, flattenObject(value as Record<string, unknown>, newKey));
     } else {
       result[newKey] = String(value);
@@ -345,12 +510,16 @@ const flattenObject = (
  * Auto-import settings from config.yaml into a store.
  */
 const autoImportConfigYaml = (store: Store): void => {
+  if (process.env["PAPERLESS_LLM_TINYBASE_DISABLE_CONFIG_IMPORT"] === "true") {
+    return;
+  }
+
   const possiblePaths = [
-    path.join(process.cwd(), 'config.yaml'),
-    path.join(process.cwd(), '../backend/config.yaml'),
-    path.join(process.cwd(), '../../config.yaml'),
-    path.join(process.cwd(), '../../apps/backend/config.yaml'),
-    '/app/config.yaml', // Docker container path
+    path.join(process.cwd(), "config.yaml"),
+    path.join(process.cwd(), "../backend/config.yaml"),
+    path.join(process.cwd(), "../../config.yaml"),
+    path.join(process.cwd(), "../../apps/backend/config.yaml"),
+    "/app/config.yaml", // Docker container path
   ];
 
   let configPath: string | null = null;
@@ -362,16 +531,16 @@ const autoImportConfigYaml = (store: Store): void => {
   }
 
   if (!configPath) {
-    console.log('[TinyBase] No config.yaml found for auto-import');
+    console.log("[TinyBase] No config.yaml found for auto-import");
     return;
   }
 
   try {
-    const content = fs.readFileSync(configPath, 'utf-8');
+    const content = fs.readFileSync(configPath, "utf-8");
     const yamlConfig = parseYaml(content) as Record<string, unknown>;
 
     if (!yamlConfig || Object.keys(yamlConfig).length === 0) {
-      console.log('[TinyBase] config.yaml is empty');
+      console.log("[TinyBase] config.yaml is empty");
       return;
     }
 
@@ -380,7 +549,7 @@ const autoImportConfigYaml = (store: Store): void => {
     let count = 0;
 
     for (const [key, value] of Object.entries(flattened)) {
-      store.setRow('settings', key, {
+      store.setRow("settings", key, {
         key,
         value,
         updatedAt: new Date().toISOString(),
@@ -390,7 +559,7 @@ const autoImportConfigYaml = (store: Store): void => {
 
     console.log(`[TinyBase] Auto-imported ${count} settings from ${configPath}`);
   } catch (error) {
-    console.error('[TinyBase] Failed to auto-import config.yaml:', error);
+    console.error("[TinyBase] Failed to auto-import config.yaml:", error);
   }
 };
 
@@ -406,6 +575,15 @@ export const TinyBaseServiceLive = Layer.effect(
     let nextTagMetaId = 1;
     let nextFieldMetaId = 1;
 
+    const getNextNumericRowId = (tableName: string): number => {
+      const table = store.getTable(tableName) ?? {};
+      const maxId = Object.keys(table)
+        .map((id) => Number(id))
+        .filter(Number.isFinite)
+        .reduce((max, id) => Math.max(max, id), 0);
+      return maxId + 1;
+    };
+
     // Try to load persisted data first, fall back to config.yaml
     const hadPersistedData = loadPersistedData(store);
     if (!hadPersistedData) {
@@ -415,11 +593,85 @@ export const TinyBaseServiceLive = Layer.effect(
       persistStore(store);
     }
 
+    nextBlockedId = getNextNumericRowId("blockedSuggestions");
+    nextTagMetaId = getNextNumericRowId("tagMetadata");
+    nextFieldMetaId = getNextNumericRowId("customFieldMetadata");
+
     // Set up auto-persistence on any store change
     store.addTablesListener(() => {
       debouncedPersist(store);
     });
-    console.log('[TinyBase] Auto-persistence enabled');
+    console.log("[TinyBase] Auto-persistence enabled");
+
+    const createEmptyMemory = (docId: number): DocumentMemory => {
+      const now = new Date().toISOString();
+      return {
+        docId,
+        sessionId: `doc-${docId}-${generateId()}`,
+        ocrVersionIds: [],
+        extractedFacts: {},
+        candidateEntities: {},
+        finalDecisions: {},
+        humanDecisions: [],
+        reviewFeedback: [],
+        runSummaries: [],
+        transcript: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+    };
+
+    const rowToMemory = (rowId: string): DocumentMemory | null => {
+      const row = store.getRow("documentMemory", rowId);
+      if (!row || Object.keys(row).length === 0) return null;
+      return {
+        docId: row["docId"] as number,
+        sessionId: row["sessionId"] as string,
+        ocrVersionIds: parseJsonValue<number[]>(row["ocrVersionIds"], []),
+        extractedFacts: parseJsonValue<Record<string, unknown>>(row["extractedFacts"], {}),
+        candidateEntities: parseJsonValue<Record<string, unknown>>(row["candidateEntities"], {}),
+        finalDecisions: parseJsonValue<Record<string, unknown>>(row["finalDecisions"], {}),
+        humanDecisions: parseJsonValue<HumanDecisionRecord[]>(row["humanDecisions"], []),
+        reviewFeedback: parseJsonValue<ReviewFeedbackRecord[]>(row["reviewFeedback"], []),
+        runSummaries: parseJsonValue<RunSummaryRecord[]>(row["runSummaries"], []),
+        transcript: parseJsonValue<unknown[]>(row["transcript"], []),
+        createdAt: row["createdAt"] as string,
+        updatedAt: row["updatedAt"] as string,
+      };
+    };
+
+    const writeMemory = (memory: DocumentMemory): void => {
+      store.setRow("documentMemory", String(memory.docId), {
+        docId: memory.docId,
+        sessionId: memory.sessionId,
+        ocrVersionIds: JSON.stringify(memory.ocrVersionIds),
+        extractedFacts: JSON.stringify(memory.extractedFacts),
+        candidateEntities: JSON.stringify(memory.candidateEntities),
+        finalDecisions: JSON.stringify(memory.finalDecisions),
+        humanDecisions: JSON.stringify(memory.humanDecisions),
+        reviewFeedback: JSON.stringify(memory.reviewFeedback),
+        runSummaries: JSON.stringify(memory.runSummaries),
+        transcript: JSON.stringify(memory.transcript),
+        createdAt: memory.createdAt,
+        updatedAt: memory.updatedAt,
+      });
+    };
+
+    const getOrCreateMemory = (docId: number): DocumentMemory =>
+      rowToMemory(String(docId)) ?? createEmptyMemory(docId);
+
+    const rowToConsolidationReport = (rowId: string): ConsolidationReportRecord | null => {
+      const row = store.getRow("consolidationReports", rowId);
+      if (!row || Object.keys(row).length === 0) return null;
+      return {
+        id: row["id"] as string,
+        status: row["status"] as ConsolidationReportRecord["status"],
+        proposals: parseJsonValue<unknown[]>(row["proposals"], []),
+        summary: row["summary"] as string,
+        createdAt: row["createdAt"] as string,
+        updatedAt: row["updatedAt"] as string,
+      };
+    };
 
     return {
       store,
@@ -431,20 +683,20 @@ export const TinyBaseServiceLive = Layer.effect(
       getPendingReviews: (type) =>
         Effect.try({
           try: () => {
-            const table = store.getTable('pendingReviews');
+            const table = store.getTable("pendingReviews");
             const rows = Object.entries(table ?? {}).map(([id, row]) => ({
               id,
-              docId: row?.['docId'] as number,
-              docTitle: row?.['docTitle'] as string,
-              type: row?.['type'] as PendingReview['type'],
-              suggestion: row?.['suggestion'] as string,
-              reasoning: row?.['reasoning'] as string,
-              alternatives: JSON.parse((row?.['alternatives'] as string) || '[]') as string[],
-              attempts: row?.['attempts'] as number,
-              lastFeedback: row?.['lastFeedback'] as string | null,
-              nextTag: row?.['nextTag'] as string | null,
-              metadata: row?.['metadata'] as string | null,
-              createdAt: row?.['createdAt'] as string,
+              docId: row?.["docId"] as number,
+              docTitle: row?.["docTitle"] as string,
+              type: row?.["type"] as PendingReview["type"],
+              suggestion: row?.["suggestion"] as string,
+              reasoning: row?.["reasoning"] as string,
+              alternatives: JSON.parse((row?.["alternatives"] as string) || "[]") as string[],
+              attempts: row?.["attempts"] as number,
+              lastFeedback: row?.["lastFeedback"] as string | null,
+              nextTag: row?.["nextTag"] as string | null,
+              metadata: row?.["metadata"] as string | null,
+              createdAt: row?.["createdAt"] as string,
             }));
 
             if (type) {
@@ -452,45 +704,57 @@ export const TinyBaseServiceLive = Layer.effect(
             }
             return rows;
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get pending reviews: ${e}`, operation: 'getPendingReviews', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get pending reviews: ${e}`,
+              operation: "getPendingReviews",
+              cause: e,
+            }),
         }),
 
       getPendingReview: (id) =>
         Effect.try({
           try: () => {
-            const row = store.getRow('pendingReviews', id);
+            const row = store.getRow("pendingReviews", id);
             if (!row || Object.keys(row).length === 0) return null;
 
             return {
               id,
-              docId: row['docId'] as number,
-              docTitle: row['docTitle'] as string,
-              type: row['type'] as PendingReview['type'],
-              suggestion: row['suggestion'] as string,
-              reasoning: row['reasoning'] as string,
-              alternatives: JSON.parse((row['alternatives'] as string) || '[]') as string[],
-              attempts: row['attempts'] as number,
-              lastFeedback: row['lastFeedback'] as string | null,
-              nextTag: row['nextTag'] as string | null,
-              metadata: row['metadata'] as string | null,
-              createdAt: row['createdAt'] as string,
+              docId: row["docId"] as number,
+              docTitle: row["docTitle"] as string,
+              type: row["type"] as PendingReview["type"],
+              suggestion: row["suggestion"] as string,
+              reasoning: row["reasoning"] as string,
+              alternatives: JSON.parse((row["alternatives"] as string) || "[]") as string[],
+              attempts: row["attempts"] as number,
+              lastFeedback: row["lastFeedback"] as string | null,
+              nextTag: row["nextTag"] as string | null,
+              metadata: row["metadata"] as string | null,
+              createdAt: row["createdAt"] as string,
             };
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get pending review: ${e}`, operation: 'getPendingReview', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get pending review: ${e}`,
+              operation: "getPendingReview",
+              cause: e,
+            }),
         }),
 
       addPendingReview: (item) =>
         Effect.try({
           try: (): string | null => {
             // Skip empty suggestions - don't add items with no actual suggestion
-            const trimmedSuggestion = item.suggestion?.trim() ?? '';
+            const trimmedSuggestion = item.suggestion?.trim() ?? "";
             if (!trimmedSuggestion) {
-              console.log(`[TinyBase] Skipping pending review for doc ${item.docId} (${item.type}) - empty suggestion`);
+              console.log(
+                `[TinyBase] Skipping pending review for doc ${item.docId} (${item.type}) - empty suggestion`,
+              );
               return null;
             }
 
             // Check for duplicates: same docId + type + suggestion (normalized)
-            const table = store.getTable('pendingReviews') ?? {};
+            const table = store.getTable("pendingReviews") ?? {};
             const normalizedSuggestion = trimmedSuggestion.toLowerCase();
 
             for (const [existingId, row] of Object.entries(table)) {
@@ -512,77 +776,139 @@ export const TinyBaseServiceLive = Layer.effect(
               alternatives: JSON.stringify(item.alternatives),
               createdAt: new Date().toISOString(),
             });
-            store.setRow('pendingReviews', id, rowData);
+            store.setRow("pendingReviews", id, rowData);
             return id;
           },
-          catch: (e) => new DatabaseError({ message: `Failed to add pending review: ${e}`, operation: 'addPendingReview', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to add pending review: ${e}`,
+              operation: "addPendingReview",
+              cause: e,
+            }),
         }),
 
       updatePendingReview: (id, updates) =>
         Effect.try({
           try: () => {
-            const existing = store.getRow('pendingReviews', id);
+            const existing = store.getRow("pendingReviews", id);
             if (existing && Object.keys(existing).length > 0) {
               const updateData = { ...updates } as Record<string, unknown>;
               if (updates.alternatives) {
-                updateData['alternatives'] = JSON.stringify(updates.alternatives);
+                updateData["alternatives"] = JSON.stringify(updates.alternatives);
               }
               const sanitized = sanitizeForStorage(updateData);
-              store.setPartialRow('pendingReviews', id, sanitized);
+              store.setPartialRow("pendingReviews", id, sanitized);
             }
           },
-          catch: (e) => new DatabaseError({ message: `Failed to update pending review: ${e}`, operation: 'updatePendingReview', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to update pending review: ${e}`,
+              operation: "updatePendingReview",
+              cause: e,
+            }),
         }),
 
       removePendingReview: (id) =>
         Effect.try({
           try: () => {
-            store.delRow('pendingReviews', id);
+            store.delRow("pendingReviews", id);
           },
-          catch: (e) => new DatabaseError({ message: `Failed to remove pending review: ${e}`, operation: 'removePendingReview', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to remove pending review: ${e}`,
+              operation: "removePendingReview",
+              cause: e,
+            }),
         }),
 
       removePendingReviewByDocAndType: (docId, type) =>
         Effect.try({
           try: () => {
-            const table = store.getTable('pendingReviews') ?? {};
+            const table = store.getTable("pendingReviews") ?? {};
             // Find all matching rows and delete them
             for (const [id, row] of Object.entries(table)) {
-              if (row?.['docId'] === docId && row?.['type'] === type) {
-                store.delRow('pendingReviews', id);
+              if (row?.["docId"] === docId && row?.["type"] === type) {
+                store.delRow("pendingReviews", id);
               }
             }
           },
-          catch: (e) => new DatabaseError({ message: `Failed to remove pending review by doc and type: ${e}`, operation: 'removePendingReviewByDocAndType', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to remove pending review by doc and type: ${e}`,
+              operation: "removePendingReviewByDocAndType",
+              cause: e,
+            }),
         }),
 
       getPendingCounts: () =>
         Effect.try({
           try: (): PendingCounts => {
-            const table = store.getTable('pendingReviews') ?? {};
+            const table = store.getTable("pendingReviews") ?? {};
             const rows = Object.values(table);
 
             let correspondent = 0;
             let document_type = 0;
             let tag = 0;
             let title = 0;
+            let human_decision = 0;
+            let consolidation = 0;
+            let schema_correspondent = 0;
+            let schema_document_type = 0;
+            let schema_tag = 0;
+            let schema_custom_field = 0;
+            let schema_merge = 0;
+            let schema_delete = 0;
+            let schema_cleanup = 0;
+            let metadata_description = 0;
             let schema = 0;
             let total = 0;
 
             for (const row of rows) {
-              const rowType = row?.['type'] as string;
-              if (rowType === 'correspondent') correspondent++;
-              else if (rowType === 'document_type') document_type++;
-              else if (rowType === 'tag') tag++;
-              else if (rowType === 'title') title++;
-              else if (rowType?.startsWith('schema_')) schema++;
+              const rowType = row?.["type"] as string;
+              if (rowType === "correspondent") correspondent++;
+              else if (rowType === "document_type") document_type++;
+              else if (rowType === "tag") tag++;
+              else if (rowType === "title") title++;
+              else if (rowType === "human_decision") human_decision++;
+              else if (rowType === "consolidation") consolidation++;
+              else if (rowType === "schema_correspondent") schema_correspondent++;
+              else if (rowType === "schema_document_type") schema_document_type++;
+              else if (rowType === "schema_tag") schema_tag++;
+              else if (rowType === "schema_custom_field") schema_custom_field++;
+              else if (rowType === "schema_merge") schema_merge++;
+              else if (rowType === "schema_delete") schema_delete++;
+              else if (rowType === "schema_cleanup") schema_cleanup++;
+              else if (rowType === "metadata_description") metadata_description++;
+              if (rowType?.startsWith("schema_")) schema++;
               // Note: documentlink items are no longer queued for review
               total++;
             }
 
-            return { correspondent, document_type, tag, title, schema, total };
+            return {
+              correspondent,
+              document_type,
+              tag,
+              title,
+              human_decision,
+              consolidation,
+              schema_correspondent,
+              schema_document_type,
+              schema_tag,
+              schema_custom_field,
+              schema_merge,
+              schema_delete,
+              schema_cleanup,
+              metadata_description,
+              schema,
+              total,
+            };
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get pending counts: ${e}`, operation: 'getPendingCounts', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get pending counts: ${e}`,
+              operation: "getPendingCounts",
+              cause: e,
+            }),
         }),
 
       // =====================================================================
@@ -592,72 +918,92 @@ export const TinyBaseServiceLive = Layer.effect(
       getTagMetadata: (tagId) =>
         Effect.try({
           try: () => {
-            const table = store.getTable('tagMetadata') ?? {};
+            const table = store.getTable("tagMetadata") ?? {};
             const found = Object.entries(table).find(
-              ([, row]) => row?.['paperlessTagId'] === tagId
+              ([, row]) => row?.["paperlessTagId"] === tagId,
             );
             if (!found) return null;
 
             const [id, row] = found;
             return {
               id: parseInt(id, 10),
-              paperlessTagId: row?.['paperlessTagId'] as number,
-              tagName: row?.['tagName'] as string,
-              description: row?.['description'] as string | null,
-              category: row?.['category'] as string | null,
-              excludeFromAi: row?.['excludeFromAi'] as boolean,
+              paperlessTagId: row?.["paperlessTagId"] as number,
+              tagName: row?.["tagName"] as string,
+              description: row?.["description"] as string | null,
+              category: row?.["category"] as string | null,
+              excludeFromAi: row?.["excludeFromAi"] as boolean,
             };
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get tag metadata: ${e}`, operation: 'getTagMetadata', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get tag metadata: ${e}`,
+              operation: "getTagMetadata",
+              cause: e,
+            }),
         }),
 
       getAllTagMetadata: () =>
         Effect.try({
           try: () => {
-            const table = store.getTable('tagMetadata') ?? {};
+            const table = store.getTable("tagMetadata") ?? {};
             return Object.entries(table).map(([id, row]) => ({
               id: parseInt(id, 10),
-              paperlessTagId: row?.['paperlessTagId'] as number,
-              tagName: row?.['tagName'] as string,
-              description: row?.['description'] as string | null,
-              category: row?.['category'] as string | null,
-              excludeFromAi: row?.['excludeFromAi'] as boolean,
+              paperlessTagId: row?.["paperlessTagId"] as number,
+              tagName: row?.["tagName"] as string,
+              description: row?.["description"] as string | null,
+              category: row?.["category"] as string | null,
+              excludeFromAi: row?.["excludeFromAi"] as boolean,
             }));
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get all tag metadata: ${e}`, operation: 'getAllTagMetadata', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get all tag metadata: ${e}`,
+              operation: "getAllTagMetadata",
+              cause: e,
+            }),
         }),
 
       upsertTagMetadata: (data) =>
         Effect.try({
           try: () => {
-            const table = store.getTable('tagMetadata') ?? {};
+            const table = store.getTable("tagMetadata") ?? {};
             const existing = Object.entries(table).find(
-              ([, row]) => row?.['paperlessTagId'] === data.paperlessTagId
+              ([, row]) => row?.["paperlessTagId"] === data.paperlessTagId,
             );
 
             const sanitized = sanitizeForStorage(data);
             if (existing) {
-              store.setPartialRow('tagMetadata', existing[0], sanitized);
+              store.setPartialRow("tagMetadata", existing[0], sanitized);
             } else {
               const id = nextTagMetaId++;
-              store.setRow('tagMetadata', String(id), { ...sanitized, id });
+              store.setRow("tagMetadata", String(id), { ...sanitized, id });
             }
           },
-          catch: (e) => new DatabaseError({ message: `Failed to upsert tag metadata: ${e}`, operation: 'upsertTagMetadata', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to upsert tag metadata: ${e}`,
+              operation: "upsertTagMetadata",
+              cause: e,
+            }),
         }),
 
       deleteTagMetadata: (tagId) =>
         Effect.try({
           try: () => {
-            const table = store.getTable('tagMetadata') ?? {};
+            const table = store.getTable("tagMetadata") ?? {};
             const found = Object.entries(table).find(
-              ([, row]) => row?.['paperlessTagId'] === tagId
+              ([, row]) => row?.["paperlessTagId"] === tagId,
             );
             if (found) {
-              store.delRow('tagMetadata', found[0]);
+              store.delRow("tagMetadata", found[0]);
             }
           },
-          catch: (e) => new DatabaseError({ message: `Failed to delete tag metadata: ${e}`, operation: 'deleteTagMetadata', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to delete tag metadata: ${e}`,
+              operation: "deleteTagMetadata",
+              cause: e,
+            }),
         }),
 
       // =====================================================================
@@ -667,74 +1013,94 @@ export const TinyBaseServiceLive = Layer.effect(
       getCustomFieldMetadata: (fieldId) =>
         Effect.try({
           try: () => {
-            const table = store.getTable('customFieldMetadata') ?? {};
+            const table = store.getTable("customFieldMetadata") ?? {};
             const found = Object.entries(table).find(
-              ([, row]) => row?.['paperlessFieldId'] === fieldId
+              ([, row]) => row?.["paperlessFieldId"] === fieldId,
             );
             if (!found) return null;
 
             const [id, row] = found;
             return {
               id: parseInt(id, 10),
-              paperlessFieldId: row?.['paperlessFieldId'] as number,
-              fieldName: row?.['fieldName'] as string,
-              description: row?.['description'] as string | null,
-              extractionHints: row?.['extractionHints'] as string | null,
-              valueFormat: row?.['valueFormat'] as string | null,
-              exampleValues: row?.['exampleValues'] as string | null,
+              paperlessFieldId: row?.["paperlessFieldId"] as number,
+              fieldName: row?.["fieldName"] as string,
+              description: row?.["description"] as string | null,
+              extractionHints: row?.["extractionHints"] as string | null,
+              valueFormat: row?.["valueFormat"] as string | null,
+              exampleValues: row?.["exampleValues"] as string | null,
             };
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get custom field metadata: ${e}`, operation: 'getCustomFieldMetadata', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get custom field metadata: ${e}`,
+              operation: "getCustomFieldMetadata",
+              cause: e,
+            }),
         }),
 
       getAllCustomFieldMetadata: () =>
         Effect.try({
           try: () => {
-            const table = store.getTable('customFieldMetadata') ?? {};
+            const table = store.getTable("customFieldMetadata") ?? {};
             return Object.entries(table).map(([id, row]) => ({
               id: parseInt(id, 10),
-              paperlessFieldId: row?.['paperlessFieldId'] as number,
-              fieldName: row?.['fieldName'] as string,
-              description: row?.['description'] as string | null,
-              extractionHints: row?.['extractionHints'] as string | null,
-              valueFormat: row?.['valueFormat'] as string | null,
-              exampleValues: row?.['exampleValues'] as string | null,
+              paperlessFieldId: row?.["paperlessFieldId"] as number,
+              fieldName: row?.["fieldName"] as string,
+              description: row?.["description"] as string | null,
+              extractionHints: row?.["extractionHints"] as string | null,
+              valueFormat: row?.["valueFormat"] as string | null,
+              exampleValues: row?.["exampleValues"] as string | null,
             }));
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get all custom field metadata: ${e}`, operation: 'getAllCustomFieldMetadata', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get all custom field metadata: ${e}`,
+              operation: "getAllCustomFieldMetadata",
+              cause: e,
+            }),
         }),
 
       upsertCustomFieldMetadata: (data) =>
         Effect.try({
           try: () => {
-            const table = store.getTable('customFieldMetadata') ?? {};
+            const table = store.getTable("customFieldMetadata") ?? {};
             const existing = Object.entries(table).find(
-              ([, row]) => row?.['paperlessFieldId'] === data.paperlessFieldId
+              ([, row]) => row?.["paperlessFieldId"] === data.paperlessFieldId,
             );
 
             const sanitized = sanitizeForStorage(data);
             if (existing) {
-              store.setPartialRow('customFieldMetadata', existing[0], sanitized);
+              store.setPartialRow("customFieldMetadata", existing[0], sanitized);
             } else {
               const id = nextFieldMetaId++;
-              store.setRow('customFieldMetadata', String(id), { ...sanitized, id });
+              store.setRow("customFieldMetadata", String(id), { ...sanitized, id });
             }
           },
-          catch: (e) => new DatabaseError({ message: `Failed to upsert custom field metadata: ${e}`, operation: 'upsertCustomFieldMetadata', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to upsert custom field metadata: ${e}`,
+              operation: "upsertCustomFieldMetadata",
+              cause: e,
+            }),
         }),
 
       deleteCustomFieldMetadata: (fieldId) =>
         Effect.try({
           try: () => {
-            const table = store.getTable('customFieldMetadata') ?? {};
+            const table = store.getTable("customFieldMetadata") ?? {};
             const found = Object.entries(table).find(
-              ([, row]) => row?.['paperlessFieldId'] === fieldId
+              ([, row]) => row?.["paperlessFieldId"] === fieldId,
             );
             if (found) {
-              store.delRow('customFieldMetadata', found[0]);
+              store.delRow("customFieldMetadata", found[0]);
             }
           },
-          catch: (e) => new DatabaseError({ message: `Failed to delete custom field metadata: ${e}`, operation: 'deleteCustomFieldMetadata', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to delete custom field metadata: ${e}`,
+              operation: "deleteCustomFieldMetadata",
+              cause: e,
+            }),
         }),
 
       // =====================================================================
@@ -744,24 +1110,31 @@ export const TinyBaseServiceLive = Layer.effect(
       getBlockedSuggestions: (type) =>
         Effect.try({
           try: () => {
-            const table = store.getTable('blockedSuggestions') ?? {};
+            const table = store.getTable("blockedSuggestions") ?? {};
             const rows = Object.entries(table).map(([id, row]) => ({
               id: parseInt(id, 10),
-              suggestionName: row?.['suggestionName'] as string,
-              normalizedName: row?.['normalizedName'] as string,
-              blockType: row?.['blockType'] as BlockType,
-              rejectionReason: row?.['rejectionReason'] as string | null,
-              rejectionCategory: row?.['rejectionCategory'] as BlockedSuggestion['rejectionCategory'],
-              docId: row?.['docId'] as number | null,
-              createdAt: row?.['createdAt'] as string,
+              suggestionName: row?.["suggestionName"] as string,
+              normalizedName: row?.["normalizedName"] as string,
+              blockType: row?.["blockType"] as BlockType,
+              rejectionReason: row?.["rejectionReason"] as string | null,
+              rejectionCategory: row?.[
+                "rejectionCategory"
+              ] as BlockedSuggestion["rejectionCategory"],
+              docId: row?.["docId"] as number | null,
+              createdAt: row?.["createdAt"] as string,
             }));
 
             if (type) {
-              return rows.filter((r) => r.blockType === type || r.blockType === 'global');
+              return rows.filter((r) => r.blockType === type || r.blockType === "global");
             }
             return rows;
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get blocked suggestions: ${e}`, operation: 'getBlockedSuggestions', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get blocked suggestions: ${e}`,
+              operation: "getBlockedSuggestions",
+              cause: e,
+            }),
         }),
 
       addBlockedSuggestion: (item) =>
@@ -774,33 +1147,48 @@ export const TinyBaseServiceLive = Layer.effect(
               normalizedName: normalizeString(item.suggestionName),
               createdAt: new Date().toISOString(),
             });
-            store.setRow('blockedSuggestions', String(id), rowData);
+            store.setRow("blockedSuggestions", String(id), rowData);
             return id;
           },
-          catch: (e) => new DatabaseError({ message: `Failed to add blocked suggestion: ${e}`, operation: 'addBlockedSuggestion', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to add blocked suggestion: ${e}`,
+              operation: "addBlockedSuggestion",
+              cause: e,
+            }),
         }),
 
       removeBlockedSuggestion: (id) =>
         Effect.try({
           try: () => {
-            store.delRow('blockedSuggestions', String(id));
+            store.delRow("blockedSuggestions", String(id));
           },
-          catch: (e) => new DatabaseError({ message: `Failed to remove blocked suggestion: ${e}`, operation: 'removeBlockedSuggestion', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to remove blocked suggestion: ${e}`,
+              operation: "removeBlockedSuggestion",
+              cause: e,
+            }),
         }),
 
       isBlocked: (name, type) =>
         Effect.try({
           try: () => {
             const normalized = normalizeString(name);
-            const table = store.getTable('blockedSuggestions') ?? {};
+            const table = store.getTable("blockedSuggestions") ?? {};
 
             return Object.values(table).some(
               (row) =>
-                row?.['normalizedName'] === normalized &&
-                (row['blockType'] === 'global' || row['blockType'] === type)
+                row?.["normalizedName"] === normalized &&
+                (row["blockType"] === "global" || row["blockType"] === type),
             );
           },
-          catch: (e) => new DatabaseError({ message: `Failed to check if blocked: ${e}`, operation: 'isBlocked', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to check if blocked: ${e}`,
+              operation: "isBlocked",
+              cause: e,
+            }),
         }),
 
       // =====================================================================
@@ -811,20 +1199,25 @@ export const TinyBaseServiceLive = Layer.effect(
         Effect.try({
           try: () => {
             const key = `${sourceLang}:${targetLang}:${sourceText}`;
-            const row = store.getRow('translations', key);
+            const row = store.getRow("translations", key);
             if (!row || Object.keys(row).length === 0) return null;
 
             return {
-              key: row['key'] as string,
-              sourceLang: row['sourceLang'] as string,
-              targetLang: row['targetLang'] as string,
-              sourceText: row['sourceText'] as string,
-              translatedText: row['translatedText'] as string,
-              modelUsed: row['modelUsed'] as string | null,
-              createdAt: row['createdAt'] as string,
+              key: row["key"] as string,
+              sourceLang: row["sourceLang"] as string,
+              targetLang: row["targetLang"] as string,
+              sourceText: row["sourceText"] as string,
+              translatedText: row["translatedText"] as string,
+              modelUsed: row["modelUsed"] as string | null,
+              createdAt: row["createdAt"] as string,
             };
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get translation: ${e}`, operation: 'getTranslation', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get translation: ${e}`,
+              operation: "getTranslation",
+              cause: e,
+            }),
         }),
 
       setTranslation: (translation) =>
@@ -836,9 +1229,14 @@ export const TinyBaseServiceLive = Layer.effect(
               key,
               createdAt: new Date().toISOString(),
             });
-            store.setRow('translations', key, rowData);
+            store.setRow("translations", key, rowData);
           },
-          catch: (e) => new DatabaseError({ message: `Failed to set translation: ${e}`, operation: 'setTranslation', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to set translation: ${e}`,
+              operation: "setTranslation",
+              cause: e,
+            }),
         }),
 
       // =====================================================================
@@ -848,52 +1246,62 @@ export const TinyBaseServiceLive = Layer.effect(
       getJobStatus: (name) =>
         Effect.try({
           try: () => {
-            const row = store.getRow('jobStatus', name);
+            const row = store.getRow("jobStatus", name);
             if (!row || Object.keys(row).length === 0) return null;
 
             return {
-              name: row['name'] as string,
-              status: row['status'] as JobStatus['status'],
-              lastRun: row['lastRun'] as string | null,
-              lastResult: row['lastResult'] as string | null,
-              nextRun: row['nextRun'] as string | null,
-              enabled: row['enabled'] as boolean,
-              schedule: row['schedule'] as string | null,
-              cron: row['cron'] as string | null,
+              name: row["name"] as string,
+              status: row["status"] as JobStatus["status"],
+              lastRun: row["lastRun"] as string | null,
+              lastResult: row["lastResult"] as string | null,
+              nextRun: row["nextRun"] as string | null,
+              enabled: row["enabled"] as boolean,
+              schedule: row["schedule"] as string | null,
+              cron: row["cron"] as string | null,
             };
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get job status: ${e}`, operation: 'getJobStatus', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get job status: ${e}`,
+              operation: "getJobStatus",
+              cause: e,
+            }),
         }),
 
       getAllJobStatuses: () =>
         Effect.try({
           try: () => {
-            const table = store.getTable('jobStatus') ?? {};
+            const table = store.getTable("jobStatus") ?? {};
             return Object.entries(table).map(([, row]) => ({
-              name: row?.['name'] as string,
-              status: row?.['status'] as JobStatus['status'],
-              lastRun: row?.['lastRun'] as string | null,
-              lastResult: row?.['lastResult'] as string | null,
-              nextRun: row?.['nextRun'] as string | null,
-              enabled: row?.['enabled'] as boolean,
-              schedule: row?.['schedule'] as string | null,
-              cron: row?.['cron'] as string | null,
+              name: row?.["name"] as string,
+              status: row?.["status"] as JobStatus["status"],
+              lastRun: row?.["lastRun"] as string | null,
+              lastResult: row?.["lastResult"] as string | null,
+              nextRun: row?.["nextRun"] as string | null,
+              enabled: row?.["enabled"] as boolean,
+              schedule: row?.["schedule"] as string | null,
+              cron: row?.["cron"] as string | null,
             }));
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get all job statuses: ${e}`, operation: 'getAllJobStatuses', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get all job statuses: ${e}`,
+              operation: "getAllJobStatuses",
+              cause: e,
+            }),
         }),
 
       updateJobStatus: (name, updates) =>
         Effect.try({
           try: () => {
-            const existing = store.getRow('jobStatus', name);
+            const existing = store.getRow("jobStatus", name);
             const sanitizedUpdates = sanitizeForStorage(updates);
             if (existing && Object.keys(existing).length > 0) {
-              store.setPartialRow('jobStatus', name, sanitizedUpdates);
+              store.setPartialRow("jobStatus", name, sanitizedUpdates);
             } else {
               const defaultRow = sanitizeForStorage({
                 name,
-                status: 'idle',
+                status: "idle",
                 lastRun: null,
                 lastResult: null,
                 nextRun: null,
@@ -901,13 +1309,18 @@ export const TinyBaseServiceLive = Layer.effect(
                 schedule: null,
                 cron: null,
               });
-              store.setRow('jobStatus', name, {
+              store.setRow("jobStatus", name, {
                 ...defaultRow,
                 ...sanitizedUpdates,
               });
             }
           },
-          catch: (e) => new DatabaseError({ message: `Failed to update job status: ${e}`, operation: 'updateJobStatus', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to update job status: ${e}`,
+              operation: "updateJobStatus",
+              cause: e,
+            }),
         }),
 
       // =====================================================================
@@ -917,43 +1330,63 @@ export const TinyBaseServiceLive = Layer.effect(
       getSetting: (key) =>
         Effect.try({
           try: () => {
-            const row = store.getRow('settings', key);
-            return row?.['value'] as string | null ?? null;
+            const row = store.getRow("settings", key);
+            return (row?.["value"] as string | null) ?? null;
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get setting: ${e}`, operation: 'getSetting', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get setting: ${e}`,
+              operation: "getSetting",
+              cause: e,
+            }),
         }),
 
       setSetting: (key, value) =>
         Effect.try({
           try: () => {
-            store.setRow('settings', key, {
+            store.setRow("settings", key, {
               key,
               value,
               updatedAt: new Date().toISOString(),
             });
           },
-          catch: (e) => new DatabaseError({ message: `Failed to set setting: ${e}`, operation: 'setSetting', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to set setting: ${e}`,
+              operation: "setSetting",
+              cause: e,
+            }),
         }),
 
       getAllSettings: () =>
         Effect.try({
           try: () => {
-            const table = store.getTable('settings') ?? {};
+            const table = store.getTable("settings") ?? {};
             const result: Record<string, string> = {};
             for (const [key, row] of Object.entries(table)) {
-              result[key] = row?.['value'] as string;
+              result[key] = row?.["value"] as string;
             }
             return result;
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get all settings: ${e}`, operation: 'getAllSettings', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get all settings: ${e}`,
+              operation: "getAllSettings",
+              cause: e,
+            }),
         }),
 
       clearAllSettings: () =>
         Effect.try({
           try: () => {
-            store.delTable('settings');
+            store.delTable("settings");
           },
-          catch: (e) => new DatabaseError({ message: `Failed to clear all settings: ${e}`, operation: 'clearAllSettings', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to clear all settings: ${e}`,
+              operation: "clearAllSettings",
+              cause: e,
+            }),
         }),
 
       // =====================================================================
@@ -963,7 +1396,12 @@ export const TinyBaseServiceLive = Layer.effect(
       getStoreJson: () =>
         Effect.try({
           try: () => store.getJson(),
-          catch: (e) => new DatabaseError({ message: `Failed to get store JSON: ${e}`, operation: 'getStoreJson', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get store JSON: ${e}`,
+              operation: "getStoreJson",
+              cause: e,
+            }),
         }),
 
       loadFromJson: (json) =>
@@ -971,7 +1409,12 @@ export const TinyBaseServiceLive = Layer.effect(
           try: () => {
             store.setJson(json);
           },
-          catch: (e) => new DatabaseError({ message: `Failed to load from JSON: ${e}`, operation: 'loadFromJson', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to load from JSON: ${e}`,
+              operation: "loadFromJson",
+              cause: e,
+            }),
         }),
 
       // =====================================================================
@@ -989,63 +1432,83 @@ export const TinyBaseServiceLive = Layer.effect(
               step: entry.step,
               eventType: entry.eventType,
               data: JSON.stringify(entry.data),
-              parentId: entry.parentId ?? '',
+              parentId: entry.parentId ?? "",
             };
-            store.setRow('processingLogs', id, rowData);
+            store.setRow("processingLogs", id, rowData);
             return id;
           },
-          catch: (e) => new DatabaseError({ message: `Failed to add processing log: ${e}`, operation: 'addProcessingLog', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to add processing log: ${e}`,
+              operation: "addProcessingLog",
+              cause: e,
+            }),
         }),
 
       getProcessingLogs: (docId) =>
         Effect.try({
           try: () => {
-            const table = store.getTable('processingLogs') ?? {};
+            const table = store.getTable("processingLogs") ?? {};
             const logs = Object.entries(table)
-              .filter(([, row]) => row?.['docId'] === docId)
+              .filter(([, row]) => row?.["docId"] === docId)
               .map(([id, row]) => ({
                 id,
-                docId: row?.['docId'] as number,
-                timestamp: row?.['timestamp'] as string,
-                step: row?.['step'] as string,
-                eventType: row?.['eventType'] as ProcessingLogEventType,
-                data: JSON.parse((row?.['data'] as string) || '{}') as Record<string, unknown>,
-                parentId: (row?.['parentId'] as string) || undefined,
+                docId: row?.["docId"] as number,
+                timestamp: row?.["timestamp"] as string,
+                step: row?.["step"] as string,
+                eventType: row?.["eventType"] as ProcessingLogEventType,
+                data: JSON.parse((row?.["data"] as string) || "{}") as Record<string, unknown>,
+                parentId: (row?.["parentId"] as string) || undefined,
               }))
               .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
             return logs;
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get processing logs: ${e}`, operation: 'getProcessingLogs', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get processing logs: ${e}`,
+              operation: "getProcessingLogs",
+              cause: e,
+            }),
         }),
 
       clearProcessingLogs: (docId) =>
         Effect.try({
           try: () => {
-            const table = store.getTable('processingLogs') ?? {};
+            const table = store.getTable("processingLogs") ?? {};
             for (const [id, row] of Object.entries(table)) {
-              if (row?.['docId'] === docId) {
-                store.delRow('processingLogs', id);
+              if (row?.["docId"] === docId) {
+                store.delRow("processingLogs", id);
               }
             }
           },
-          catch: (e) => new DatabaseError({ message: `Failed to clear processing logs: ${e}`, operation: 'clearProcessingLogs', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to clear processing logs: ${e}`,
+              operation: "clearProcessingLogs",
+              cause: e,
+            }),
         }),
 
       clearAllProcessingLogs: () =>
         Effect.try({
           try: () => {
-            store.delTable('processingLogs');
+            store.delTable("processingLogs");
           },
-          catch: (e) => new DatabaseError({ message: `Failed to clear all processing logs: ${e}`, operation: 'clearAllProcessingLogs', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to clear all processing logs: ${e}`,
+              operation: "clearAllProcessingLogs",
+              cause: e,
+            }),
         }),
 
       getProcessingLogStats: () =>
         Effect.try({
           try: (): ProcessingLogStats => {
-            const table = store.getTable('processingLogs') ?? {};
+            const table = store.getTable("processingLogs") ?? {};
             const rows = Object.values(table);
             const timestamps = rows
-              .map((row) => row?.['timestamp'] as string)
+              .map((row) => row?.["timestamp"] as string)
               .filter(Boolean)
               .sort();
 
@@ -1055,7 +1518,12 @@ export const TinyBaseServiceLive = Layer.effect(
               newestLog: timestamps[timestamps.length - 1] ?? null,
             };
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get processing log stats: ${e}`, operation: 'getProcessingLogStats', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get processing log stats: ${e}`,
+              operation: "getProcessingLogStats",
+              cause: e,
+            }),
         }),
 
       // =====================================================================
@@ -1065,21 +1533,21 @@ export const TinyBaseServiceLive = Layer.effect(
       setDocumentOcrContent: (docId, content, pages, source) =>
         Effect.try({
           try: () => {
-            const existing = store.getRow('documentOcrContent', String(docId));
+            const existing = store.getRow("documentOcrContent", String(docId));
             const now = new Date().toISOString();
             if (existing && Object.keys(existing).length > 0) {
               // Update existing
-              store.setRow('documentOcrContent', String(docId), {
+              store.setRow("documentOcrContent", String(docId), {
                 docId,
                 content,
                 pages,
                 source,
-                createdAt: existing['createdAt'] as string,
+                createdAt: existing["createdAt"] as string,
                 updatedAt: now,
               });
             } else {
               // Create new
-              store.setRow('documentOcrContent', String(docId), {
+              store.setRow("documentOcrContent", String(docId), {
                 docId,
                 content,
                 pages,
@@ -1089,51 +1557,71 @@ export const TinyBaseServiceLive = Layer.effect(
               });
             }
           },
-          catch: (e) => new DatabaseError({ message: `Failed to set document OCR content: ${e}`, operation: 'setDocumentOcrContent', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to set document OCR content: ${e}`,
+              operation: "setDocumentOcrContent",
+              cause: e,
+            }),
         }),
 
       getDocumentOcrContent: (docId) =>
         Effect.try({
           try: () => {
-            const row = store.getRow('documentOcrContent', String(docId));
+            const row = store.getRow("documentOcrContent", String(docId));
             if (!row || Object.keys(row).length === 0) return null;
 
             return {
-              content: row['content'] as string,
-              pages: row['pages'] as number,
-              source: row['source'] as string,
-              createdAt: row['createdAt'] as string,
-              updatedAt: row['updatedAt'] as string,
+              content: row["content"] as string,
+              pages: row["pages"] as number,
+              source: row["source"] as string,
+              createdAt: row["createdAt"] as string,
+              updatedAt: row["updatedAt"] as string,
             };
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get document OCR content: ${e}`, operation: 'getDocumentOcrContent', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get document OCR content: ${e}`,
+              operation: "getDocumentOcrContent",
+              cause: e,
+            }),
         }),
 
       hasDocumentOcrContent: (docId) =>
         Effect.try({
           try: () => {
-            const row = store.getRow('documentOcrContent', String(docId));
+            const row = store.getRow("documentOcrContent", String(docId));
             return row !== null && Object.keys(row).length > 0;
           },
-          catch: (e) => new DatabaseError({ message: `Failed to check document OCR content: ${e}`, operation: 'hasDocumentOcrContent', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to check document OCR content: ${e}`,
+              operation: "hasDocumentOcrContent",
+              cause: e,
+            }),
         }),
 
       deleteDocumentOcrContent: (docId) =>
         Effect.try({
           try: () => {
-            store.delRow('documentOcrContent', String(docId));
+            store.delRow("documentOcrContent", String(docId));
           },
-          catch: (e) => new DatabaseError({ message: `Failed to delete document OCR content: ${e}`, operation: 'deleteDocumentOcrContent', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to delete document OCR content: ${e}`,
+              operation: "deleteDocumentOcrContent",
+              cause: e,
+            }),
         }),
 
       getDocumentOcrContentStats: () =>
         Effect.try({
           try: () => {
-            const table = store.getTable('documentOcrContent') ?? {};
+            const table = store.getTable("documentOcrContent") ?? {};
             const rows = Object.values(table);
             let totalCharacters = 0;
             for (const row of rows) {
-              const content = row?.['content'] as string;
+              const content = row?.["content"] as string;
               if (content) {
                 totalCharacters += content.length;
               }
@@ -1143,8 +1631,182 @@ export const TinyBaseServiceLive = Layer.effect(
               totalCharacters,
             };
           },
-          catch: (e) => new DatabaseError({ message: `Failed to get document OCR content stats: ${e}`, operation: 'getDocumentOcrContentStats', cause: e }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get document OCR content stats: ${e}`,
+              operation: "getDocumentOcrContentStats",
+              cause: e,
+            }),
+        }),
+
+      // =====================================================================
+      // Document Memory
+      // =====================================================================
+
+      getDocumentMemory: (docId) =>
+        Effect.try({
+          try: () => rowToMemory(String(docId)),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get document memory: ${e}`,
+              operation: "getDocumentMemory",
+              cause: e,
+            }),
+        }),
+
+      upsertDocumentMemory: (memory) =>
+        Effect.try({
+          try: () => writeMemory({ ...memory, updatedAt: new Date().toISOString() }),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to upsert document memory: ${e}`,
+              operation: "upsertDocumentMemory",
+              cause: e,
+            }),
+        }),
+
+      patchDocumentMemory: (docId, updates) =>
+        Effect.try({
+          try: () => {
+            const current = getOrCreateMemory(docId);
+            const next: DocumentMemory = {
+              ...current,
+              ...updates,
+              docId,
+              sessionId: updates.sessionId ?? current.sessionId,
+              ocrVersionIds: updates.ocrVersionIds ?? current.ocrVersionIds,
+              extractedFacts: updates.extractedFacts ?? current.extractedFacts,
+              candidateEntities: updates.candidateEntities ?? current.candidateEntities,
+              finalDecisions: updates.finalDecisions ?? current.finalDecisions,
+              humanDecisions: updates.humanDecisions ?? current.humanDecisions,
+              reviewFeedback: updates.reviewFeedback ?? current.reviewFeedback,
+              runSummaries: updates.runSummaries ?? current.runSummaries,
+              transcript: updates.transcript ?? current.transcript,
+              createdAt: current.createdAt,
+              updatedAt: new Date().toISOString(),
+            };
+            writeMemory(next);
+            return next;
+          },
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to patch document memory: ${e}`,
+              operation: "patchDocumentMemory",
+              cause: e,
+            }),
+        }),
+
+      appendHumanDecision: (docId, decision) =>
+        Effect.try({
+          try: () => {
+            const current = getOrCreateMemory(docId);
+            const next = {
+              ...current,
+              humanDecisions: [...current.humanDecisions, decision],
+              updatedAt: new Date().toISOString(),
+            };
+            writeMemory(next);
+            return next;
+          },
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to append human decision: ${e}`,
+              operation: "appendHumanDecision",
+              cause: e,
+            }),
+        }),
+
+      appendReviewFeedback: (docId, feedback) =>
+        Effect.try({
+          try: () => {
+            const current = getOrCreateMemory(docId);
+            const next = {
+              ...current,
+              reviewFeedback: [...current.reviewFeedback, feedback],
+              updatedAt: new Date().toISOString(),
+            };
+            writeMemory(next);
+            return next;
+          },
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to append review feedback: ${e}`,
+              operation: "appendReviewFeedback",
+              cause: e,
+            }),
+        }),
+
+      appendRunSummary: (docId, summary) =>
+        Effect.try({
+          try: () => {
+            const current = getOrCreateMemory(docId);
+            const next = {
+              ...current,
+              runSummaries: [...current.runSummaries, summary],
+              updatedAt: new Date().toISOString(),
+            };
+            writeMemory(next);
+            return next;
+          },
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to append run summary: ${e}`,
+              operation: "appendRunSummary",
+              cause: e,
+            }),
+        }),
+
+      // =====================================================================
+      // Consolidation Reports
+      // =====================================================================
+
+      saveConsolidationReport: (report) =>
+        Effect.try({
+          try: () => {
+            store.setRow("consolidationReports", report.id, {
+              id: report.id,
+              status: report.status,
+              proposals: JSON.stringify(report.proposals),
+              summary: report.summary,
+              createdAt: report.createdAt,
+              updatedAt: report.updatedAt,
+            });
+          },
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to save consolidation report: ${e}`,
+              operation: "saveConsolidationReport",
+              cause: e,
+            }),
+        }),
+
+      getConsolidationReport: (id) =>
+        Effect.try({
+          try: () => rowToConsolidationReport(id),
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get consolidation report: ${e}`,
+              operation: "getConsolidationReport",
+              cause: e,
+            }),
+        }),
+
+      getConsolidationReports: () =>
+        Effect.try({
+          try: () => {
+            const table = store.getTable("consolidationReports") ?? {};
+            return Object.keys(table)
+              .map(rowToConsolidationReport)
+              .filter((row): row is ConsolidationReportRecord => row !== null)
+              .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+          },
+          catch: (e) =>
+            new DatabaseError({
+              message: `Failed to get consolidation reports: ${e}`,
+              operation: "getConsolidationReports",
+              cause: e,
+            }),
         }),
     };
-  })
+  }),
 );

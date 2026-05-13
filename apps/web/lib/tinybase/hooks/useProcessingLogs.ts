@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 /**
  * TinyBase Processing Logs Hooks
@@ -7,12 +7,12 @@
  * Supports real-time updates via SSE streaming.
  */
 
-import { useTable } from 'tinybase/ui-react';
-import { useMemo, useEffect, useRef, useCallback } from 'react';
-import { useTinyBase } from '../provider';
-import type { ProcessingLogEntry, ProcessingLogEventType } from '@/lib/api';
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useTable } from "tinybase/ui-react";
+import type { ProcessingLogEntry, ProcessingLogEventType } from "@/lib/api";
+import { useTinyBase } from "../provider";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+const API_BASE = "";
 
 /**
  * Get all processing logs for a document, reactively updated.
@@ -20,7 +20,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
  */
 export function useProcessingLogs(docId: number): ProcessingLogEntry[] {
   const { syncLogs } = useTinyBase();
-  const table = useTable('processingLogs');
+  const table = useTable("processingLogs");
 
   // Initial sync on mount or docId change
   useEffect(() => {
@@ -87,10 +87,7 @@ export function useProcessingLogsByStep(docId: number) {
 export function useStepLogs(docId: number, step: string): ProcessingLogEntry[] {
   const logs = useProcessingLogs(docId);
 
-  return useMemo(
-    () => logs.filter((log) => log.step === step),
-    [logs, step]
-  );
+  return useMemo(() => logs.filter((log) => log.step === step), [logs, step]);
 }
 
 /**
@@ -103,25 +100,23 @@ export function useProcessingStream(docId: number, enabled: boolean = true) {
 
   const addLogToStore = useCallback(
     (log: ProcessingLogEntry) => {
-      store.setRow('processingLogs', log.id, {
+      store.setRow("processingLogs", log.id, {
         id: log.id,
         docId: log.docId,
         timestamp: log.timestamp,
         step: log.step,
         eventType: log.eventType,
-        data: typeof log.data === 'string' ? log.data : JSON.stringify(log.data),
-        parentId: log.parentId || '',
+        data: typeof log.data === "string" ? log.data : JSON.stringify(log.data),
+        parentId: log.parentId || "",
       });
     },
-    [store]
+    [store],
   );
 
   useEffect(() => {
     if (!enabled) return;
 
-    const eventSource = new EventSource(
-      `${API_BASE}/api/processing/${docId}/stream`
-    );
+    const eventSource = new EventSource(`${API_BASE}/api/processing/${docId}/stream`);
     eventSourceRef.current = eventSource;
 
     eventSource.onmessage = (event) => {
@@ -134,17 +129,17 @@ export function useProcessingStream(docId: number, enabled: boolean = true) {
         }
 
         // Handle state transitions or other events that might include logs
-        if (data.type === 'log_entry' && data.payload) {
+        if (data.type === "log_entry" && data.payload) {
           addLogToStore(data.payload);
         }
       } catch (error) {
-        console.error('Failed to parse SSE event:', error);
+        console.error("Failed to parse SSE event:", error);
       }
     };
 
     eventSource.onerror = () => {
       // Connection closed or error - SSE will auto-reconnect
-      console.debug('SSE connection closed for doc', docId);
+      console.debug("SSE connection closed for doc", docId);
     };
 
     return () => {

@@ -9,17 +9,24 @@
  * 5. Upserts to Qdrant vector DB
  * 6. Optionally transitions document tag
  */
-import { Effect, Context, Layer, Ref, Fiber } from 'effect';
-import { ConfigService, PaperlessService, MistralService, TinyBaseService, QdrantService, OllamaService } from '../services/index.js';
-import { JobError } from '../errors/index.js';
-import type { DocumentVector } from '../services/QdrantService.js';
+import { Context, Effect, Fiber, Layer, Ref } from "effect";
+import { JobError } from "../errors/index.js";
+import {
+  ConfigService,
+  MistralService,
+  OllamaService,
+  PaperlessService,
+  QdrantService,
+  TinyBaseService,
+} from "../services/index.js";
+import type { DocumentVector } from "../services/QdrantService.js";
 
 // ===========================================================================
 // Types
 // ===========================================================================
 
 export interface BulkIngestProgress {
-  status: 'idle' | 'running' | 'completed' | 'cancelled' | 'error';
+  status: "idle" | "running" | "completed" | "cancelled" | "error";
   total: number;
   processed: number;
   skipped: number;
@@ -28,7 +35,7 @@ export interface BulkIngestProgress {
   vectorIndexed: number;
   currentDocId: number | null;
   currentDocTitle: string | null;
-  currentPhase: 'ocr' | 'embedding' | 'indexing' | null;
+  currentPhase: "ocr" | "embedding" | "indexing" | null;
   docsPerSecond: number;
   startedAt: string | null;
   completedAt: string | null;
@@ -54,7 +61,8 @@ export interface BulkIngestJobService {
   readonly cancel: () => Effect.Effect<void, never>;
 }
 
-export const BulkIngestJobService = Context.GenericTag<BulkIngestJobService>('BulkIngestJobService');
+export const BulkIngestJobService =
+  Context.GenericTag<BulkIngestJobService>("BulkIngestJobService");
 
 // ===========================================================================
 // Live Implementation
@@ -73,7 +81,7 @@ export const BulkIngestJobServiceLive = Layer.effect(
     const { tags: tagConfig } = config.config;
 
     const progressRef = yield* Ref.make<BulkIngestProgress>({
-      status: 'idle',
+      status: "idle",
       total: 0,
       processed: 0,
       skipped: 0,
@@ -101,13 +109,16 @@ export const BulkIngestJobServiceLive = Layer.effect(
           const currentFiber = yield* Ref.get(fiberRef);
           if (currentFiber) {
             return yield* Effect.fail(
-              new JobError({ message: 'Bulk ingest job already running', jobName: 'bulk_ingest' })
+              new JobError({ message: "Bulk ingest job already running", jobName: "bulk_ingest" }),
             );
           }
 
           // Validate and clamp docsPerSecond to a safe positive value (min 0.1, max 10)
           const rawDocsPerSecond = options?.docsPerSecond ?? 0.5;
-          const docsPerSecond = Math.max(0.1, Math.min(10, Number.isFinite(rawDocsPerSecond) ? rawDocsPerSecond : 0.5));
+          const docsPerSecond = Math.max(
+            0.1,
+            Math.min(10, Number.isFinite(rawDocsPerSecond) ? rawDocsPerSecond : 0.5),
+          );
           const skipExistingOcr = options?.skipExistingOcr ?? true;
           const runOcr = options?.runOcr ?? true;
           const transitionTag = options?.transitionTag ?? false;
@@ -117,7 +128,7 @@ export const BulkIngestJobServiceLive = Layer.effect(
 
           yield* Ref.set(cancelledRef, false);
           yield* Ref.set(progressRef, {
-            status: 'running',
+            status: "running",
             total: 0,
             processed: 0,
             skipped: 0,
@@ -139,20 +150,30 @@ export const BulkIngestJobServiceLive = Layer.effect(
               Effect.gen(function* () {
                 yield* Ref.update(progressRef, (p) => ({
                   ...p,
-                  status: 'error' as const,
+                  status: "error" as const,
                   errorMessage: `Failed to ensure Qdrant collection: ${e.message}`,
                   completedAt: new Date().toISOString(),
                 }));
                 return yield* Effect.fail(
-                  new JobError({ message: `Failed to ensure Qdrant collection: ${e.message}`, jobName: 'bulk_ingest' })
+                  new JobError({
+                    message: `Failed to ensure Qdrant collection: ${e.message}`,
+                    jobName: "bulk_ingest",
+                  }),
                 );
-              })
-            )
+              }),
+            ),
           );
 
           const runIngest = Effect.gen(function* () {
             // Get documents to process
-            let documents: Array<{ id: number; title: string; content: string | null; correspondent: number | null; document_type: number | null; tags: readonly number[] }>;
+            let documents: Array<{
+              id: number;
+              title: string;
+              content: string | null;
+              correspondent: number | null;
+              document_type: number | null;
+              tags: readonly number[];
+            }>;
 
             if (sourceTag) {
               documents = yield* paperless.getDocumentsByTag(sourceTag, 10000);
@@ -187,11 +208,11 @@ export const BulkIngestJobServiceLive = Layer.effect(
                 currentDocTitle: doc.title,
               }));
 
-              let documentContent = doc.content ?? '';
+              let documentContent = doc.content ?? "";
 
               // Phase 1: OCR if needed
               if (runOcr) {
-                yield* Ref.update(progressRef, (p) => ({ ...p, currentPhase: 'ocr' as const }));
+                yield* Ref.update(progressRef, (p) => ({ ...p, currentPhase: "ocr" as const }));
 
                 // Check if we already have OCR content in TinyBase
                 const existingOcr = yield* tinybase.getDocumentOcrContent(doc.id);
@@ -203,27 +224,27 @@ export const BulkIngestJobServiceLive = Layer.effect(
                   // Use existing Paperless content
                   documentContent = doc.content;
                   // Store it in TinyBase for future use
-                  yield* tinybase.setDocumentOcrContent(doc.id, doc.content, 1, 'paperless');
+                  yield* tinybase.setDocumentOcrContent(doc.id, doc.content, 1, "paperless");
                 } else {
                   // Run OCR
                   const ocrResult = yield* Effect.gen(function* () {
                     const pdfBytes = yield* paperless.downloadPdf(doc.id);
-                    const pdfBase64 = Buffer.from(pdfBytes).toString('base64');
+                    const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
 
                     const ocrPrompt = `Extract all text from this document. Preserve the structure and formatting as much as possible. Return only the extracted text, no explanations.`;
                     return yield* mistral.processDocument(pdfBase64, ocrPrompt);
                   }).pipe(
                     Effect.catchAll((e) => {
                       console.error(`OCR failed for doc ${doc.id}: ${e}`);
-                      return Effect.succeed(doc.content ?? '');
-                    })
+                      return Effect.succeed(doc.content ?? "");
+                    }),
                   );
 
                   documentContent = ocrResult;
 
                   // Store OCR content in TinyBase
                   if (documentContent.length > 0) {
-                    yield* tinybase.setDocumentOcrContent(doc.id, documentContent, 1, 'mistral');
+                    yield* tinybase.setDocumentOcrContent(doc.id, documentContent, 1, "mistral");
                     yield* Ref.update(progressRef, (p) => ({
                       ...p,
                       ocrProcessed: p.ocrProcessed + 1,
@@ -233,7 +254,7 @@ export const BulkIngestJobServiceLive = Layer.effect(
               } else {
                 // No OCR, use existing content
                 const existingOcr = yield* tinybase.getDocumentOcrContent(doc.id);
-                documentContent = existingOcr?.content ?? doc.content ?? '';
+                documentContent = existingOcr?.content ?? doc.content ?? "";
               }
 
               // Skip if no content to index
@@ -248,10 +269,10 @@ export const BulkIngestJobServiceLive = Layer.effect(
               }
 
               // Phase 2: Embedding
-              yield* Ref.update(progressRef, (p) => ({ ...p, currentPhase: 'embedding' as const }));
+              yield* Ref.update(progressRef, (p) => ({ ...p, currentPhase: "embedding" as const }));
 
               // Phase 3: Vector indexing
-              yield* Ref.update(progressRef, (p) => ({ ...p, currentPhase: 'indexing' as const }));
+              yield* Ref.update(progressRef, (p) => ({ ...p, currentPhase: "indexing" as const }));
 
               const tagNames = doc.tags
                 .map((id) => tagMap.get(id))
@@ -274,7 +295,7 @@ export const BulkIngestJobServiceLive = Layer.effect(
                   Ref.update(progressRef, (p) => ({
                     ...p,
                     vectorIndexed: p.vectorIndexed + 1,
-                  }))
+                  })),
                 ),
                 Effect.catchAll((e) => {
                   console.error(`Vector indexing failed for doc ${doc.id}: ${e.message}`);
@@ -282,7 +303,7 @@ export const BulkIngestJobServiceLive = Layer.effect(
                     ...p,
                     errors: p.errors + 1,
                   }));
-                })
+                }),
               );
 
               // Transition tag if requested
@@ -291,7 +312,7 @@ export const BulkIngestJobServiceLive = Layer.effect(
                   Effect.catchAll((e) => {
                     console.error(`Tag transition failed for doc ${doc.id}: ${e}`);
                     return Effect.succeed(undefined);
-                  })
+                  }),
                 );
               }
 
@@ -307,7 +328,7 @@ export const BulkIngestJobServiceLive = Layer.effect(
             const cancelled = yield* Ref.get(cancelledRef);
             yield* Ref.update(progressRef, (p) => ({
               ...p,
-              status: (cancelled ? 'cancelled' : 'completed') as BulkIngestProgress['status'],
+              status: (cancelled ? "cancelled" : "completed") as BulkIngestProgress["status"],
               completedAt: new Date().toISOString(),
               currentDocId: null,
               currentDocTitle: null,
@@ -317,25 +338,26 @@ export const BulkIngestJobServiceLive = Layer.effect(
             Effect.catchAll((error) =>
               Ref.update(progressRef, (p) => ({
                 ...p,
-                status: 'error' as const,
+                status: "error" as const,
                 errorMessage: error instanceof Error ? error.message : String(error),
                 completedAt: new Date().toISOString(),
                 currentPhase: null,
-              }))
-            )
+              })),
+            ),
           );
 
           // Use forkDaemon so the fiber survives after the HTTP request completes
           const fiber = yield* Effect.forkDaemon(
             runIngest.pipe(
-              Effect.mapError((e) =>
-                new JobError({
-                  message: `Bulk ingest failed: ${e}`,
-                  jobName: 'bulk_ingest',
-                  cause: e,
-                })
-              )
-            )
+              Effect.mapError(
+                (e) =>
+                  new JobError({
+                    message: `Bulk ingest failed: ${e}`,
+                    jobName: "bulk_ingest",
+                    cause: e,
+                  }),
+              ),
+            ),
           );
 
           yield* Ref.set(fiberRef, fiber);
@@ -345,7 +367,7 @@ export const BulkIngestJobServiceLive = Layer.effect(
             Effect.gen(function* () {
               yield* Fiber.await(fiber);
               yield* Ref.set(fiberRef, null);
-            })
+            }),
           );
         }),
 
@@ -361,10 +383,10 @@ export const BulkIngestJobServiceLive = Layer.effect(
           }
           yield* Ref.update(progressRef, (p) => ({
             ...p,
-            status: 'cancelled' as const,
+            status: "cancelled" as const,
             completedAt: new Date().toISOString(),
           }));
         }),
     };
-  })
+  }),
 );

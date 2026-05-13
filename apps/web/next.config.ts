@@ -9,15 +9,8 @@ const nextConfig: NextConfig = {
   // Hide dev indicators for clean screenshots
   devIndicators: false,
 
-  // Proxy API requests to backend
-  async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${process.env.BACKEND_URL || "http://localhost:8765"}/api/:path*`,
-      },
-    ];
-  },
+  // API requests are proxied by app/api/[...path]/route.ts so server-only auth
+  // tokens can be attached without exposing them to the browser.
 };
 
 export default withNextIntl(nextConfig);

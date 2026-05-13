@@ -1,5 +1,4 @@
 // Utility functions
-export { cn } from "./lib/utils";
 
 // Components
 export {
@@ -10,7 +9,7 @@ export {
 } from "./components/accordion";
 export { Alert, AlertDescription, AlertTitle } from "./components/alert";
 export { Badge, badgeVariants } from "./components/badge";
-export { Button, buttonVariants, type ButtonProps } from "./components/button";
+export { Button, type ButtonProps, buttonVariants } from "./components/button";
 export {
   Card,
   CardContent,
@@ -65,3 +64,4 @@ export { Separator } from "./components/separator";
 export { Switch } from "./components/switch";
 export { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/tabs";
 export { Textarea } from "./components/textarea";
+export { cn } from "./lib/utils";

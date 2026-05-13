@@ -1,8 +1,8 @@
 /**
  * Base agent patterns and shared utilities.
  */
-import { Effect, Stream } from 'effect';
-import { AgentError } from '../errors/index.js';
+import { Effect, Stream } from "effect";
+import { AgentError } from "../errors/index.js";
 
 // ===========================================================================
 // Agent Types
@@ -33,7 +33,7 @@ export interface AgentProcessResult {
 }
 
 export interface StreamEvent {
-  type: 'start' | 'thinking' | 'analyzing' | 'confirming' | 'result' | 'error' | 'complete';
+  type: "start" | "thinking" | "analyzing" | "confirming" | "result" | "error" | "complete";
   step: string;
   data?: unknown;
   timestamp: string;
@@ -63,7 +63,7 @@ export interface ConfirmationLoopOptions<TAnalysis, TResult> {
 }
 
 export const runConfirmationLoop = <TAnalysis, TResult>(
-  options: ConfirmationLoopOptions<TAnalysis, TResult>
+  options: ConfirmationLoopOptions<TAnalysis, TResult>,
 ): Effect.Effect<TResult, AgentError> =>
   Effect.gen(function* () {
     let feedback: string | null = null;
@@ -79,7 +79,7 @@ export const runConfirmationLoop = <TAnalysis, TResult>(
         return yield* options.apply(analysis);
       }
 
-      feedback = confirmation.feedback ?? 'Not confirmed';
+      feedback = confirmation.feedback ?? "Not confirmed";
 
       if (options.onRetry) {
         yield* options.onRetry(attempt + 1, feedback as string);
@@ -88,9 +88,11 @@ export const runConfirmationLoop = <TAnalysis, TResult>(
 
     // Max retries reached - ensure we have an analysis to work with
     if (lastAnalysis === null) {
-      return yield* Effect.fail(new AgentError({
-        message: 'Confirmation loop completed with no analysis (maxRetries may be 0)'
-      }));
+      return yield* Effect.fail(
+        new AgentError({
+          message: "Confirmation loop completed with no analysis (maxRetries may be 0)",
+        }),
+      );
     }
 
     if (options.onMaxRetries) {
@@ -106,9 +108,9 @@ export const runConfirmationLoop = <TAnalysis, TResult>(
 // ===========================================================================
 
 export const createStreamEvent = (
-  type: StreamEvent['type'],
+  type: StreamEvent["type"],
   step: string,
-  data?: unknown
+  data?: unknown,
 ): StreamEvent => ({
   type,
   step,
@@ -116,23 +118,21 @@ export const createStreamEvent = (
   timestamp: new Date().toISOString(),
 });
 
-export const emitStart = (step: string): StreamEvent =>
-  createStreamEvent('start', step);
+export const emitStart = (step: string): StreamEvent => createStreamEvent("start", step);
 
 export const emitThinking = (step: string, thought: string): StreamEvent =>
-  createStreamEvent('thinking', step, { thought });
+  createStreamEvent("thinking", step, { thought });
 
 export const emitAnalyzing = (step: string, progress: string): StreamEvent =>
-  createStreamEvent('analyzing', step, { progress });
+  createStreamEvent("analyzing", step, { progress });
 
 export const emitConfirming = (step: string, suggestion: string): StreamEvent =>
-  createStreamEvent('confirming', step, { suggestion });
+  createStreamEvent("confirming", step, { suggestion });
 
 export const emitResult = (step: string, result: unknown): StreamEvent =>
-  createStreamEvent('result', step, result);
+  createStreamEvent("result", step, result);
 
 export const emitError = (step: string, error: string): StreamEvent =>
-  createStreamEvent('error', step, { error });
+  createStreamEvent("error", step, { error });
 
-export const emitComplete = (step: string): StreamEvent =>
-  createStreamEvent('complete', step);
+export const emitComplete = (step: string): StreamEvent => createStreamEvent("complete", step);

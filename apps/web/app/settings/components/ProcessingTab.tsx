@@ -1,26 +1,26 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useTranslations } from "next-intl";
-import { Clock, Brain, PlayCircle, Loader2 } from "lucide-react";
 import {
+  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
   Label,
-  Switch,
-  Separator,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Button,
+  Separator,
+  Switch,
 } from "@repo/ui";
-import { useTinyBase, useBooleanSetting, useNumberSetting } from "@/lib/tinybase";
-import { processingApi, AutoProcessingStatus } from "@/lib/api";
+import { Clock, Loader2, PlayCircle } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useState } from "react";
+import { AutoProcessingStatus, processingApi } from "@/lib/api";
+import { useBooleanSetting, useNumberSetting, useTinyBase } from "@/lib/tinybase";
 
 export function ProcessingTab() {
   const t = useTranslations("settings");
@@ -30,10 +30,6 @@ export function ProcessingTab() {
   const autoProcessingEnabled = useBooleanSetting("auto_processing.enabled");
   const autoProcessingInterval = useNumberSetting("auto_processing.interval_minutes");
   const pauseOnActivity = useBooleanSetting("auto_processing.pause_on_user_activity");
-
-  // Confirmation settings
-  const maxRetries = useNumberSetting("confirmation.max_retries");
-  const requireUser = useBooleanSetting("confirmation.require_user_for_new_entities");
 
   // Auto processing status
   const [autoStatus, setAutoStatus] = useState<AutoProcessingStatus | null>(null);
@@ -92,9 +88,7 @@ export function ProcessingTab() {
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label>{t("autoProcessing.enable")}</Label>
-              <p className="text-xs text-zinc-500">
-                {t("autoProcessing.enableDesc")}
-              </p>
+              <p className="text-xs text-zinc-500">{t("autoProcessing.enableDesc")}</p>
             </div>
             <Switch
               checked={autoProcessingEnabled}
@@ -117,21 +111,11 @@ export function ProcessingTab() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1">
-                      {t("autoProcessing.everyMinute")}
-                    </SelectItem>
-                    <SelectItem value="5">
-                      {t("autoProcessing.every5Minutes")}
-                    </SelectItem>
-                    <SelectItem value="10">
-                      {t("autoProcessing.every10Minutes")}
-                    </SelectItem>
-                    <SelectItem value="30">
-                      {t("autoProcessing.every30Minutes")}
-                    </SelectItem>
-                    <SelectItem value="60">
-                      {t("autoProcessing.everyHour")}
-                    </SelectItem>
+                    <SelectItem value="1">{t("autoProcessing.everyMinute")}</SelectItem>
+                    <SelectItem value="5">{t("autoProcessing.every5Minutes")}</SelectItem>
+                    <SelectItem value="10">{t("autoProcessing.every10Minutes")}</SelectItem>
+                    <SelectItem value="30">{t("autoProcessing.every30Minutes")}</SelectItem>
+                    <SelectItem value="60">{t("autoProcessing.everyHour")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -139,9 +123,7 @@ export function ProcessingTab() {
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label>{t("autoProcessing.pauseOnActivity")}</Label>
-                  <p className="text-xs text-zinc-500">
-                    {t("autoProcessing.pauseOnActivityDesc")}
-                  </p>
+                  <p className="text-xs text-zinc-500">{t("autoProcessing.pauseOnActivityDesc")}</p>
                 </div>
                 <Switch
                   checked={pauseOnActivity}
@@ -161,11 +143,13 @@ export function ProcessingTab() {
                     {autoStatus && (
                       <div className="text-xs text-zinc-500 space-y-1">
                         <p>
-                          {t("autoProcessing.lastCheck")}: {formatLastCheck(autoStatus.last_check_at)}
+                          {t("autoProcessing.lastCheck")}:{" "}
+                          {formatLastCheck(autoStatus.last_check_at)}
                         </p>
                         {autoStatus.currently_processing_doc_id && (
                           <p className="text-blue-600 dark:text-blue-400">
-                            {t("autoProcessing.processing")} #{autoStatus.currently_processing_doc_id}
+                            {t("autoProcessing.processing")} #
+                            {autoStatus.currently_processing_doc_id}
                           </p>
                         )}
                         <p>
@@ -197,66 +181,6 @@ export function ProcessingTab() {
               </div>
             </>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Confirmation Loop */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Brain className="h-5 w-5" />
-            {t("confirmation.title")}
-          </CardTitle>
-          <CardDescription>{t("confirmation.description")}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>{t("confirmation.maxRetries")}</Label>
-            <p className="text-xs text-zinc-500">
-              {t("confirmation.maxRetriesDesc")}
-            </p>
-            <Select
-              value={maxRetries.toString()}
-              onValueChange={(v) =>
-                updateSetting("confirmation.max_retries", parseInt(v))
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">
-                  {t("confirmation.retries", { count: 1 })}
-                </SelectItem>
-                <SelectItem value="2">
-                  {t("confirmation.retries", { count: 2 })}
-                </SelectItem>
-                <SelectItem value="3">
-                  {t("confirmation.retries", { count: 3 })}
-                </SelectItem>
-                <SelectItem value="5">
-                  {t("confirmation.retries", { count: 5 })}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Separator />
-
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label>{t("confirmation.requireUser")}</Label>
-              <p className="text-xs text-zinc-500">
-                {t("confirmation.requireUserDesc")}
-              </p>
-            </div>
-            <Switch
-              checked={requireUser}
-              onCheckedChange={(v) =>
-                updateSetting("confirmation.require_user_for_new_entities", v)
-              }
-            />
-          </div>
         </CardContent>
       </Card>
     </div>

@@ -3,23 +3,23 @@
  *
  * Document processing endpoints that invoke the processing pipeline.
  */
-import { Effect } from 'effect';
-import { TinyBaseService, AutoProcessingService } from '../../services/index.js';
-import { ProcessingPipelineService } from '../../agents/ProcessingPipeline.js';
+import { Effect } from "effect";
+import { ProcessingPipelineService } from "../../agents/ProcessingPipeline.js";
+import { AutoProcessingService, TinyBaseService } from "../../services/index.js";
 
 // ===========================================================================
 // Processing Control
 // ===========================================================================
 
-export const startProcessing = (docId: number, step?: string) =>
+export const startProcessing = (docId: number, step?: string, dryRun?: boolean) =>
   Effect.gen(function* () {
     const pipeline = yield* ProcessingPipelineService;
 
-    if (step && step !== 'all') {
+    if (step && step !== "all") {
       // Process a specific step
-      const result = yield* pipeline.processStep(docId, step);
+      const result = yield* pipeline.processStep(docId, step, dryRun);
       return {
-        status: result.success ? 'completed' : 'failed',
+        status: result.success ? "completed" : "failed",
         doc_id: docId,
         step,
         data: result.data,
@@ -27,11 +27,11 @@ export const startProcessing = (docId: number, step?: string) =>
       };
     } else {
       // Process all steps
-      const result = yield* pipeline.processDocument({ docId });
+      const result = yield* pipeline.processDocument({ docId, dryRun });
       return {
-        status: result.success ? 'completed' : (result.needsReview ? 'needs_review' : 'failed'),
+        status: result.success ? "completed" : result.needsReview ? "needs_review" : "failed",
         doc_id: docId,
-        step: 'all',
+        step: "all",
         data: result.steps,
         needsReview: result.needsReview,
         schemaReviewNeeded: result.schemaReviewNeeded,
@@ -42,7 +42,7 @@ export const startProcessing = (docId: number, step?: string) =>
 
 export const confirmProcessing = (docId: number, confirmed: boolean) =>
   Effect.succeed({
-    status: 'confirmed',
+    status: "confirmed",
     doc_id: docId,
     confirmed,
   });
@@ -103,7 +103,7 @@ export const triggerAutoProcessing = Effect.gen(function* () {
   yield* autoProcessing.trigger();
   const status = yield* autoProcessing.getStatus();
   return {
-    message: 'Triggered auto processing check',
+    message: "Triggered auto processing check",
     running: status.running,
     enabled: status.enabled,
     currently_processing_doc_id: status.currentlyProcessingDocId,

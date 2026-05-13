@@ -1,38 +1,38 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
-  RefreshCw,
-  Loader2,
-  Trash2,
-  Ban,
-  User,
-  FileText,
-  Tag,
-  Globe,
-  AlertCircle,
-} from "lucide-react";
-import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
-  CardDescription,
-  Button,
-  Badge,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Alert,
-  AlertDescription,
-  AlertTitle,
 } from "@repo/ui";
+import {
+  AlertCircle,
+  ArrowLeft,
+  Ban,
+  FileText,
+  Globe,
+  Loader2,
+  RefreshCw,
+  Tag,
+  Trash2,
+  User,
+} from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE = "";
 
 interface BlockedSuggestion {
   id: number;
@@ -45,10 +45,21 @@ interface BlockedSuggestion {
   created_at: string;
 }
 
-const BLOCK_TYPE_CONFIG: Record<string, { label: string; icon: React.ReactNode; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+const BLOCK_TYPE_CONFIG: Record<
+  string,
+  {
+    label: string;
+    icon: React.ReactNode;
+    variant: "default" | "secondary" | "destructive" | "outline";
+  }
+> = {
   global: { label: "Global", icon: <Globe className="h-4 w-4" />, variant: "destructive" },
   correspondent: { label: "Correspondent", icon: <User className="h-4 w-4" />, variant: "default" },
-  document_type: { label: "Document Type", icon: <FileText className="h-4 w-4" />, variant: "secondary" },
+  document_type: {
+    label: "Document Type",
+    icon: <FileText className="h-4 w-4" />,
+    variant: "secondary",
+  },
   tag: { label: "Tag", icon: <Tag className="h-4 w-4" />, variant: "outline" },
 };
 
@@ -71,9 +82,10 @@ export default function BlockedSuggestionsPage() {
     setLoading(true);
     setError(null);
     try {
-      const url = filter === "all"
-        ? `${API_BASE}/api/schema/blocked`
-        : `${API_BASE}/api/schema/blocked?block_type=${filter}`;
+      const url =
+        filter === "all"
+          ? `${API_BASE}/api/schema/blocked`
+          : `${API_BASE}/api/schema/blocked?block_type=${filter}`;
       const res = await fetch(url);
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
@@ -110,7 +122,13 @@ export default function BlockedSuggestionsPage() {
   };
 
   const getBlockTypeConfig = (type: string) => {
-    return BLOCK_TYPE_CONFIG[type] || { label: type, icon: <Ban className="h-4 w-4" />, variant: "default" as const };
+    return (
+      BLOCK_TYPE_CONFIG[type] || {
+        label: type,
+        icon: <Ban className="h-4 w-4" />,
+        variant: "default" as const,
+      }
+    );
   };
 
   const formatDate = (dateString: string) => {
@@ -140,12 +158,7 @@ export default function BlockedSuggestionsPage() {
               </p>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchBlocked}
-            disabled={loading}
-          >
+          <Button variant="outline" size="sm" onClick={fetchBlocked} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
@@ -235,23 +248,18 @@ export default function BlockedSuggestionsPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium truncate">
-                              {item.suggestion_name}
-                            </span>
-                            <Badge variant={typeConfig.variant}>
-                              {typeConfig.label}
-                            </Badge>
+                            <span className="font-medium truncate">{item.suggestion_name}</span>
+                            <Badge variant={typeConfig.variant}>{typeConfig.label}</Badge>
                             {item.rejection_category && (
                               <Badge variant="outline" className="text-xs">
-                                {CATEGORY_LABELS[item.rejection_category] || item.rejection_category}
+                                {CATEGORY_LABELS[item.rejection_category] ||
+                                  item.rejection_category}
                               </Badge>
                             )}
                           </div>
                           <div className="flex items-center gap-2 mt-1 text-sm text-zinc-500">
                             {item.rejection_reason && (
-                              <span className="truncate max-w-md">
-                                {item.rejection_reason}
-                              </span>
+                              <span className="truncate max-w-md">{item.rejection_reason}</span>
                             )}
                             {!item.rejection_reason && (
                               <span className="text-zinc-400 italic">No reason provided</span>
@@ -260,9 +268,7 @@ export default function BlockedSuggestionsPage() {
                           <div className="text-xs text-zinc-400 mt-1">
                             Blocked on {formatDate(item.created_at)}
                             {item.doc_id && (
-                              <span className="ml-2">
-                                from document #{item.doc_id}
-                              </span>
+                              <span className="ml-2">from document #{item.doc_id}</span>
                             )}
                           </div>
                         </div>
@@ -296,25 +302,34 @@ export default function BlockedSuggestionsPage() {
           <CardContent className="pt-6">
             <h3 className="font-medium mb-2">How Blocked Suggestions Work</h3>
             <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
-              When a suggestion is blocked, the AI will never recommend it again for future documents.
-              This helps improve the quality of suggestions over time by learning from your feedback.
+              When a suggestion is blocked, the AI will never recommend it again for future
+              documents. This helps improve the quality of suggestions over time by learning from
+              your feedback.
             </p>
             <div className="grid gap-3 text-sm">
               <div className="flex items-center gap-2 text-zinc-500">
                 <Globe className="h-4 w-4 text-red-500" />
-                <span><strong>Global:</strong> Blocked across all categories</span>
+                <span>
+                  <strong>Global:</strong> Blocked across all categories
+                </span>
               </div>
               <div className="flex items-center gap-2 text-zinc-500">
                 <User className="h-4 w-4" />
-                <span><strong>Correspondent:</strong> Will not be suggested as a correspondent</span>
+                <span>
+                  <strong>Correspondent:</strong> Will not be suggested as a correspondent
+                </span>
               </div>
               <div className="flex items-center gap-2 text-zinc-500">
                 <FileText className="h-4 w-4" />
-                <span><strong>Document Type:</strong> Will not be suggested as a document type</span>
+                <span>
+                  <strong>Document Type:</strong> Will not be suggested as a document type
+                </span>
               </div>
               <div className="flex items-center gap-2 text-zinc-500">
                 <Tag className="h-4 w-4" />
-                <span><strong>Tag:</strong> Will not be suggested as a tag</span>
+                <span>
+                  <strong>Tag:</strong> Will not be suggested as a tag
+                </span>
               </div>
             </div>
           </CardContent>

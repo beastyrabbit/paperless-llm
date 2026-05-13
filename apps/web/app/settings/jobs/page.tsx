@@ -1,27 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Badge,
-} from "@repo/ui";
-import {
-  Play,
-  RefreshCw,
-  Clock,
-  CheckCircle,
-  XCircle,
-  Loader2,
-  ArrowLeft,
-} from "lucide-react";
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@repo/ui";
+import { ArrowLeft, CheckCircle, Clock, Loader2, Play, RefreshCw, XCircle } from "lucide-react";
 import Link from "next/link";
+import React, { useEffect, useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE = "";
 
 interface JobStatus {
   job_name: string;
@@ -33,6 +17,20 @@ interface JobStatus {
 const JOB_DESCRIPTIONS: Record<string, string> = {
   metadata_enhancement: "Suggests descriptions for entities without metadata",
   schema_cleanup: "Identifies duplicates and suggests merging/renaming",
+};
+
+const JOB_RUN_REQUESTS: Record<string, { endpoint: string; body?: Record<string, unknown> }> = {
+  bootstrap: { endpoint: "/api/jobs/bootstrap/start", body: { analysis_type: "all" } },
+  schema_cleanup: { endpoint: "/api/jobs/schema-cleanup/run" },
+  bulk_ocr: {
+    endpoint: "/api/jobs/bulk-ocr/start",
+    body: { docs_per_second: 1, skip_existing: true },
+  },
+  bulk_ingest: {
+    endpoint: "/api/jobs/bulk-ingest/start",
+    body: { skip_existing_ocr: true, skip_existing_vector: true },
+  },
+  metadata_enhancement: { endpoint: "/api/jobs/metadata-enhancement/run" },
 };
 
 export default function JobsPage() {
@@ -62,9 +60,14 @@ export default function JobsPage() {
   };
 
   const triggerJob = async (jobName: string) => {
+    const request = JOB_RUN_REQUESTS[jobName];
+    if (!request) return;
+
     try {
-      await fetch(`${API_BASE}/api/jobs/${jobName}/run`, {
+      await fetch(`${API_BASE}${request.endpoint}`, {
         method: "POST",
+        headers: request.body ? { "Content-Type": "application/json" } : undefined,
+        body: request.body ? JSON.stringify(request.body) : undefined,
       });
       // Immediately refresh status
       await fetchStatus();
@@ -114,22 +117,14 @@ export default function JobsPage() {
       .join(" ");
   };
 
-  const JobCard = ({
-    jobKey,
-    jobStatus,
-  }: {
-    jobKey: string;
-    jobStatus: JobStatus;
-  }) => (
+  const JobCard = ({ jobKey, jobStatus }: { jobKey: string; jobStatus: JobStatus }) => (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">{formatJobName(jobKey)}</CardTitle>
           {getStatusBadge(jobStatus.status)}
         </div>
-        <CardDescription>
-          {JOB_DESCRIPTIONS[jobKey] || `Background job: ${jobKey}`}
-        </CardDescription>
+        <CardDescription>{JOB_DESCRIPTIONS[jobKey] || `Background job: ${jobKey}`}</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
@@ -151,7 +146,7 @@ export default function JobsPage() {
 
           <Button
             onClick={() => triggerJob(jobKey)}
-            disabled={jobStatus.status === "running"}
+            disabled={jobStatus.status === "running" || !JOB_RUN_REQUESTS[jobKey]}
             className="w-full"
           >
             {jobStatus.status === "running" ? (
@@ -184,23 +179,12 @@ export default function JobsPage() {
               </Button>
             </Link>
             <div>
-              <h1 className="text-xl font-bold tracking-tight">
-                Background Jobs
-              </h1>
-              <p className="text-sm text-zinc-500">
-                Manage and trigger background processing jobs
-              </p>
+              <h1 className="text-xl font-bold tracking-tight">Background Jobs</h1>
+              <p className="text-sm text-zinc-500">Manage and trigger background processing jobs</p>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchStatus}
-            disabled={loading}
-          >
-            <RefreshCw
-              className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`}
-            />
+          <Button variant="outline" size="sm" onClick={fetchStatus} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
         </div>
@@ -248,23 +232,22 @@ export default function JobsPage() {
           <CardContent className="pt-6">
             <h3 className="font-medium mb-2">About Background Jobs</h3>
             <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
-              Background jobs run asynchronously to perform maintenance and
-              enhancement tasks on your document metadata.
+              Background jobs run asynchronously to perform maintenance and enhancement tasks on
+              your document metadata.
             </p>
             <div className="grid gap-3 text-sm">
               <div className="flex items-start gap-2 text-zinc-500">
                 <CheckCircle className="h-4 w-4 mt-0.5 text-emerald-500" />
                 <span>
-                  <strong>Metadata Enhancement:</strong> Analyzes entities
-                  without descriptions and suggests improvements using AI.
+                  <strong>Metadata Enhancement:</strong> Analyzes entities without descriptions and
+                  suggests improvements using AI.
                 </span>
               </div>
               <div className="flex items-start gap-2 text-zinc-500">
                 <CheckCircle className="h-4 w-4 mt-0.5 text-emerald-500" />
                 <span>
-                  <strong>Schema Cleanup:</strong> Identifies duplicate or
-                  similar entities and suggests merging or renaming for better
-                  organization.
+                  <strong>Schema Cleanup:</strong> Identifies duplicate or similar entities and
+                  suggests merging or renaming for better organization.
                 </span>
               </div>
             </div>

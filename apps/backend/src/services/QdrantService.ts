@@ -1,24 +1,25 @@
 /**
  * Qdrant vector database service for semantic search.
  */
-import { Effect, Context, Layer, pipe } from 'effect';
-import { QdrantClient } from '@qdrant/js-client-rest';
-import { ConfigService } from '../config/index.js';
-import { TinyBaseService } from './TinyBaseService.js';
-import { OllamaService } from './OllamaService.js';
+
+import { QdrantClient } from "@qdrant/js-client-rest";
+import { Context, Effect, Layer, pipe } from "effect";
+import { ConfigService } from "../config/index.js";
+import { OllamaService } from "./OllamaService.js";
+import { TinyBaseService } from "./TinyBaseService.js";
 
 // ===========================================================================
 // Types
 // ===========================================================================
 
 export interface QdrantError {
-  readonly _tag: 'QdrantError';
+  readonly _tag: "QdrantError";
   readonly message: string;
   readonly cause?: unknown;
 }
 
 export const QdrantError = (message: string, cause?: unknown): QdrantError => ({
-  _tag: 'QdrantError',
+  _tag: "QdrantError",
   message,
   cause,
 });
@@ -57,7 +58,7 @@ export interface QdrantService {
       filterByTag?: string;
       filterByCorrespondent?: string;
       filterByDocumentType?: string;
-    }
+    },
   ) => Effect.Effect<SearchResult[], QdrantError>;
 
   /**
@@ -85,7 +86,7 @@ export interface QdrantService {
 // Service Tag
 // ===========================================================================
 
-export const QdrantService = Context.GenericTag<QdrantService>('QdrantService');
+export const QdrantService = Context.GenericTag<QdrantService>("QdrantService");
 
 // ===========================================================================
 // Live Implementation
@@ -100,12 +101,19 @@ export const QdrantServiceLive = Layer.effect(
     const { qdrant: configQdrant } = configService.config;
 
     // Get config from TinyBase with fallback
-    const getConfig = (): Effect.Effect<{ url: string; collectionName: string; embeddingDimension: number }, never> =>
+    const getConfig = (): Effect.Effect<
+      { url: string; collectionName: string; embeddingDimension: number },
+      never
+    > =>
       pipe(
         tinybaseService.getAllSettings(),
         Effect.map((settings) => ({
-          url: settings['qdrant.url'] ?? configQdrant.url,
-          collectionName: settings['qdrant.collection'] ?? settings['qdrant_collection'] ?? configQdrant.collectionName,
+          url: settings["qdrant.url"] ?? configQdrant.url,
+          collectionName:
+            settings["qdrant.collectionName"] ??
+            settings["qdrant.collection"] ??
+            settings["qdrant_collection"] ??
+            configQdrant.collectionName,
           embeddingDimension: configQdrant.embeddingDimension ?? 768,
         })),
         Effect.catchAll(() =>
@@ -113,8 +121,8 @@ export const QdrantServiceLive = Layer.effect(
             url: configQdrant.url,
             collectionName: configQdrant.collectionName,
             embeddingDimension: configQdrant.embeddingDimension ?? 768,
-          })
-        )
+          }),
+        ),
       );
 
     // Create Qdrant client lazily
@@ -130,29 +138,35 @@ export const QdrantServiceLive = Layer.effect(
     return {
       searchSimilar: (query, options = {}) =>
         Effect.gen(function* () {
-          const { limit = 5, filterProcessed = true, filterByTag, filterByCorrespondent, filterByDocumentType } = options;
+          const {
+            limit = 5,
+            filterProcessed = true,
+            filterByTag,
+            filterByCorrespondent,
+            filterByDocumentType,
+          } = options;
           const { collectionName } = yield* getConfig();
           const client = yield* getClient();
 
           // Generate embedding for query
           const queryVector = yield* embed(query).pipe(
-            Effect.mapError((e) => QdrantError(`Embedding failed: ${e.message}`, e))
+            Effect.mapError((e) => QdrantError(`Embedding failed: ${e.message}`, e)),
           );
 
           // Build filter conditions
           const mustConditions: Array<{ key: string; match: { value: string | boolean } }> = [];
 
           if (filterProcessed) {
-            mustConditions.push({ key: 'is_processed', match: { value: true } });
+            mustConditions.push({ key: "is_processed", match: { value: true } });
           }
           if (filterByTag) {
-            mustConditions.push({ key: 'tags', match: { value: filterByTag } });
+            mustConditions.push({ key: "tags", match: { value: filterByTag } });
           }
           if (filterByCorrespondent) {
-            mustConditions.push({ key: 'correspondent', match: { value: filterByCorrespondent } });
+            mustConditions.push({ key: "correspondent", match: { value: filterByCorrespondent } });
           }
           if (filterByDocumentType) {
-            mustConditions.push({ key: 'document_type', match: { value: filterByDocumentType } });
+            mustConditions.push({ key: "document_type", match: { value: filterByDocumentType } });
           }
 
           return yield* Effect.tryPromise({
@@ -167,7 +181,7 @@ export const QdrantServiceLive = Layer.effect(
               return results.map((r) => ({
                 docId: r.payload?.docId as number,
                 score: r.score,
-                title: (r.payload?.title as string) ?? '',
+                title: (r.payload?.title as string) ?? "",
                 tags: (r.payload?.tags as string[]) ?? [],
                 correspondent: r.payload?.correspondent as string | undefined,
                 documentType: r.payload?.document_type as string | undefined,
@@ -184,7 +198,7 @@ export const QdrantServiceLive = Layer.effect(
 
           // Generate embedding for document content
           const vector = yield* embed(doc.content.slice(0, 8000)).pipe(
-            Effect.mapError((e) => QdrantError(`Embedding failed: ${e.message}`, e))
+            Effect.mapError((e) => QdrantError(`Embedding failed: ${e.message}`, e)),
           );
 
           yield* Effect.tryPromise({
@@ -201,7 +215,7 @@ export const QdrantServiceLive = Layer.effect(
                       tags: doc.tags,
                       correspondent: doc.correspondent,
                       document_type: doc.documentType,
-                      is_processed: doc.tags.some((t) => t.toLowerCase().includes('processed')),
+                      is_processed: doc.tags.some((t) => t.toLowerCase().includes("processed")),
                     },
                   },
                 ],
@@ -255,26 +269,26 @@ export const QdrantServiceLive = Layer.effect(
                 await client.createCollection(collectionName, {
                   vectors: {
                     size: embeddingDimension,
-                    distance: 'Cosine',
+                    distance: "Cosine",
                   },
                 });
 
                 // Create payload indexes for filtering
                 await client.createPayloadIndex(collectionName, {
-                  field_name: 'is_processed',
-                  field_schema: 'bool',
+                  field_name: "is_processed",
+                  field_schema: "bool",
                 });
                 await client.createPayloadIndex(collectionName, {
-                  field_name: 'tags',
-                  field_schema: 'keyword',
+                  field_name: "tags",
+                  field_schema: "keyword",
                 });
                 await client.createPayloadIndex(collectionName, {
-                  field_name: 'correspondent',
-                  field_schema: 'keyword',
+                  field_name: "correspondent",
+                  field_schema: "keyword",
                 });
                 await client.createPayloadIndex(collectionName, {
-                  field_name: 'document_type',
-                  field_schema: 'keyword',
+                  field_name: "document_type",
+                  field_schema: "keyword",
                 });
               }
             },
@@ -282,5 +296,5 @@ export const QdrantServiceLive = Layer.effect(
           });
         }),
     };
-  })
+  }),
 );

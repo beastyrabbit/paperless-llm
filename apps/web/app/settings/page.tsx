@@ -1,40 +1,34 @@
 "use client";
 
-import { useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from "@repo/ui";
 import {
-  Save,
-  Server,
-  Loader2,
-  CheckCircle2,
-  Zap,
   Bug,
+  CheckCircle2,
+  FileText,
   GitBranch,
   Globe,
+  Loader2,
+  Save,
+  Server,
   Tag,
-  FileText,
   Wrench,
+  Zap,
 } from "lucide-react";
-import {
-  Button,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@repo/ui";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useState } from "react";
 import { useTinyBase } from "@/lib/tinybase";
 import {
-  ConnectionsTab,
-  ProcessingTab,
-  PipelineTab,
-  CustomFieldsTab,
-  AiTagsTab,
-  AiDocumentTypesTab,
-  WorkflowTagsTab,
-  LanguageTab,
   AdvancedTab,
+  AiDocumentTypesTab,
+  AiTagsTab,
+  ConnectionsTab,
+  CustomFieldsTab,
+  LanguageTab,
   MaintenanceTab,
+  PipelineTab,
+  ProcessingTab,
+  WorkflowTagsTab,
 } from "./components";
 
 const VALID_TABS = [
@@ -102,9 +96,7 @@ export default function SettingsPage() {
             <h1 className="font-serif text-3xl font-light tracking-tight text-zinc-900 dark:text-zinc-100">
               {t("title")}
             </h1>
-            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-              {t("subtitle")}
-            </p>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{t("subtitle")}</p>
           </div>
           <Button
             onClick={handleSave}

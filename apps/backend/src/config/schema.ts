@@ -1,7 +1,7 @@
 /**
  * Configuration schema definitions using Effect Schema.
  */
-import { Schema } from 'effect';
+import { Schema } from "effect";
 
 // Paperless configuration
 export const PaperlessConfigSchema = Schema.Struct({
@@ -39,6 +39,14 @@ export const AutoProcessingConfigSchema = Schema.Struct({
 
 // Tags configuration
 export const TagsConfigSchema = Schema.Struct({
+  todo: Schema.String.pipe(Schema.optional),
+  ocr: Schema.String.pipe(Schema.optional),
+  metadata: Schema.String.pipe(Schema.optional),
+  review: Schema.String.pipe(Schema.optional),
+  index: Schema.String.pipe(Schema.optional),
+  done: Schema.String.pipe(Schema.optional),
+  failed: Schema.String.pipe(Schema.optional),
+  // Compatibility aliases for settings created by the pre-Pi workflow.
   pending: Schema.String.pipe(Schema.optional),
   ocrDone: Schema.String.pipe(Schema.optional),
   summaryDone: Schema.String.pipe(Schema.optional),
@@ -48,7 +56,6 @@ export const TagsConfigSchema = Schema.Struct({
   documentTypeDone: Schema.String.pipe(Schema.optional),
   tagsDone: Schema.String.pipe(Schema.optional),
   processed: Schema.String.pipe(Schema.optional),
-  failed: Schema.String.pipe(Schema.optional),
   manualReview: Schema.String.pipe(Schema.optional),
 });
 
@@ -114,6 +121,14 @@ export interface ResolvedConfig {
     confirmationMaxRetries: number;
   };
   tags: {
+    todo: string;
+    ocr: string;
+    metadata: string;
+    review: string;
+    index: string;
+    done: string;
+    failed: string;
+    // Compatibility aliases for older code paths and persisted settings.
     pending: string;
     ocrDone: string;
     summaryDone: string;
@@ -123,7 +138,6 @@ export interface ResolvedConfig {
     documentTypeDone: string;
     tagsDone: string;
     processed: string;
-    failed: string;
     manualReview: string;
   };
   pipeline: {
