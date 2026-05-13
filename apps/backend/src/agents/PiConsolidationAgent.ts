@@ -118,6 +118,18 @@ const similarity = (a: string, b: string): number => {
 const clampConfidence = (value: number): number =>
   Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0.5;
 
+const getWorkflowTagNames = (tagConfig: Record<string, unknown>): Set<string> =>
+  new Set(
+    Object.values(tagConfig)
+      .filter((name): name is string => typeof name === "string" && !!name.trim())
+      .map((name) => name.trim().toLowerCase()),
+  );
+
+const isWorkflowTagName = (name: string, workflowTagNames: Set<string>): boolean => {
+  const normalized = name.trim().toLowerCase();
+  return normalized.startsWith("llm-") || workflowTagNames.has(normalized);
+};
+
 const isFinishReportResultMessage = (
   message: AgentMessage,
 ): message is AgentMessage & { role: "toolResult"; toolName: string; isError: boolean } =>
@@ -264,8 +276,10 @@ export const PiConsolidationAgentServiceLive = Layer.effect(
           { concurrency: "unbounded" },
         );
 
+        const workflowTagNames = getWorkflowTagNames(config.config.tags);
+        const userTags = tags.filter((tag) => !isWorkflowTagName(tag.name, workflowTagNames));
         const candidateProposals: ConsolidationProposal[] = [];
-        yield* analyzeCatalog(candidateProposals, "tag", tags);
+        yield* analyzeCatalog(candidateProposals, "tag", userTags);
         yield* analyzeCatalog(candidateProposals, "correspondent", correspondents);
         yield* analyzeCatalog(candidateProposals, "document_type", documentTypes);
 
@@ -292,7 +306,7 @@ export const PiConsolidationAgentServiceLive = Layer.effect(
         }
 
         return {
-          tags: tags.map(({ id, name, document_count }) => ({ id, name, document_count })),
+          tags: userTags.map(({ id, name, document_count }) => ({ id, name, document_count })),
           correspondents: correspondents.map(({ id, name, document_count }) => ({
             id,
             name,
@@ -481,7 +495,7 @@ export const PiConsolidationAgentServiceLive = Layer.effect(
             "Use get_catalog_snapshot if you need the full catalog snapshot and candidate list.",
             "Prefer needs_review over merge/delete when evidence is weak.",
             "Use only real Paperless attribute IDs from the snapshot.",
-            "Do not include workflow tags or unrelated operational tags unless they are duplicate or unused cleanup candidates.",
+            "Never include workflow tags or unrelated operational tags in consolidation proposals.",
           ],
           catalog_counts: {
             tags: snapshot.tags.length,
@@ -498,34 +512,70 @@ export const PiConsolidationAgentServiceLive = Layer.effect(
 
     const persistReport = (report: ConsolidationReport) =>
       Effect.gen(function* () {
-        yield* tinybase.saveConsolidationReport(report);
-
-        for (const proposal of report.proposals) {
-          const pendingId = yield* tinybase.addPendingReview({
-            docId: 0,
-            docTitle: "Catalog consolidation",
-            type: "consolidation",
-            suggestion: proposal.proposedName ?? proposal.names.join(" / "),
-            reasoning: proposal.reasoning,
-            alternatives: proposal.names,
-            attempts: 1,
-            lastFeedback: null,
-            nextTag: null,
-            metadata: JSON.stringify({
-              kind: "consolidation",
-              reportId: report.id,
-              proposal,
-            }),
+        const existingPendingReviewIds = new Set(
+          Object.keys(tinybase.store.getTable("pendingReviews") ?? {}),
+        );
+        const createdPendingReviewIds: string[] = [];
+        const rollback = Effect.gen(function* () {
+          yield* Effect.all(
+            createdPendingReviewIds.map((id) =>
+              tinybase.removePendingReview(id).pipe(Effect.catchAll(() => Effect.void)),
+            ),
+            { concurrency: "unbounded", discard: true },
+          );
+          yield* Effect.sync(() => {
+            tinybase.store.delRow("consolidationReports", report.id);
           });
-          if (!pendingId) {
-            return yield* Effect.fail(
-              new AgentError({
-                message: `Failed to create pending consolidation review for proposal ${proposal.id}`,
-                agent: "consolidation_agent",
+        }).pipe(Effect.catchAll(() => Effect.void));
+
+        const createPendingReviews = Effect.gen(function* () {
+          for (const proposal of report.proposals) {
+            const suggestion = (proposal.proposedName ?? proposal.names.join(" / ")).trim();
+            if (!suggestion) {
+              return yield* Effect.fail(
+                new AgentError({
+                  message: `Consolidation proposal ${proposal.id} has no review suggestion`,
+                  agent: "consolidation_agent",
+                }),
+              );
+            }
+
+            const pendingId = yield* tinybase.addPendingReview({
+              docId: 0,
+              docTitle: "Catalog consolidation",
+              type: "consolidation",
+              suggestion,
+              reasoning: proposal.reasoning,
+              alternatives: proposal.names,
+              attempts: 1,
+              lastFeedback: null,
+              nextTag: null,
+              metadata: JSON.stringify({
+                kind: "consolidation",
+                reportId: report.id,
+                proposal,
               }),
-            );
+            });
+            if (!pendingId) {
+              return yield* Effect.fail(
+                new AgentError({
+                  message: `Failed to create pending consolidation review for proposal ${proposal.id}`,
+                  agent: "consolidation_agent",
+                }),
+              );
+            }
+            if (!existingPendingReviewIds.has(pendingId)) {
+              createdPendingReviewIds.push(pendingId);
+            }
           }
-        }
+        });
+
+        yield* createPendingReviews.pipe(
+          Effect.catchAll((error) => rollback.pipe(Effect.zipRight(Effect.fail(error)))),
+        );
+        yield* tinybase
+          .saveConsolidationReport(report)
+          .pipe(Effect.catchAll((error) => rollback.pipe(Effect.zipRight(Effect.fail(error)))));
       });
 
     return {
