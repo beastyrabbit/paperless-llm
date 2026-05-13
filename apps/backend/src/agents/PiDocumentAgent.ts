@@ -932,6 +932,17 @@ export const PiDocumentAgentServiceLive = Layer.effect(
               let tagIds = [...currentTagIds];
 
               if (metadataPolicy.tags) {
+                const stageTagUpdates = () => {
+                  if (
+                    tagIds.length !== currentTagIds.length ||
+                    tagIds.some((tagId) => !currentTagIds.includes(tagId))
+                  ) {
+                    updates["tags"] = tagIds;
+                  } else {
+                    delete updates["tags"];
+                  }
+                };
+
                 if (params.tagIdsToRemove?.length) {
                   const tagIdsToRemove = yield* getAssignableTagIds(params.tagIdsToRemove);
                   const remove = new Set(tagIdsToRemove);
@@ -965,6 +976,10 @@ export const PiDocumentAgentServiceLive = Layer.effect(
                       }
                       addedNames.push(name);
                     } else {
+                      if (addedNames.length > 0) {
+                        applied["added_tag_names"] = [...addedNames];
+                      }
+                      stageTagUpdates();
                       const alternatives = yield* paperless.getTags().pipe(
                         Effect.map((tags) => tags.slice(0, 20).map((tag) => tag.name)),
                         Effect.catchAll(() => Effect.succeed([])),
@@ -982,15 +997,12 @@ export const PiDocumentAgentServiceLive = Layer.effect(
                       return yield* pauseWithPendingDecision(pendingId);
                     }
                   }
-                  applied["added_tag_names"] = addedNames;
+                  if (addedNames.length > 0) {
+                    applied["added_tag_names"] = addedNames;
+                  }
                 }
 
-                if (
-                  tagIds.length !== currentTagIds.length ||
-                  tagIds.some((tagId) => !currentTagIds.includes(tagId))
-                ) {
-                  updates["tags"] = tagIds;
-                }
+                stageTagUpdates();
               }
 
               const customFields = [...((currentDoc.custom_fields ?? []) as CustomFieldValue[])];
