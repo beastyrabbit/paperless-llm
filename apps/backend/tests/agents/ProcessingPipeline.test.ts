@@ -66,7 +66,17 @@ const createMockPaperless = () => {
     transitionDocumentTag: vi.fn(() => Effect.succeed(undefined)),
     updateDocument: vi.fn(() => Effect.succeed(undefined)),
     getOrCreateTag: vi.fn((name: string) =>
-      Effect.succeed(name === "llm-index" ? 1 : name === "llm-failed" ? 4 : 99),
+      Effect.succeed(
+        name === "llm-index"
+          ? 1
+          : name === "llm-failed"
+            ? 4
+            : name === "llm-ocr"
+              ? 5
+              : name === "llm-metadata"
+                ? 6
+                : 99,
+      ),
     ),
     getDocument: vi.fn(() =>
       Effect.succeed({
@@ -91,6 +101,8 @@ const createMockPaperless = () => {
         { id: 2, name: "finance", slug: "finance" },
         { id: 3, name: "llm-done", slug: "llm-done" },
         { id: 4, name: "llm-failed", slug: "llm-failed" },
+        { id: 5, name: "llm-ocr", slug: "llm-ocr" },
+        { id: 6, name: "llm-metadata", slug: "llm-metadata" },
       ]),
     ),
     getCorrespondents: vi.fn(() => Effect.succeed([{ id: 7, name: "Acme", slug: "acme" }])),
@@ -123,12 +135,17 @@ const createMockQdrant = () => {
   };
 };
 
-const createMockOcrAgent = () =>
-  Layer.succeed(OCRAgentService, {
+const createMockOcrAgent = (process = vi.fn()) => {
+  const mocks = {
     name: "ocr",
-    process: vi.fn(),
+    process,
     processStream: vi.fn(),
-  } as unknown as OCRAgentService);
+  };
+  return {
+    layer: Layer.succeed(OCRAgentService, mocks as unknown as OCRAgentService),
+    mocks,
+  };
+};
 
 const createMockDocumentAgent = () =>
   Layer.succeed(PiDocumentAgentService, {
@@ -146,7 +163,7 @@ describe("ProcessingPipelineService", () => {
       paperlessLayer,
       tinybaseLayer,
       qdrantLayer,
-      createMockOcrAgent(),
+      createMockOcrAgent().layer,
       createMockDocumentAgent(),
     );
     const TestLayer = Layer.provideMerge(ProcessingPipelineServiceLive, dependencies);
@@ -180,5 +197,45 @@ describe("ProcessingPipelineService", () => {
         data: expect.objectContaining({ indexed: false }),
       }),
     );
+  });
+
+  it("marks the OCR step failed when OCR returns an unsuccessful result", async () => {
+    const { layer: paperlessLayer, mocks: paperlessMocks } = createMockPaperless();
+    const { layer: tinybaseLayer } = createMockTinyBase();
+    const { layer: qdrantLayer } = createMockQdrant();
+    const { layer: ocrLayer, mocks: ocrMocks } = createMockOcrAgent(
+      vi.fn(() =>
+        Effect.succeed({
+          success: false,
+          docId: 42,
+          textLength: 0,
+          pages: 0,
+          error: "OCR failed",
+        }),
+      ),
+    );
+    const dependencies = Layer.mergeAll(
+      createMockConfig(),
+      paperlessLayer,
+      tinybaseLayer,
+      qdrantLayer,
+      ocrLayer,
+      createMockDocumentAgent(),
+    );
+    const TestLayer = Layer.provideMerge(ProcessingPipelineServiceLive, dependencies);
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const pipeline = yield* ProcessingPipelineService;
+        return yield* pipeline.processStep(42, "ocr");
+      }).pipe(Effect.provide(TestLayer)),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.step).toBe("ocr");
+    expect(result.data).toMatchObject({ success: false, error: "OCR failed" });
+    expect(ocrMocks.process).toHaveBeenCalledWith({ docId: 42 });
+    expect(paperlessMocks.updateDocument).toHaveBeenCalledWith(42, { tags: [2, 5] });
+    expect(paperlessMocks.updateDocument).toHaveBeenCalledWith(42, { tags: [2, 4] });
   });
 });

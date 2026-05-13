@@ -573,9 +573,21 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                 };
               }
               yield* transition(docId, tagConfig.ocr);
-              const result = yield* ocrAgent.process({ docId });
+              const result = yield* ocrAgent.process({ docId }).pipe(
+                Effect.catchAll((error) =>
+                  Effect.succeed({
+                    success: false,
+                    docId,
+                    textLength: 0,
+                    pages: 0,
+                    error: String(error),
+                  }),
+                ),
+              );
               if (result.success) {
                 yield* transition(docId, tagConfig.metadata);
+              } else {
+                yield* transition(docId, tagConfig.failed);
               }
               return { step: "ocr", success: result.success, data: result };
             }
