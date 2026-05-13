@@ -1,36 +1,36 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import {
-  RefreshCw,
-  Loader2,
-  AlertCircle,
-  CheckCircle2,
-  FileText,
-  Calendar,
-  Hash,
-  Type,
-  ToggleLeft,
-  Link as LinkIcon,
-  List,
-  ArrowLeft,
-  Save,
-} from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  Button,
-  Badge,
-  Checkbox,
-  Label,
   Alert,
   AlertDescription,
   AlertTitle,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Checkbox,
+  Label,
 } from "@repo/ui";
+import {
+  AlertCircle,
+  ArrowLeft,
+  Calendar,
+  CheckCircle2,
+  FileText,
+  Hash,
+  Link as LinkIcon,
+  List,
+  Loader2,
+  RefreshCw,
+  Save,
+  ToggleLeft,
+  Type,
+} from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 interface CustomField {
   id: number;
@@ -168,20 +168,11 @@ export default function CustomFieldsPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchCustomFields}
-              disabled={loading}
-            >
+            <Button variant="outline" size="sm" onClick={fetchCustomFields} disabled={loading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
               Refresh
             </Button>
-            <Button
-              size="sm"
-              onClick={saveSelection}
-              disabled={saving || !hasChanges}
-            >
+            <Button size="sm" onClick={saveSelection} disabled={saving || !hasChanges}>
               {saving ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
@@ -231,9 +222,7 @@ export default function CustomFieldsPage() {
               <div className="flex flex-col items-center justify-center gap-3 text-zinc-500">
                 <FileText className="h-12 w-12 text-zinc-300" />
                 <p className="text-lg font-medium">No Custom Fields Found</p>
-                <p className="text-sm">
-                  Custom fields need to be created in Paperless-ngx first.
-                </p>
+                <p className="text-sm">Custom fields need to be created in Paperless-ngx first.</p>
               </div>
             </CardContent>
           </Card>
@@ -250,7 +239,8 @@ export default function CustomFieldsPage() {
                     Available Custom Fields
                   </CardTitle>
                   <CardDescription className="mt-1">
-                    Select the fields you want the LLM to attempt to fill during document processing.
+                    Select the fields you want the LLM to attempt to fill during document
+                    processing.
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
@@ -316,25 +306,33 @@ export default function CustomFieldsPage() {
           <CardContent className="pt-6">
             <h3 className="font-medium mb-2">How Custom Fields Work</h3>
             <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
-              When enabled, the LLM will analyze each document and attempt to extract values for the selected
-              custom fields. The accuracy depends on the document content and field type.
+              When enabled, the LLM will analyze each document and attempt to extract values for the
+              selected custom fields. The accuracy depends on the document content and field type.
             </p>
             <div className="grid gap-3 text-sm">
               <div className="flex items-center gap-2 text-zinc-500">
                 <Type className="h-4 w-4" />
-                <span><strong>Text fields:</strong> Best for names, IDs, reference numbers</span>
+                <span>
+                  <strong>Text fields:</strong> Best for names, IDs, reference numbers
+                </span>
               </div>
               <div className="flex items-center gap-2 text-zinc-500">
                 <Calendar className="h-4 w-4" />
-                <span><strong>Date fields:</strong> Good for invoice dates, due dates, etc.</span>
+                <span>
+                  <strong>Date fields:</strong> Good for invoice dates, due dates, etc.
+                </span>
               </div>
               <div className="flex items-center gap-2 text-zinc-500">
                 <Hash className="h-4 w-4" />
-                <span><strong>Number fields:</strong> Suitable for amounts, quantities</span>
+                <span>
+                  <strong>Number fields:</strong> Suitable for amounts, quantities
+                </span>
               </div>
               <div className="flex items-center gap-2 text-zinc-500">
                 <List className="h-4 w-4" />
-                <span><strong>Select fields:</strong> LLM will choose from available options</span>
+                <span>
+                  <strong>Select fields:</strong> LLM will choose from available options
+                </span>
               </div>
             </div>
           </CardContent>

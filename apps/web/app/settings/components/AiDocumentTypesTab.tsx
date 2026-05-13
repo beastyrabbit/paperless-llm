@@ -1,26 +1,20 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useTranslations } from "next-intl";
 import {
-  FileText,
-  RefreshCw,
-  Loader2,
-  AlertCircle,
-  Check,
-} from "lucide-react";
-import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-  Button,
-  Alert,
-  AlertDescription,
-  AlertTitle,
-  Badge,
 } from "@repo/ui";
+import { AlertCircle, Check, FileText, Loader2, RefreshCw } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useState } from "react";
 
 interface DocumentTypeInfo {
   id: number;
@@ -28,7 +22,7 @@ interface DocumentTypeInfo {
   document_count: number;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE = "";
 
 export function AiDocumentTypesTab() {
   const t = useTranslations("settings");
@@ -111,16 +105,9 @@ export function AiDocumentTypesTab() {
                 <FileText className="h-5 w-5" />
                 {t("aiDocumentTypes.title")}
               </CardTitle>
-              <CardDescription className="mt-1">
-                {t("aiDocumentTypes.description")}
-              </CardDescription>
+              <CardDescription className="mt-1">{t("aiDocumentTypes.description")}</CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchAiDocTypes}
-              disabled={loading}
-            >
+            <Button variant="outline" size="sm" onClick={fetchAiDocTypes} disabled={loading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
               {tCommon("refresh")}
             </Button>
@@ -191,8 +178,17 @@ export function AiDocumentTypesTab() {
               {allDocumentTypes.map((docType) => (
                 <div
                   key={docType.id}
-                  className="flex items-center justify-between py-3 first:pt-0 last:pb-0 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50 -mx-4 px-4"
+                  role="checkbox"
+                  tabIndex={0}
+                  aria-checked={selectedAiDocTypes.includes(docType.id)}
+                  aria-label={docType.name}
+                  className="flex items-center justify-between py-3 first:pt-0 last:pb-0 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50 -mx-4 px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
                   onClick={() => toggleAiDocType(docType.id)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    toggleAiDocType(docType.id);
+                  }}
                 >
                   <div className="flex items-center gap-4">
                     <div

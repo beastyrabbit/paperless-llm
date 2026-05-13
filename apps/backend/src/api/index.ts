@@ -1,27 +1,31 @@
 /**
  * API router - maps HTTP requests to handlers.
  */
-import { Effect } from 'effect';
-import type { IncomingMessage, ServerResponse } from 'node:http';
-import * as settingsHandlers from './settings/handlers.js';
-import * as pendingHandlers from './pending/handlers.js';
-import * as jobsHandlers from './jobs/handlers.js';
-import * as documentsHandlers from './documents/handlers.js';
-import * as processingHandlers from './processing/handlers.js';
-import * as metadataHandlers from './metadata/handlers.js';
-import * as schemaHandlers from './schema/handlers.js';
-import * as translationHandlers from './translation/handlers.js';
-import * as searchHandlers from './search/handlers.js';
-import * as chatHandlers from './chat/handlers.js';
+
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { Effect } from "effect";
+import * as chatHandlers from "./chat/handlers.js";
+import * as documentsHandlers from "./documents/handlers.js";
+import * as jobsHandlers from "./jobs/handlers.js";
+import * as metadataHandlers from "./metadata/handlers.js";
+import * as pendingHandlers from "./pending/handlers.js";
+import * as processingHandlers from "./processing/handlers.js";
+import * as schemaHandlers from "./schema/handlers.js";
+import * as searchHandlers from "./search/handlers.js";
+import * as settingsHandlers from "./settings/handlers.js";
+import * as translationHandlers from "./translation/handlers.js";
 
 // ===========================================================================
 // Types
 // ===========================================================================
 
-type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 interface RouteMatch {
-  handler: (params: Record<string, string>, body: unknown) => Effect.Effect<unknown, unknown, unknown>;
+  handler: (
+    params: Record<string, string>,
+    body: unknown,
+  ) => Effect.Effect<unknown, unknown, unknown>;
   params: Record<string, string>;
 }
 
@@ -29,7 +33,10 @@ interface Route {
   method: HttpMethod;
   pattern: RegExp;
   paramNames: string[];
-  handler: (params: Record<string, string>, body: unknown) => Effect.Effect<unknown, unknown, unknown>;
+  handler: (
+    params: Record<string, string>,
+    body: unknown,
+  ) => Effect.Effect<unknown, unknown, unknown>;
 }
 
 // ===========================================================================
@@ -41,19 +48,20 @@ const routes: Route[] = [];
 const addRoute = (
   method: HttpMethod,
   path: string,
-  handler: (params: Record<string, string>, body: unknown) => Effect.Effect<unknown, unknown, unknown>
+  handler: (
+    params: Record<string, string>,
+    body: unknown,
+  ) => Effect.Effect<unknown, unknown, unknown>,
 ) => {
   // Convert path pattern to regex
   const paramNames: string[] = [];
   const pattern = new RegExp(
-    '^' +
-      path
-        .replace(/\//g, '\\/')
-        .replace(/:(\w+)/g, (_, name) => {
-          paramNames.push(name);
-          return '([^/]+)';
-        }) +
-      '$'
+    "^" +
+      path.replace(/\//g, "\\/").replace(/:(\w+)/g, (_, name) => {
+        paramNames.push(name);
+        return "([^/]+)";
+      }) +
+      "$",
   );
 
   routes.push({ method, pattern, paramNames, handler });
@@ -63,211 +71,214 @@ const addRoute = (
 // Health & Root
 // ===========================================================================
 
-addRoute('GET', '/', () =>
+addRoute("GET", "/", () =>
   Effect.succeed({
-    name: 'Paperless Local LLM (TypeScript)',
-    version: '0.1.0',
-    status: 'running',
-  })
+    name: "Paperless Local LLM (TypeScript)",
+    version: "0.1.0",
+    status: "running",
+  }),
 );
 
-addRoute('GET', '/health', () =>
-  Effect.succeed({ status: 'healthy' })
-);
+addRoute("GET", "/health", () => Effect.succeed({ status: "healthy" }));
 
 // ===========================================================================
 // Settings API - /api/settings
 // ===========================================================================
 
-addRoute('GET', '/api/settings', () => settingsHandlers.getSettings);
+addRoute("GET", "/api/settings", () => settingsHandlers.getSettings);
 
-addRoute('PATCH', '/api/settings', (_, body) =>
-  settingsHandlers.updateSettings(body as any)
-);
+addRoute("PATCH", "/api/settings", (_, body) => settingsHandlers.updateSettings(body as any));
 
-addRoute('POST', '/api/settings/test-connection/:service', (params) => {
+addRoute("POST", "/api/settings/test-connection/:service", (params) => {
   switch (params.service) {
-    case 'paperless':
+    case "paperless":
       return settingsHandlers.testPaperlessConnection;
-    case 'ollama':
+    case "ollama":
       return settingsHandlers.testOllamaConnection;
-    case 'mistral':
+    case "mistral":
       return settingsHandlers.testMistralConnection;
-    case 'qdrant':
+    case "qdrant":
       return settingsHandlers.testQdrantConnection;
     default:
-      return Effect.succeed({ status: 'error', message: `Unknown service: ${params.service}`, details: null });
+      return Effect.succeed({
+        status: "error",
+        message: `Unknown service: ${params.service}`,
+        details: null,
+      });
   }
 });
 
-addRoute('GET', '/api/settings/ollama/models', () => settingsHandlers.getOllamaModels);
+addRoute("GET", "/api/settings/ollama/models", () => settingsHandlers.getOllamaModels);
 
-addRoute('GET', '/api/settings/ollama/status', () => settingsHandlers.getOllamaStatus);
+addRoute("GET", "/api/settings/ollama/status", () => settingsHandlers.getOllamaStatus);
 
-addRoute('GET', '/api/settings/mistral/models', () => settingsHandlers.getMistralModels);
+addRoute("GET", "/api/settings/mistral/models", () => settingsHandlers.getMistralModels);
 
-addRoute('GET', '/api/settings/tags/status', () => settingsHandlers.getTagsStatus);
+addRoute("GET", "/api/settings/tags/status", () => settingsHandlers.getTagsStatus);
 
-addRoute('POST', '/api/settings/tags/create', (_, body) => {
+addRoute("POST", "/api/settings/tags/create", (_, body) => {
   const { tag_names } = body as { tag_names?: string[] };
   return settingsHandlers.createWorkflowTags(tag_names ?? []);
 });
 
-addRoute('POST', '/api/settings/tags/fix-colors', () => settingsHandlers.fixWorkflowTagColors);
+addRoute("POST", "/api/settings/tags/fix-colors", () => settingsHandlers.fixWorkflowTagColors);
 
-addRoute('POST', '/api/settings/import-config', () => settingsHandlers.importConfigFromYaml);
+addRoute("POST", "/api/settings/import-config", () => settingsHandlers.importConfigFromYaml);
 
-addRoute('GET', '/api/settings/check-import', () => settingsHandlers.checkAndImportSettings);
+addRoute("GET", "/api/settings/check-import", () => settingsHandlers.checkAndImportSettings);
 
-addRoute('POST', '/api/settings/clear-database', () => settingsHandlers.clearDatabase);
+addRoute("POST", "/api/settings/clear-database", () => settingsHandlers.clearDatabase);
 
 // Processing Logs Settings
-addRoute('GET', '/api/settings/processing-logs/stats', () => settingsHandlers.getProcessingLogStats);
+addRoute(
+  "GET",
+  "/api/settings/processing-logs/stats",
+  () => settingsHandlers.getProcessingLogStats,
+);
 
-addRoute('DELETE', '/api/settings/processing-logs', () => settingsHandlers.clearAllProcessingLogs);
+addRoute("DELETE", "/api/settings/processing-logs", () => settingsHandlers.clearAllProcessingLogs);
 
 // ===========================================================================
 // Pending Reviews API - /api/pending
 // ===========================================================================
 
-addRoute('GET', '/api/pending', () => pendingHandlers.listPendingItems());
+addRoute("GET", "/api/pending", () => pendingHandlers.listPendingItems());
 
-addRoute('GET', '/api/pending/counts', () => pendingHandlers.getPendingCounts);
+addRoute("GET", "/api/pending/counts", () => pendingHandlers.getPendingCounts);
 
-addRoute('GET', '/api/pending/similar', () => pendingHandlers.getSimilarItems);
+addRoute("GET", "/api/pending/similar", () => pendingHandlers.getSimilarItems);
 
-addRoute('GET', '/api/pending/search-entities', () => pendingHandlers.getSearchEntities);
+addRoute("GET", "/api/pending/search-entities", () => pendingHandlers.getSearchEntities);
 
-addRoute('GET', '/api/pending/blocked', () => pendingHandlers.getBlocked);
+addRoute("GET", "/api/pending/blocked", () => pendingHandlers.getBlocked);
 
-addRoute('POST', '/api/pending/merge', (_, body) =>
-  pendingHandlers.mergeSimilarItems(body as any)
-);
+addRoute("POST", "/api/pending/merge", (_, body) => pendingHandlers.mergeSimilarItems(body as any));
 
-addRoute('POST', '/api/pending/bulk', (_, body) =>
-  pendingHandlers.bulkAction(body as any)
-);
+addRoute("POST", "/api/pending/bulk", (_, body) => pendingHandlers.bulkAction(body as any));
 
 // Parameterized routes MUST come after specific routes
-addRoute('GET', '/api/pending/:id', (params) => pendingHandlers.getPendingItem(params.id!));
+addRoute("GET", "/api/pending/:id", (params) => pendingHandlers.getPendingItem(params.id!));
 
-addRoute('POST', '/api/pending/:id/approve', (params, body) =>
-  pendingHandlers.approvePendingItem(params.id!, body as any)
+addRoute("POST", "/api/pending/:id/approve", (params, body) =>
+  pendingHandlers.approvePendingItem(params.id!, body as any),
 );
 
-addRoute('POST', '/api/pending/:id/reject', (params, body) =>
-  pendingHandlers.rejectPendingItem(params.id!, body as any)
+addRoute("POST", "/api/pending/:id/reject", (params, body) =>
+  pendingHandlers.rejectPendingItem(params.id!, body as any),
 );
 
-addRoute('POST', '/api/pending/:id/reject-with-feedback', (params, body) =>
-  pendingHandlers.rejectWithFeedback(params.id!, body as any)
+addRoute("POST", "/api/pending/:id/reject-with-feedback", (params, body) =>
+  pendingHandlers.rejectWithFeedback(params.id!, body as any),
 );
 
-addRoute('POST', '/api/pending/:id/approve-cleanup', (params, body) => {
+addRoute("POST", "/api/pending/:id/approve-cleanup", (params, body) => {
   const { final_name } = body as { final_name?: string };
   return pendingHandlers.approveCleanup(params.id!, final_name);
 });
 
-addRoute('DELETE', '/api/pending/blocked/:blockId', (params) =>
-  pendingHandlers.unblockItem(parseInt(params.blockId!, 10))
+addRoute("DELETE", "/api/pending/blocked/:blockId", (params) =>
+  pendingHandlers.unblockItem(parseInt(params.blockId!, 10)),
 );
 
-addRoute('POST', '/api/pending/blocked', (_, body) =>
-  pendingHandlers.addBlockedSuggestion(body as any)
+addRoute("POST", "/api/pending/blocked", (_, body) =>
+  pendingHandlers.addBlockedSuggestion(body as any),
 );
 
 // ===========================================================================
 // Jobs API - /api/jobs
 // ===========================================================================
 
-addRoute('GET', '/api/jobs/status', () => jobsHandlers.getAllJobStatus);
+addRoute("GET", "/api/jobs/status", () => jobsHandlers.getAllJobStatus);
 
-addRoute('GET', '/api/jobs/status/:jobName', (params) =>
-  jobsHandlers.getJobStatus(params.jobName!)
+addRoute("GET", "/api/jobs/status/:jobName", (params) =>
+  jobsHandlers.getJobStatus(params.jobName!),
 );
 
 // Bootstrap
-addRoute('POST', '/api/jobs/bootstrap/start', (_, body) => {
+addRoute("POST", "/api/jobs/bootstrap/start", (_, body) => {
   const { analysis_type } = body as { analysis_type?: string };
-  return jobsHandlers.startBootstrap(analysis_type ?? 'all');
+  return jobsHandlers.startBootstrap(analysis_type ?? "all");
 });
 
-addRoute('GET', '/api/jobs/bootstrap/status', () => jobsHandlers.getBootstrapStatus);
+addRoute("GET", "/api/jobs/bootstrap/status", () => jobsHandlers.getBootstrapStatus);
 
-addRoute('POST', '/api/jobs/bootstrap/cancel', () => jobsHandlers.cancelBootstrap);
+addRoute("POST", "/api/jobs/bootstrap/cancel", () => jobsHandlers.cancelBootstrap);
 
-addRoute('POST', '/api/jobs/bootstrap/skip', (_, body) => {
+addRoute("POST", "/api/jobs/bootstrap/skip", (_, body) => {
   const { count } = body as { count?: number };
   return jobsHandlers.skipBootstrap(count ?? 1);
 });
 
 // Schema Cleanup
-addRoute('POST', '/api/jobs/schema-cleanup/run', () => jobsHandlers.runSchemaCleanup);
+addRoute("POST", "/api/jobs/schema-cleanup/run", () => jobsHandlers.runSchemaCleanup);
 
-addRoute('GET', '/api/jobs/schema-cleanup/status', () => jobsHandlers.getSchemaCleanupStatus);
+addRoute("GET", "/api/jobs/schema-cleanup/status", () => jobsHandlers.getSchemaCleanupStatus);
 
 // Bulk OCR
-addRoute('POST', '/api/jobs/bulk-ocr/start', (_, body) => {
-  const { docs_per_second, skip_existing } = body as { docs_per_second?: number; skip_existing?: boolean };
+addRoute("POST", "/api/jobs/bulk-ocr/start", (_, body) => {
+  const { docs_per_second, skip_existing } = body as {
+    docs_per_second?: number;
+    skip_existing?: boolean;
+  };
   return jobsHandlers.startBulkOcr(docs_per_second ?? 1, skip_existing ?? true);
 });
 
-addRoute('GET', '/api/jobs/bulk-ocr/status', () => jobsHandlers.getBulkOcrStatus);
+addRoute("GET", "/api/jobs/bulk-ocr/status", () => jobsHandlers.getBulkOcrStatus);
 
-addRoute('POST', '/api/jobs/bulk-ocr/cancel', () => jobsHandlers.cancelBulkOcr);
+addRoute("POST", "/api/jobs/bulk-ocr/cancel", () => jobsHandlers.cancelBulkOcr);
 
 // Bulk Ingest (OCR + Vector DB)
-addRoute('POST', '/api/jobs/bulk-ingest/start', (_, body) => {
+addRoute("POST", "/api/jobs/bulk-ingest/start", (_, body) => {
   return jobsHandlers.startBulkIngest(body as any);
 });
 
-addRoute('GET', '/api/jobs/bulk-ingest/status', () => jobsHandlers.getBulkIngestStatus);
+addRoute("GET", "/api/jobs/bulk-ingest/status", () => jobsHandlers.getBulkIngestStatus);
 
-addRoute('POST', '/api/jobs/bulk-ingest/cancel', () => jobsHandlers.cancelBulkIngest);
+addRoute("POST", "/api/jobs/bulk-ingest/cancel", () => jobsHandlers.cancelBulkIngest);
 
 // Metadata Enhancement
-addRoute('POST', '/api/jobs/metadata-enhancement/run', () =>
-  Effect.succeed({ status: 'started', message: 'Metadata enhancement started' })
+addRoute("POST", "/api/jobs/metadata-enhancement/run", () =>
+  Effect.succeed({ status: "started", message: "Metadata enhancement started" }),
 );
 
 // Job Schedules
-addRoute('GET', '/api/jobs/schedule', () =>
+addRoute("GET", "/api/jobs/schedule", () =>
   Effect.succeed({
     jobs: {
-      schema_cleanup: { enabled: false, schedule: 'daily', cron: '0 2 * * *' },
-      metadata_enhancement: { enabled: false, schedule: 'daily', cron: '0 3 * * *' },
-      bulk_ocr: { enabled: false, schedule: 'daily', cron: '0 4 * * *' },
+      schema_cleanup: { enabled: false, schedule: "daily", cron: "0 2 * * *" },
+      metadata_enhancement: { enabled: false, schedule: "daily", cron: "0 3 * * *" },
+      bulk_ocr: { enabled: false, schedule: "daily", cron: "0 4 * * *" },
     },
-  })
+  }),
 );
 
-addRoute('PATCH', '/api/jobs/schedule', (_, body) =>
-  Effect.succeed({ success: true, ...(body as Record<string, unknown>) })
+addRoute("PATCH", "/api/jobs/schedule", (_, body) =>
+  Effect.succeed({ success: true, ...(body as Record<string, unknown>) }),
 );
 
 // ===========================================================================
 // Settings API - AI Document Types
 // ===========================================================================
 
-addRoute('GET', '/api/settings/ai-document-types', () => settingsHandlers.getAiDocumentTypes);
+addRoute("GET", "/api/settings/ai-document-types", () => settingsHandlers.getAiDocumentTypes);
 
-addRoute('PATCH', '/api/settings/ai-document-types', (_, body) => {
+addRoute("PATCH", "/api/settings/ai-document-types", (_, body) => {
   const { selected_type_ids } = body as { selected_type_ids?: number[] };
   return settingsHandlers.updateAiDocumentTypes(selected_type_ids ?? []);
 });
 
 // Custom fields settings
-addRoute('GET', '/api/settings/custom-fields', () => settingsHandlers.getCustomFields);
+addRoute("GET", "/api/settings/custom-fields", () => settingsHandlers.getCustomFields);
 
-addRoute('PATCH', '/api/settings/custom-fields', (_, body) => {
+addRoute("PATCH", "/api/settings/custom-fields", (_, body) => {
   const { selected_field_ids } = body as { selected_field_ids?: number[] };
   return settingsHandlers.updateCustomFields(selected_field_ids ?? []);
 });
 
 // AI Tags settings
-addRoute('GET', '/api/settings/ai-tags', () => settingsHandlers.getAiTags);
+addRoute("GET", "/api/settings/ai-tags", () => settingsHandlers.getAiTags);
 
-addRoute('PATCH', '/api/settings/ai-tags', (_, body) => {
+addRoute("PATCH", "/api/settings/ai-tags", (_, body) => {
   const { selected_tag_ids } = body as { selected_tag_ids?: number[] };
   return settingsHandlers.updateAiTags(selected_tag_ids ?? []);
 });
@@ -276,24 +287,24 @@ addRoute('PATCH', '/api/settings/ai-tags', (_, body) => {
 // Documents API - /api/documents
 // ===========================================================================
 
-addRoute('GET', '/api/documents/queue', () => documentsHandlers.getQueueStats);
+addRoute("GET", "/api/documents/queue", () => documentsHandlers.getQueueStats);
 
 // NOTE: tag query param is handled in handleRequest() below
-addRoute('GET', '/api/documents/pending', () => documentsHandlers.getPendingDocuments());
+addRoute("GET", "/api/documents/pending", () => documentsHandlers.getPendingDocuments());
 
-addRoute('GET', '/api/documents/:id', (params) =>
-  documentsHandlers.getDocument(parseInt(params.id!, 10))
+addRoute("GET", "/api/documents/:id", (params) =>
+  documentsHandlers.getDocument(parseInt(params.id!, 10)),
 );
 
-addRoute('GET', '/api/documents/:id/content', (params) =>
-  documentsHandlers.getDocumentContent(parseInt(params.id!, 10))
+addRoute("GET", "/api/documents/:id/content", (params) =>
+  documentsHandlers.getDocumentContent(parseInt(params.id!, 10)),
 );
 
-addRoute('GET', '/api/documents/:id/pdf', (params) =>
-  documentsHandlers.getDocumentPdf(parseInt(params.id!, 10))
+addRoute("GET", "/api/documents/:id/pdf", (params) =>
+  documentsHandlers.getDocumentPdf(parseInt(params.id!, 10)),
 );
 
-addRoute('POST', '/api/documents/:id/cleanup-tags', (params, body) => {
+addRoute("POST", "/api/documents/:id/cleanup-tags", (params, body) => {
   const safeBody = (body ?? {}) as { keep_llm_tag?: string };
   return documentsHandlers.cleanupDocumentTags(parseInt(params.id!, 10), safeBody.keep_llm_tag);
 });
@@ -302,141 +313,143 @@ addRoute('POST', '/api/documents/:id/cleanup-tags', (params, body) => {
 // Processing API - /api/processing
 // ===========================================================================
 
-addRoute('POST', '/api/processing/:docId/start', (params, body) => {
+addRoute("POST", "/api/processing/:docId/start", (params, body) => {
   const { step } = body as { step?: string };
   return processingHandlers.startProcessing(parseInt(params.docId!, 10), step);
 });
 
-addRoute('POST', '/api/processing/:docId/confirm', (params) => {
+addRoute("POST", "/api/processing/:docId/confirm", (params) => {
   const confirmed = true; // Default to true for confirmation endpoint
   return processingHandlers.confirmProcessing(parseInt(params.docId!, 10), confirmed);
 });
 
-addRoute('GET', '/api/processing/status', () => processingHandlers.getProcessingStatus);
+addRoute("GET", "/api/processing/status", () => processingHandlers.getProcessingStatus);
 
 // Processing Logs
-addRoute('GET', '/api/processing/:docId/logs', (params) =>
-  processingHandlers.getProcessingLogs(parseInt(params.docId!, 10))
+addRoute("GET", "/api/processing/:docId/logs", (params) =>
+  processingHandlers.getProcessingLogs(parseInt(params.docId!, 10)),
 );
 
-addRoute('DELETE', '/api/processing/:docId/logs', (params) =>
-  processingHandlers.clearProcessingLogs(parseInt(params.docId!, 10))
+addRoute("DELETE", "/api/processing/:docId/logs", (params) =>
+  processingHandlers.clearProcessingLogs(parseInt(params.docId!, 10)),
 );
 
 // Auto Processing
-addRoute('GET', '/api/processing/auto/status', () => processingHandlers.getAutoProcessingStatus);
+addRoute("GET", "/api/processing/auto/status", () => processingHandlers.getAutoProcessingStatus);
 
-addRoute('POST', '/api/processing/auto/trigger', () => processingHandlers.triggerAutoProcessing);
+addRoute("POST", "/api/processing/auto/trigger", () => processingHandlers.triggerAutoProcessing);
 
 // ===========================================================================
 // Metadata API - /api/metadata
 // ===========================================================================
 
 // Tags
-addRoute('GET', '/api/metadata/tags', () => metadataHandlers.listTags);
+addRoute("GET", "/api/metadata/tags", () => metadataHandlers.listTags);
 
-addRoute('GET', '/api/metadata/tags/:tagId', (params) =>
-  metadataHandlers.getTag(parseInt(params.tagId!, 10))
+addRoute("GET", "/api/metadata/tags/:tagId", (params) =>
+  metadataHandlers.getTag(parseInt(params.tagId!, 10)),
 );
 
-addRoute('PUT', '/api/metadata/tags/:tagId', (params, body) =>
-  metadataHandlers.updateTag(parseInt(params.tagId!, 10), body as any)
+addRoute("PUT", "/api/metadata/tags/:tagId", (params, body) =>
+  metadataHandlers.updateTag(parseInt(params.tagId!, 10), body as any),
 );
 
-addRoute('DELETE', '/api/metadata/tags/:tagId', (params) =>
-  metadataHandlers.deleteTag(parseInt(params.tagId!, 10))
+addRoute("DELETE", "/api/metadata/tags/:tagId", (params) =>
+  metadataHandlers.deleteTag(parseInt(params.tagId!, 10)),
 );
 
-addRoute('POST', '/api/metadata/tags/bulk', (_, body) =>
-  metadataHandlers.bulkUpdateTags(body as any)
+addRoute("POST", "/api/metadata/tags/bulk", (_, body) =>
+  metadataHandlers.bulkUpdateTags(body as any),
 );
 
 // Tag Translations
-addRoute('GET', '/api/metadata/tags/:tagId/translations', (params) =>
-  metadataHandlers.getTagTranslations(parseInt(params.tagId!, 10))
+addRoute("GET", "/api/metadata/tags/:tagId/translations", (params) =>
+  metadataHandlers.getTagTranslations(parseInt(params.tagId!, 10)),
 );
 
-addRoute('PUT', '/api/metadata/tags/:tagId/translations/:lang', (params, body) =>
-  metadataHandlers.updateTagTranslation(parseInt(params.tagId!, 10), params.lang!, body as any)
+addRoute("PUT", "/api/metadata/tags/:tagId/translations/:lang", (params, body) =>
+  metadataHandlers.updateTagTranslation(parseInt(params.tagId!, 10), params.lang!, body as any),
 );
 
 // Tag AI Operations
-addRoute('POST', '/api/metadata/tags/:tagId/optimize-description', (params, body) =>
-  metadataHandlers.optimizeTagDescription(parseInt(params.tagId!, 10), body as any)
+addRoute("POST", "/api/metadata/tags/:tagId/optimize-description", (params, body) =>
+  metadataHandlers.optimizeTagDescription(parseInt(params.tagId!, 10), body as any),
 );
 
-addRoute('POST', '/api/metadata/tags/:tagId/translate-description', (params, body) =>
-  metadataHandlers.translateTagDescription(parseInt(params.tagId!, 10), body as any)
+addRoute("POST", "/api/metadata/tags/:tagId/translate-description", (params, body) =>
+  metadataHandlers.translateTagDescription(parseInt(params.tagId!, 10), body as any),
 );
 
 // Custom Fields
-addRoute('GET', '/api/metadata/custom-fields', () => metadataHandlers.listCustomFields);
+addRoute("GET", "/api/metadata/custom-fields", () => metadataHandlers.listCustomFields);
 
-addRoute('GET', '/api/metadata/custom-fields/:fieldId', (params) =>
-  metadataHandlers.getCustomField(parseInt(params.fieldId!, 10))
+addRoute("GET", "/api/metadata/custom-fields/:fieldId", (params) =>
+  metadataHandlers.getCustomField(parseInt(params.fieldId!, 10)),
 );
 
-addRoute('PUT', '/api/metadata/custom-fields/:fieldId', (params, body) =>
-  metadataHandlers.updateCustomField(parseInt(params.fieldId!, 10), body as any)
+addRoute("PUT", "/api/metadata/custom-fields/:fieldId", (params, body) =>
+  metadataHandlers.updateCustomField(parseInt(params.fieldId!, 10), body as any),
 );
 
-addRoute('DELETE', '/api/metadata/custom-fields/:fieldId', (params) =>
-  metadataHandlers.deleteCustomField(parseInt(params.fieldId!, 10))
+addRoute("DELETE", "/api/metadata/custom-fields/:fieldId", (params) =>
+  metadataHandlers.deleteCustomField(parseInt(params.fieldId!, 10)),
 );
 
-addRoute('POST', '/api/metadata/custom-fields/bulk', (_, body) =>
-  metadataHandlers.bulkUpdateCustomFields(body as any)
+addRoute("POST", "/api/metadata/custom-fields/bulk", (_, body) =>
+  metadataHandlers.bulkUpdateCustomFields(body as any),
 );
 
 // ===========================================================================
 // Schema API - /api/schema (Blocked Suggestions)
 // ===========================================================================
 
-addRoute('GET', '/api/schema/blocked', () => schemaHandlers.getBlocked());
+addRoute("GET", "/api/schema/blocked", () => schemaHandlers.getBlocked());
 
-addRoute('POST', '/api/schema/blocked', (_, body) => schemaHandlers.blockSuggestion(body as any));
+addRoute("POST", "/api/schema/blocked", (_, body) => schemaHandlers.blockSuggestion(body as any));
 
-addRoute('DELETE', '/api/schema/blocked/:id', (params) =>
-  schemaHandlers.unblock(parseInt(params.id!, 10))
+addRoute("DELETE", "/api/schema/blocked/:id", (params) =>
+  schemaHandlers.unblock(parseInt(params.id!, 10)),
 );
 
-addRoute('GET', '/api/schema/blocked/check', () => {
+addRoute("GET", "/api/schema/blocked/check", () => {
   // Query params would be handled in request handler
-  return schemaHandlers.checkBlocked('', '');
+  return schemaHandlers.checkBlocked("", "");
 });
 
 // ===========================================================================
 // Translation API - /api/translation
 // ===========================================================================
 
-addRoute('POST', '/api/translation/translate', (_, body) =>
-  translationHandlers.translate(body as any)
+addRoute("POST", "/api/translation/translate", (_, body) =>
+  translationHandlers.translate(body as any),
 );
 
-addRoute('GET', '/api/translation/translations/:targetLang', (params) =>
-  translationHandlers.getTranslations(params.targetLang!)
+addRoute("GET", "/api/translation/translations/:targetLang", (params) =>
+  translationHandlers.getTranslations(params.targetLang!),
 );
 
-addRoute('POST', '/api/translation/cache/clear', (_, body) => {
+addRoute("POST", "/api/translation/cache/clear", (_, body) => {
   const { target_lang, content_type } = body as { target_lang?: string; content_type?: string };
   return translationHandlers.clearCache(target_lang, content_type);
 });
 
-addRoute('GET', '/api/translation/languages', () => translationHandlers.getLanguages);
+addRoute("GET", "/api/translation/languages", () => translationHandlers.getLanguages);
 
 // ===========================================================================
 // Search API - /api/search
 // ===========================================================================
 
 // NOTE: query params (q, limit) are handled in handleRequest() below
-addRoute('GET', '/api/search', () => searchHandlers.searchDocuments(''));
-addRoute('POST', '/api/search/index/:docId', (params) => searchHandlers.indexDocument(parseInt(params.docId!, 10)));
+addRoute("GET", "/api/search", () => searchHandlers.searchDocuments(""));
+addRoute("POST", "/api/search/index/:docId", (params) =>
+  searchHandlers.indexDocument(parseInt(params.docId!, 10)),
+);
 
 // ===========================================================================
 // Chat API - /api/chat
 // ===========================================================================
 
-addRoute('POST', '/api/chat', (_, body) => {
+addRoute("POST", "/api/chat", (_, body) => {
   const { messages } = body as { messages?: chatHandlers.ChatMessage[] };
   return chatHandlers.chatWithDocuments(messages ?? []);
 });
@@ -453,7 +466,7 @@ const matchRoute = (method: string, path: string): RouteMatch | null => {
     if (match) {
       const params: Record<string, string> = {};
       route.paramNames.forEach((name, i) => {
-        params[name] = match[i + 1] ?? '';
+        params[name] = match[i + 1] ?? "";
       });
       return { handler: route.handler, params };
     }
@@ -468,42 +481,53 @@ const matchRoute = (method: string, path: string): RouteMatch | null => {
 export const handleRequest = (
   req: IncomingMessage,
   res: ServerResponse,
-  body: unknown
+  body: unknown,
 ): Effect.Effect<unknown, unknown, unknown> => {
   const method = req.method as HttpMethod;
-  const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+  const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
   const path = url.pathname;
 
   // Add query params handling
-  const queryType = url.searchParams.get('type');
+  const queryType = url.searchParams.get("type");
 
   const match = matchRoute(method, path);
 
   if (!match) {
     return Effect.succeed({
       status: 404,
-      error: 'Not Found',
+      error: "Not Found",
       message: `No handler for ${method} ${path}`,
     });
   }
 
   // Inject query params if applicable
-  if (queryType && path === '/api/pending') {
+  if (queryType && path === "/api/pending") {
     return pendingHandlers.listPendingItems(queryType);
   }
 
   // Handle tag filter for documents/pending
-  const queryTag = url.searchParams.get('tag');
-  if (path === '/api/documents/pending' && queryTag) {
+  const queryTag = url.searchParams.get("tag");
+  if (path === "/api/documents/pending" && queryTag) {
     return documentsHandlers.getPendingDocuments(queryTag);
   }
 
   // Handle search query params
-  if (path === '/api/search') {
-    const q = url.searchParams.get('q') ?? '';
-    const parsedLimit = parseInt(url.searchParams.get('limit') ?? '10', 10);
+  if (path === "/api/search") {
+    const q = url.searchParams.get("q") ?? "";
+    const parsedLimit = parseInt(url.searchParams.get("limit") ?? "10", 10);
     const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 100) : 10;
     return searchHandlers.searchDocuments(q, limit);
+  }
+
+  if (path === "/api/schema/blocked" && method === "GET") {
+    return schemaHandlers.getBlocked(url.searchParams.get("block_type") ?? undefined);
+  }
+
+  if (path === "/api/schema/blocked/check" && method === "GET") {
+    return schemaHandlers.checkBlocked(
+      url.searchParams.get("name") ?? "",
+      url.searchParams.get("block_type") ?? "",
+    );
   }
 
   return match.handler(match.params, body);

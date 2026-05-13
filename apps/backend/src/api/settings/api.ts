@@ -1,7 +1,7 @@
 /**
  * Settings API definition.
  */
-import { Schema } from 'effect';
+import { Schema } from "effect";
 
 // ===========================================================================
 // Schemas
@@ -33,6 +33,7 @@ export type TagsConfig = Schema.Schema.Type<typeof TagsConfigSchema>;
 export const SettingsSchema = Schema.Struct({
   paperless_url: Schema.NullOr(Schema.String),
   paperless_token: Schema.NullOr(Schema.String),
+  paperless_token_configured: Schema.Boolean.pipe(Schema.optional),
   paperless_external_url: Schema.NullOr(Schema.String),
   ollama_url: Schema.NullOr(Schema.String),
   ollama_model_large: Schema.NullOr(Schema.String),
@@ -40,6 +41,7 @@ export const SettingsSchema = Schema.Struct({
   ollama_embedding_model: Schema.NullOr(Schema.String),
   ollama_model_translation: Schema.NullOr(Schema.String),
   mistral_api_key: Schema.NullOr(Schema.String),
+  mistral_api_key_configured: Schema.Boolean.pipe(Schema.optional),
   mistral_model: Schema.NullOr(Schema.String),
   qdrant_url: Schema.NullOr(Schema.String),
   qdrant_collection: Schema.NullOr(Schema.String),
@@ -52,6 +54,10 @@ export const SettingsSchema = Schema.Struct({
   confirmation_max_retries: Schema.Number,
   language: Schema.String,
   debug: Schema.Boolean,
+  debug_log_level: Schema.String,
+  debug_log_prompts: Schema.Boolean,
+  debug_log_responses: Schema.Boolean,
+  debug_save_processing_history: Schema.Boolean,
   tags: TagsConfigSchema,
   // Pipeline settings
   pipeline_ocr: Schema.Boolean,
@@ -61,6 +67,7 @@ export const SettingsSchema = Schema.Struct({
   pipeline_document_type: Schema.Boolean,
   pipeline_tags: Schema.Boolean,
   pipeline_custom_fields: Schema.Boolean,
+  pipeline_document_links: Schema.Boolean,
 });
 
 export type Settings = Schema.Schema.Type<typeof SettingsSchema>;
@@ -87,6 +94,10 @@ export const SettingsUpdateSchema = Schema.Struct({
   confirmation_max_retries: Schema.Number.pipe(Schema.optional),
   language: Schema.String.pipe(Schema.optional),
   debug: Schema.Boolean.pipe(Schema.optional),
+  debug_log_level: Schema.String.pipe(Schema.optional),
+  debug_log_prompts: Schema.Boolean.pipe(Schema.optional),
+  debug_log_responses: Schema.Boolean.pipe(Schema.optional),
+  debug_save_processing_history: Schema.Boolean.pipe(Schema.optional),
   // Pipeline settings
   pipeline_ocr: Schema.Boolean.pipe(Schema.optional),
   pipeline_summary: Schema.Boolean.pipe(Schema.optional),
@@ -95,12 +106,14 @@ export const SettingsUpdateSchema = Schema.Struct({
   pipeline_document_type: Schema.Boolean.pipe(Schema.optional),
   pipeline_tags: Schema.Boolean.pipe(Schema.optional),
   pipeline_custom_fields: Schema.Boolean.pipe(Schema.optional),
+  pipeline_document_links: Schema.Boolean.pipe(Schema.optional),
+  tags: TagsConfigSchema.pipe(Schema.optional),
 });
 
 export type SettingsUpdate = Schema.Schema.Type<typeof SettingsUpdateSchema>;
 
 export const ConnectionTestResultSchema = Schema.Struct({
-  status: Schema.Literal('success', 'error', 'warning'),
+  status: Schema.Literal("success", "error", "warning"),
   message: Schema.String,
   details: Schema.NullOr(Schema.Unknown),
 });

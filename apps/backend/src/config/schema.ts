@@ -1,7 +1,7 @@
 /**
  * Configuration schema definitions using Effect Schema.
  */
-import { Schema } from 'effect';
+import { Schema } from "effect";
 
 // Paperless configuration
 export const PaperlessConfigSchema = Schema.Struct({

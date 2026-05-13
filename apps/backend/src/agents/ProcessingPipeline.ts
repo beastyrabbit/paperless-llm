@@ -1,20 +1,20 @@
 /**
  * Pi-backed document processing pipeline.
  */
-import { Context, Effect, Layer, Stream, pipe } from "effect";
+import { Context, Effect, Layer, Stream } from "effect";
+import { AgentError } from "../errors/index.js";
+import type { Document } from "../models/index.js";
 import {
   ConfigService,
   PaperlessService,
   QdrantService,
   TinyBaseService,
 } from "../services/index.js";
-import { AgentError } from "../errors/index.js";
-import type { Document } from "../models/index.js";
 import { OCRAgentService } from "./OCRAgent.js";
 import {
-  PiDocumentAgentService,
   type DocumentAgentRuntimeEvent,
   type MetadataPolicy,
+  PiDocumentAgentService,
 } from "./PiDocumentAgent.js";
 
 export type ProcessingState = "todo" | "ocr" | "metadata" | "review" | "index" | "done" | "failed";
@@ -126,6 +126,36 @@ export const ProcessingPipelineServiceLive = Layer.effect(
     const documentAgent = yield* PiDocumentAgentService;
     const tagConfig = config.config.tags;
     const defaultPipelineConfig = config.config.pipeline;
+    const activeDocumentIds = new Set<number>();
+
+    const acquireDocumentLock = (docId: number) =>
+      Effect.gen(function* () {
+        if (activeDocumentIds.has(docId)) {
+          return yield* Effect.fail(
+            new AgentError({
+              message: `Document ${docId} is already being processed`,
+              agent: "pipeline",
+            }),
+          );
+        }
+        activeDocumentIds.add(docId);
+      });
+
+    const withDocumentLock = <A, E>(
+      docId: number,
+      effect: Effect.Effect<A, E>,
+    ): Effect.Effect<A, E | AgentError> =>
+      acquireDocumentLock(docId).pipe(
+        Effect.flatMap(() =>
+          effect.pipe(
+            Effect.ensuring(
+              Effect.sync(() => {
+                activeDocumentIds.delete(docId);
+              }),
+            ),
+          ),
+        ),
+      );
 
     const getPipelineConfig = () =>
       Effect.gen(function* () {
@@ -198,29 +228,27 @@ export const ProcessingPipelineServiceLive = Layer.effect(
       return "todo";
     };
 
-    const workflowTags = [
-      tagConfig.todo,
-      tagConfig.ocr,
-      tagConfig.metadata,
-      tagConfig.review,
-      tagConfig.index,
-      tagConfig.done,
-      tagConfig.failed,
-    ];
+    const workflowTagNames = new Set(
+      Object.values(tagConfig).filter((name): name is string => typeof name === "string" && !!name),
+    );
 
     const transition = (docId: number, toTag: string) =>
       Effect.gen(function* () {
-        yield* Effect.all(
-          workflowTags
-            .filter((tagName) => tagName !== toTag)
-            .map((tagName) =>
-              paperless
-                .removeTagFromDocument(docId, tagName)
-                .pipe(Effect.catchAll(() => Effect.void)),
-            ),
+        const [doc, tags, toTagId] = yield* Effect.all(
+          [paperless.getDocument(docId), paperless.getTags(), paperless.getOrCreateTag(toTag)],
           { concurrency: "unbounded" },
         );
-        yield* paperless.addTagToDocument(docId, toTag).pipe(Effect.catchAll(() => Effect.void));
+        const workflowTagIds = new Set(
+          tags.filter((tag) => workflowTagNames.has(tag.name)).map((tag) => tag.id),
+        );
+        let nextTags = doc.tags.filter((id) => !workflowTagIds.has(id) || id === toTagId);
+        if (!nextTags.includes(toTagId)) {
+          nextTags = [...nextTags, toTagId];
+        }
+        if (nextTags.length !== doc.tags.length || nextTags.some((id) => !doc.tags.includes(id))) {
+          yield* paperless.updateDocument(docId, { tags: nextTags });
+        }
+        yield* refreshTagMap;
       });
 
     const indexDocument = (docId: number) =>
@@ -250,16 +278,30 @@ export const ProcessingPipelineServiceLive = Layer.effect(
           ? documentTypes.find((entry) => entry.id === doc.document_type)?.name
           : undefined;
 
-        yield* qdrant
-          .upsertDocument({
+        const indexResult = yield* Effect.either(
+          qdrant.upsertDocument({
             docId: doc.id,
             title: doc.title || `Document ${doc.id}`,
             content: (doc.content ?? "").slice(0, 10_000),
             tags: tagNames,
             correspondent,
             documentType,
-          })
-          .pipe(Effect.catchAll(() => Effect.void));
+          }),
+        );
+
+        if (indexResult._tag === "Left") {
+          const error = String(indexResult.left);
+          yield* tinybase
+            .addProcessingLog({
+              docId,
+              timestamp: new Date().toISOString(),
+              step: "qdrant_index",
+              eventType: "error",
+              data: { indexed: false, error },
+            })
+            .pipe(Effect.catchAll(() => Effect.void));
+          return { indexed: false, error };
+        }
 
         yield* tinybase
           .addProcessingLog({
@@ -306,6 +348,10 @@ export const ProcessingPipelineServiceLive = Layer.effect(
       Effect.gen(function* () {
         yield* transition(docId, tagConfig.index);
         const result = yield* indexDocument(docId);
+        if (result.error) {
+          yield* transition(docId, tagConfig.failed);
+          return result;
+        }
         yield* transition(docId, tagConfig.done);
         yield* tinybase
           .addProcessingLog({
@@ -329,159 +375,181 @@ export const ProcessingPipelineServiceLive = Layer.effect(
       getCurrentState,
 
       processDocument: (input) =>
-        Effect.gen(function* () {
-          const steps: Record<string, PipelineStepResult> = {};
-          const pipelineConfig = yield* getPipelineConfig();
-          let doc = yield* paperless.getDocument(input.docId);
-          let state = getCurrentState(doc);
+        withDocumentLock(
+          input.docId,
+          Effect.gen(function* () {
+            const steps: Record<string, PipelineStepResult> = {};
+            const pipelineConfig = yield* getPipelineConfig();
+            let doc = yield* paperless.getDocument(input.docId);
+            let state = getCurrentState(doc);
 
-          if (state === "done") {
-            return { docId: input.docId, success: true, needsReview: false, steps };
-          }
-
-          if (state === "failed") {
-            yield* transition(input.docId, tagConfig.todo);
-            state = "todo";
-          }
-
-          if (state === "review" && !input.resume) {
-            return { docId: input.docId, success: false, needsReview: true, steps };
-          }
-          if (state === "review" && input.resume) {
-            yield* transition(input.docId, tagConfig.metadata);
-            state = "metadata";
-          }
-
-          if (state === "todo" && pipelineConfig.enableOcr) {
-            yield* transition(input.docId, tagConfig.ocr);
-            state = "ocr";
-            const result = yield* ocrAgent
-              .process({ docId: input.docId, mockMode: input.mockOcr })
-              .pipe(
-                Effect.catchAll((error) =>
-                  Effect.succeed({
-                    success: false,
-                    docId: input.docId,
-                    textLength: 0,
-                    pages: 0,
-                    error: String(error),
-                  }),
-                ),
-              );
-            steps["ocr"] = { step: "ocr", success: result.success, data: result };
-            if (!result.success) {
-              yield* transition(input.docId, tagConfig.failed);
-              return {
-                docId: input.docId,
-                success: false,
-                needsReview: false,
-                steps,
-                error: result.error ?? "OCR failed",
-              };
+            if (state === "done") {
+              return { docId: input.docId, success: true, needsReview: false, steps };
             }
-            yield* transition(input.docId, tagConfig.metadata);
-            doc = yield* paperless.getDocument(input.docId);
-            state = getCurrentState(doc);
-          } else if (state === "todo") {
-            yield* transition(input.docId, tagConfig.metadata);
-            state = "metadata";
-          } else if (state === "ocr") {
-            return {
-              docId: input.docId,
-              success: false,
-              needsReview: false,
-              steps,
-              error: "OCR is already in progress for this document",
-            };
-          }
 
-          if (state === "metadata" && pipelineConfig.enableMetadata) {
-            const result = yield* processMetadata(
-              input.docId,
-              pipelineConfig.metadataPolicy,
-              input.auto,
-              input.resume,
-              input.onAgentEvent,
-            );
-            steps["metadata"] = { step: "metadata", success: result.success, data: result };
-            if (result.needsReview) {
+            if (state === "failed") {
+              yield* transition(input.docId, tagConfig.todo);
+              state = "todo";
+            }
+
+            if (state === "review" && !input.resume) {
               return { docId: input.docId, success: false, needsReview: true, steps };
             }
-            if (!result.success) {
+            if (state === "review" && input.resume) {
+              yield* transition(input.docId, tagConfig.metadata);
+              state = "metadata";
+            }
+
+            if (state === "todo" && pipelineConfig.enableOcr) {
+              yield* transition(input.docId, tagConfig.ocr);
+              state = "ocr";
+              const result = yield* ocrAgent
+                .process({ docId: input.docId, mockMode: input.mockOcr })
+                .pipe(
+                  Effect.catchAll((error) =>
+                    Effect.succeed({
+                      success: false,
+                      docId: input.docId,
+                      textLength: 0,
+                      pages: 0,
+                      error: String(error),
+                    }),
+                  ),
+                );
+              steps["ocr"] = { step: "ocr", success: result.success, data: result };
+              if (!result.success) {
+                yield* transition(input.docId, tagConfig.failed);
+                return {
+                  docId: input.docId,
+                  success: false,
+                  needsReview: false,
+                  steps,
+                  error: result.error ?? "OCR failed",
+                };
+              }
+              yield* transition(input.docId, tagConfig.metadata);
+              doc = yield* paperless.getDocument(input.docId);
+              state = getCurrentState(doc);
+            } else if (state === "todo") {
+              yield* transition(input.docId, tagConfig.metadata);
+              state = "metadata";
+            } else if (state === "ocr") {
               return {
                 docId: input.docId,
                 success: false,
                 needsReview: false,
                 steps,
-                error: result.error ?? "Metadata agent failed",
+                error: "OCR is already in progress for this document",
               };
             }
-            state = "index";
-          } else if (state === "metadata") {
-            yield* transition(input.docId, tagConfig.index);
-            state = "index";
-          }
 
-          if (state === "index") {
-            const result = yield* processIndex(input.docId);
-            steps["index"] = { step: "index", success: true, data: result };
-          }
+            if (state === "metadata" && pipelineConfig.enableMetadata) {
+              const result = yield* processMetadata(
+                input.docId,
+                pipelineConfig.metadataPolicy,
+                input.auto,
+                input.resume,
+                input.onAgentEvent,
+              );
+              steps["metadata"] = { step: "metadata", success: result.success, data: result };
+              if (result.needsReview) {
+                return { docId: input.docId, success: false, needsReview: true, steps };
+              }
+              if (!result.success) {
+                return {
+                  docId: input.docId,
+                  success: false,
+                  needsReview: false,
+                  steps,
+                  error: result.error ?? "Metadata agent failed",
+                };
+              }
+              state = "index";
+            } else if (state === "metadata") {
+              yield* transition(input.docId, tagConfig.index);
+              state = "index";
+            }
 
-          return { docId: input.docId, success: true, needsReview: false, steps };
-        }).pipe(
-          Effect.mapError(
-            (error) =>
-              new AgentError({
-                message: `Pipeline processing failed: ${String(error)}`,
-                agent: "pipeline",
-                cause: error,
-              }),
+            if (state === "index") {
+              const result = yield* processIndex(input.docId);
+              steps["index"] = {
+                step: "index",
+                success: !result.error,
+                data: result,
+                error: result.error,
+              };
+              if (result.error) {
+                return {
+                  docId: input.docId,
+                  success: false,
+                  needsReview: false,
+                  steps,
+                  error: result.error,
+                };
+              }
+            }
+
+            return { docId: input.docId, success: true, needsReview: false, steps };
+          }).pipe(
+            Effect.mapError((error) =>
+              error instanceof AgentError
+                ? error
+                : new AgentError({
+                    message: `Pipeline processing failed: ${String(error)}`,
+                    agent: "pipeline",
+                    cause: error,
+                  }),
+            ),
           ),
         ),
 
       processStep: (docId, step) =>
-        Effect.gen(function* () {
-          const normalized = normalizeStep(step);
-          const pipelineConfig = yield* getPipelineConfig();
-          if (normalized === "ocr") {
-            const doc = yield* paperless.getDocument(docId);
-            if (getCurrentState(doc) === "ocr") {
-              return {
-                step: "ocr",
-                success: false,
-                data: {
+        withDocumentLock(
+          docId,
+          Effect.gen(function* () {
+            const normalized = normalizeStep(step);
+            const pipelineConfig = yield* getPipelineConfig();
+            if (normalized === "ocr") {
+              const doc = yield* paperless.getDocument(docId);
+              if (getCurrentState(doc) === "ocr") {
+                return {
+                  step: "ocr",
                   success: false,
-                  docId,
-                  textLength: 0,
-                  pages: 0,
-                  skipped: true,
-                  skipReason: "ocr_already_running",
+                  data: {
+                    success: false,
+                    docId,
+                    textLength: 0,
+                    pages: 0,
+                    skipped: true,
+                    skipReason: "ocr_already_running",
+                    error: "OCR is already in progress for this document",
+                  },
                   error: "OCR is already in progress for this document",
-                },
-                error: "OCR is already in progress for this document",
-              };
+                };
+              }
+              yield* transition(docId, tagConfig.ocr);
+              const result = yield* ocrAgent.process({ docId });
+              if (result.success) {
+                yield* transition(docId, tagConfig.metadata);
+              }
+              return { step: "ocr", success: result.success, data: result };
             }
-            yield* transition(docId, tagConfig.ocr);
-            const result = yield* ocrAgent.process({ docId });
-            if (result.success) {
-              yield* transition(docId, tagConfig.metadata);
+            if (normalized === "metadata") {
+              const result = yield* processMetadata(docId, pipelineConfig.metadataPolicy);
+              return { step, success: result.success, data: result };
             }
-            return { step: "ocr", success: result.success, data: result };
-          }
-          if (normalized === "metadata") {
-            const result = yield* processMetadata(docId, pipelineConfig.metadataPolicy);
-            return { step, success: result.success, data: result };
-          }
-          const result = yield* processIndex(docId);
-          return { step: "index", success: true, data: result };
-        }).pipe(
-          Effect.mapError(
-            (error) =>
-              new AgentError({
-                message: `Pipeline step '${step}' failed: ${String(error)}`,
-                agent: "pipeline",
-                cause: error,
-              }),
+            const result = yield* processIndex(docId);
+            return { step: "index", success: !result.error, data: result, error: result.error };
+          }).pipe(
+            Effect.mapError((error) =>
+              error instanceof AgentError
+                ? error
+                : new AgentError({
+                    message: `Pipeline step '${step}' failed: ${String(error)}`,
+                    agent: "pipeline",
+                    cause: error,
+                  }),
+            ),
           ),
         ),
 
@@ -540,24 +608,33 @@ export const ProcessingPipelineServiceLive = Layer.effect(
             const normalized = normalizeStep(step);
             const result =
               normalized === "metadata"
-                ? yield* Effect.gen(function* () {
-                    const pipelineConfig = yield* getPipelineConfig();
-                    const metadataResult = yield* processMetadata(
-                      docId,
-                      pipelineConfig.metadataPolicy,
-                      undefined,
-                      undefined,
-                      (agentEvent) => emit.single(agentEvent),
-                    );
-                    return {
-                      step,
-                      success: metadataResult.success,
-                      data: metadataResult,
-                      error: metadataResult.error,
-                    };
-                  })
+                ? yield* withDocumentLock(
+                    docId,
+                    Effect.gen(function* () {
+                      const pipelineConfig = yield* getPipelineConfig();
+                      const metadataResult = yield* processMetadata(
+                        docId,
+                        pipelineConfig.metadataPolicy,
+                        undefined,
+                        undefined,
+                        (agentEvent) => emit.single(agentEvent),
+                      );
+                      return {
+                        step,
+                        success: metadataResult.success,
+                        data: metadataResult,
+                        error: metadataResult.error,
+                      };
+                    }),
+                  )
                 : yield* service.processStep(docId, step);
             yield* Effect.sync(() => {
+              const data = result.data as { needsReview?: boolean; paused?: boolean } | undefined;
+              if (data?.needsReview || data?.paused) {
+                emit.single(event({ type: "needs_review", docId, step, data }));
+                emit.end();
+                return;
+              }
               emit.single(
                 event({
                   type: result.success ? "step_complete" : "step_error",
@@ -567,10 +644,6 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                   message: result.error,
                 }),
               );
-              const data = result.data as { needsReview?: boolean; paused?: boolean } | undefined;
-              if (data?.needsReview || data?.paused) {
-                emit.single(event({ type: "needs_review", docId, step, data }));
-              }
               emit.end();
             });
           }).pipe(

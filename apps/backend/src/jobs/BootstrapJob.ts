@@ -4,11 +4,11 @@
  * Catalog discovery has moved to the manual consolidation agent. This job keeps
  * the existing API contract while no longer invoking legacy graph processing.
  */
-import { Context, Effect, Fiber, Layer, Ref } from 'effect';
-import { PaperlessService, TinyBaseService } from '../services/index.js';
-import { JobError } from '../errors/index.js';
+import { Context, Effect, Fiber, Layer, Ref } from "effect";
+import { JobError } from "../errors/index.js";
+import { PaperlessService, TinyBaseService } from "../services/index.js";
 
-export type AnalysisType = 'all' | 'correspondents' | 'document_types' | 'tags';
+export type AnalysisType = "all" | "correspondents" | "document_types" | "tags";
 
 export interface SuggestionsByType {
   correspondents: number;
@@ -17,7 +17,7 @@ export interface SuggestionsByType {
 }
 
 export interface BootstrapProgress {
-  status: 'idle' | 'running' | 'completed' | 'cancelled' | 'error';
+  status: "idle" | "running" | "completed" | "cancelled" | "error";
   analysisType: AnalysisType;
   total: number;
   processed: number;
@@ -42,7 +42,7 @@ export interface BootstrapJobService {
   readonly skip: (count?: number) => Effect.Effect<void, never>;
 }
 
-export const BootstrapJobService = Context.GenericTag<BootstrapJobService>('BootstrapJobService');
+export const BootstrapJobService = Context.GenericTag<BootstrapJobService>("BootstrapJobService");
 
 const emptySuggestions = (): SuggestionsByType => ({
   correspondents: 0,
@@ -56,8 +56,8 @@ export const BootstrapJobServiceLive = Layer.effect(
     const paperless = yield* PaperlessService;
     const tinybase = yield* TinyBaseService;
     const progressRef = yield* Ref.make<BootstrapProgress>({
-      status: 'idle',
-      analysisType: 'all',
+      status: "idle",
+      analysisType: "all",
       total: 0,
       processed: 0,
       suggestionsFound: 0,
@@ -81,13 +81,19 @@ export const BootstrapJobServiceLive = Layer.effect(
       Effect.gen(function* () {
         const started = Date.now();
         try {
-          const [documents, totalDocuments, correspondents, documentTypes, tags] = yield* Effect.all([
-            paperless.getDocuments({ page: 1, pageSize: 1000 }).pipe(Effect.catchAll(() => Effect.succeed([]))),
-            paperless.getTotalDocumentCount().pipe(Effect.catchAll(() => Effect.succeed(0))),
-            paperless.getCorrespondents().pipe(Effect.catchAll(() => Effect.succeed([]))),
-            paperless.getDocumentTypes().pipe(Effect.catchAll(() => Effect.succeed([]))),
-            paperless.getTags().pipe(Effect.catchAll(() => Effect.succeed([]))),
-          ], { concurrency: 'unbounded' });
+          const [documents, totalDocuments, correspondents, documentTypes, tags] =
+            yield* Effect.all(
+              [
+                paperless
+                  .getDocuments({ page: 1, pageSize: 1000 })
+                  .pipe(Effect.catchAll(() => Effect.succeed([]))),
+                paperless.getTotalDocumentCount().pipe(Effect.catchAll(() => Effect.succeed(0))),
+                paperless.getCorrespondents().pipe(Effect.catchAll(() => Effect.succeed([]))),
+                paperless.getDocumentTypes().pipe(Effect.catchAll(() => Effect.succeed([]))),
+                paperless.getTags().pipe(Effect.catchAll(() => Effect.succeed([]))),
+              ],
+              { concurrency: "unbounded" },
+            );
 
           yield* Ref.update(progressRef, (progress) => ({
             ...progress,
@@ -100,7 +106,7 @@ export const BootstrapJobServiceLive = Layer.effect(
             if (yield* Ref.get(cancelRef)) {
               yield* Ref.update(progressRef, (progress) => ({
                 ...progress,
-                status: 'cancelled' as const,
+                status: "cancelled" as const,
                 currentDocId: null,
                 currentDocTitle: null,
                 completedAt: new Date().toISOString(),
@@ -124,16 +130,18 @@ export const BootstrapJobServiceLive = Layer.effect(
               currentDocTitle: doc.title,
             }));
 
-            yield* tinybase.addProcessingLog({
-              docId: doc.id,
-              timestamp: new Date().toISOString(),
-              step: 'bootstrap',
-              eventType: 'result',
-              data: {
-                compatibility: true,
-                message: 'Bootstrap discovery is disabled; use manual consolidation.',
-              },
-            }).pipe(Effect.catchAll(() => Effect.void));
+            yield* tinybase
+              .addProcessingLog({
+                docId: doc.id,
+                timestamp: new Date().toISOString(),
+                step: "bootstrap",
+                eventType: "result",
+                data: {
+                  compatibility: true,
+                  message: "Bootstrap discovery is disabled; use manual consolidation.",
+                },
+              })
+              .pipe(Effect.catchAll(() => Effect.void));
 
             yield* Ref.update(progressRef, (progress) => {
               const processed = progress.processed + 1;
@@ -144,14 +152,15 @@ export const BootstrapJobServiceLive = Layer.effect(
                 ...progress,
                 processed,
                 avgSecondsPerDocument,
-                estimatedRemainingSeconds: avgSecondsPerDocument === null ? null : remaining * avgSecondsPerDocument,
+                estimatedRemainingSeconds:
+                  avgSecondsPerDocument === null ? null : remaining * avgSecondsPerDocument,
               };
             });
           }
 
           yield* Ref.update(progressRef, (progress) => ({
             ...progress,
-            status: 'completed' as const,
+            status: "completed" as const,
             currentDocId: null,
             currentDocTitle: null,
             completedAt: new Date().toISOString(),
@@ -159,7 +168,7 @@ export const BootstrapJobServiceLive = Layer.effect(
         } catch (error) {
           yield* Ref.update(progressRef, (progress) => ({
             ...progress,
-            status: 'error' as const,
+            status: "error" as const,
             currentDocId: null,
             currentDocTitle: null,
             completedAt: new Date().toISOString(),
@@ -172,14 +181,16 @@ export const BootstrapJobServiceLive = Layer.effect(
       start: (analysisType) =>
         Effect.gen(function* () {
           const progress = yield* Ref.get(progressRef);
-          if (progress.status === 'running') {
-            return yield* Effect.fail(new JobError({ message: 'Bootstrap job already running', jobName: 'bootstrap' }));
+          if (progress.status === "running") {
+            return yield* Effect.fail(
+              new JobError({ message: "Bootstrap job already running", jobName: "bootstrap" }),
+            );
           }
 
           yield* Ref.set(cancelRef, false);
           yield* Ref.set(skipRef, 0);
           yield* Ref.set(progressRef, {
-            status: 'running',
+            status: "running",
             analysisType,
             total: 0,
             processed: 0,
@@ -203,8 +214,12 @@ export const BootstrapJobServiceLive = Layer.effect(
           Effect.mapError((error) =>
             error instanceof JobError
               ? error
-              : new JobError({ message: `Bootstrap start failed: ${String(error)}`, jobName: 'bootstrap', cause: error })
-          )
+              : new JobError({
+                  message: `Bootstrap start failed: ${String(error)}`,
+                  jobName: "bootstrap",
+                  cause: error,
+                }),
+          ),
         ),
 
       getProgress: () => Ref.get(progressRef),
@@ -219,12 +234,13 @@ export const BootstrapJobServiceLive = Layer.effect(
           }
           yield* Ref.update(progressRef, (progress) => ({
             ...progress,
-            status: progress.status === 'running' ? 'cancelled' : progress.status,
-            completedAt: progress.status === 'running' ? new Date().toISOString() : progress.completedAt,
+            status: progress.status === "running" ? "cancelled" : progress.status,
+            completedAt:
+              progress.status === "running" ? new Date().toISOString() : progress.completedAt,
           }));
         }).pipe(Effect.catchAll(() => Effect.void)),
 
       skip: (count = 1) => Ref.update(skipRef, (current) => current + Math.max(1, count)),
     };
-  })
+  }),
 );

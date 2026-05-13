@@ -5,10 +5,11 @@
  * Tests only health/root endpoints and 404 handling since other routes
  * require service dependencies.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Effect } from 'effect';
-import type { IncomingMessage, ServerResponse } from 'node:http';
-import { handleRequest } from '../../src/api/index.js';
+
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { Effect } from "effect";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { handleRequest } from "../../src/api/index.js";
 
 // ===========================================================================
 // Mock Request/Response helpers
@@ -17,12 +18,12 @@ import { handleRequest } from '../../src/api/index.js';
 function createMockRequest(
   method: string,
   url: string,
-  headers: Record<string, string> = {}
+  headers: Record<string, string> = {},
 ): IncomingMessage {
   return {
     method,
     url,
-    headers: { host: 'localhost:8001', ...headers },
+    headers: { host: "localhost:8001", ...headers },
   } as IncomingMessage;
 }
 
@@ -34,116 +35,116 @@ function createMockResponse(): ServerResponse {
 // Test Suites
 // ===========================================================================
 
-describe('API Router', () => {
-  describe('Health Endpoints', () => {
-    it('should handle GET / root endpoint', async () => {
-      const req = createMockRequest('GET', '/');
+describe("API Router", () => {
+  describe("Health Endpoints", () => {
+    it("should handle GET / root endpoint", async () => {
+      const req = createMockRequest("GET", "/");
       const res = createMockResponse();
 
       const result = await Effect.runPromise(handleRequest(req, res, null));
 
       expect(result).toEqual({
-        name: 'Paperless Local LLM (TypeScript)',
-        version: '0.1.0',
-        status: 'running',
+        name: "Paperless Local LLM (TypeScript)",
+        version: "0.1.0",
+        status: "running",
       });
     });
 
-    it('should handle GET /health endpoint', async () => {
-      const req = createMockRequest('GET', '/health');
+    it("should handle GET /health endpoint", async () => {
+      const req = createMockRequest("GET", "/health");
       const res = createMockResponse();
 
       const result = await Effect.runPromise(handleRequest(req, res, null));
 
-      expect(result).toEqual({ status: 'healthy' });
+      expect(result).toEqual({ status: "healthy" });
     });
   });
 
-  describe('Route Matching', () => {
-    it('should return 404 for unknown routes', async () => {
-      const req = createMockRequest('GET', '/unknown/path');
+  describe("Route Matching", () => {
+    it("should return 404 for unknown routes", async () => {
+      const req = createMockRequest("GET", "/unknown/path");
       const res = createMockResponse();
 
       const result = await Effect.runPromise(handleRequest(req, res, null));
 
       expect(result).toMatchObject({
         status: 404,
-        error: 'Not Found',
+        error: "Not Found",
       });
     });
 
-    it('should return 404 for wrong method', async () => {
-      const req = createMockRequest('POST', '/health'); // health is GET only
+    it("should return 404 for wrong method", async () => {
+      const req = createMockRequest("POST", "/health"); // health is GET only
       const res = createMockResponse();
 
       const result = await Effect.runPromise(handleRequest(req, res, null));
 
       expect(result).toMatchObject({
         status: 404,
-        error: 'Not Found',
+        error: "Not Found",
       });
     });
 
-    it('should return 404 for deeply nested unknown path', async () => {
-      const req = createMockRequest('GET', '/api/unknown/nested/path');
+    it("should return 404 for deeply nested unknown path", async () => {
+      const req = createMockRequest("GET", "/api/unknown/nested/path");
       const res = createMockResponse();
 
       const result = await Effect.runPromise(handleRequest(req, res, null));
 
       expect(result).toMatchObject({
         status: 404,
-        error: 'Not Found',
+        error: "Not Found",
       });
     });
 
-    it('should return 404 for partial path match', async () => {
-      const req = createMockRequest('GET', '/api/setting'); // missing 's'
+    it("should return 404 for partial path match", async () => {
+      const req = createMockRequest("GET", "/api/setting"); // missing 's'
       const res = createMockResponse();
 
       const result = await Effect.runPromise(handleRequest(req, res, null));
 
       expect(result).toMatchObject({
         status: 404,
-        error: 'Not Found',
+        error: "Not Found",
       });
     });
   });
 
-  describe('Special Route Handling', () => {
-    it('should return error for unknown test-connection service', async () => {
-      const req = createMockRequest('POST', '/api/settings/test-connection/unknown');
+  describe("Special Route Handling", () => {
+    it("should return error for unknown test-connection service", async () => {
+      const req = createMockRequest("POST", "/api/settings/test-connection/unknown");
       const res = createMockResponse();
 
       const result = await Effect.runPromise(handleRequest(req, res, null));
 
       expect(result).toMatchObject({
-        status: 'error',
-        message: 'Unknown service: unknown',
+        status: "error",
+        message: "Unknown service: unknown",
       });
     });
 
-    it('should return error for invalid service names', async () => {
-      const invalidServices = ['xyz', 'test', 'connection', ''];
+    it("should return error for invalid service names", async () => {
+      const invalidServices = ["xyz", "test", "connection", ""];
 
       for (const service of invalidServices) {
-        if (service === '') continue; // Skip empty - would not match route
+        if (service === "") continue; // Skip empty - would not match route
 
-        const req = createMockRequest('POST', `/api/settings/test-connection/${service}`);
+        const req = createMockRequest("POST", `/api/settings/test-connection/${service}`);
         const res = createMockResponse();
 
         const result = await Effect.runPromise(handleRequest(req, res, null));
 
         expect(result).toMatchObject({
-          status: 'error',
+          status: "error",
           message: `Unknown service: ${service}`,
         });
       }
     });
   });
 
-  describe('URL Parsing', () => {
-    it('should handle URLs with trailing slashes as 404', async () => {
-      const req = createMockRequest('GET', '/health/');
+  describe("URL Parsing", () => {
+    it("should handle URLs with trailing slashes as 404", async () => {
+      const req = createMockRequest("GET", "/health/");
       const res = createMockResponse();
 
       const result = await Effect.runPromise(handleRequest(req, res, null));
@@ -151,19 +152,19 @@ describe('API Router', () => {
       // Trailing slash makes it a different route
       expect(result).toMatchObject({
         status: 404,
-        error: 'Not Found',
+        error: "Not Found",
       });
     });
 
-    it('should handle root path correctly', async () => {
-      const req = createMockRequest('GET', '/');
+    it("should handle root path correctly", async () => {
+      const req = createMockRequest("GET", "/");
       const res = createMockResponse();
 
       const result = await Effect.runPromise(handleRequest(req, res, null));
 
       expect(result).toMatchObject({
-        name: 'Paperless Local LLM (TypeScript)',
-        status: 'running',
+        name: "Paperless Local LLM (TypeScript)",
+        status: "running",
       });
     });
   });

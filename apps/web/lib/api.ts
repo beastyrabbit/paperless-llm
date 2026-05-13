@@ -2,17 +2,14 @@
  * API client for the Paperless Local LLM backend
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE = "";
 
 interface ApiResponse<T> {
   data?: T;
   error?: string;
 }
 
-async function fetchApi<T>(
-  endpoint: string,
-  options?: RequestInit
-): Promise<ApiResponse<T>> {
+async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
   try {
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
@@ -48,16 +45,14 @@ export const settingsApi = {
       method: "POST",
     }),
   // AI Document Types
-  getAiDocumentTypes: () =>
-    fetchApi<AiDocumentTypesResponse>("/api/settings/ai-document-types"),
+  getAiDocumentTypes: () => fetchApi<AiDocumentTypesResponse>("/api/settings/ai-document-types"),
   updateAiDocumentTypes: (selectedTypeIds: number[]) =>
     fetchApi("/api/settings/ai-document-types", {
       method: "PATCH",
       body: JSON.stringify({ selected_type_ids: selectedTypeIds }),
     }),
   // Processing Logs
-  getProcessingLogStats: () =>
-    fetchApi<ProcessingLogStats>("/api/settings/processing-logs/stats"),
+  getProcessingLogStats: () => fetchApi<ProcessingLogStats>("/api/settings/processing-logs/stats"),
   clearAllProcessingLogs: () =>
     fetchApi<{ success: boolean; message: string }>("/api/settings/processing-logs", {
       method: "DELETE",
@@ -72,7 +67,7 @@ export const documentsApi = {
       `/api/documents/pending?${new URLSearchParams({
         ...(tag && { tag }),
         limit: String(limit),
-      })}`
+      })}`,
     ),
   get: (id: number) => fetchApi<DocumentDetail>(`/api/documents/${id}`),
   getContent: (id: number) =>
@@ -108,9 +103,10 @@ export const processingApi = {
     }),
   // Auto Processing
   getAutoStatus: () => fetchApi<AutoProcessingStatus>("/api/processing/auto/status"),
-  triggerAuto: () => fetchApi<AutoProcessingTriggerResponse>("/api/processing/auto/trigger", {
-    method: "POST",
-  }),
+  triggerAuto: () =>
+    fetchApi<AutoProcessingTriggerResponse>("/api/processing/auto/trigger", {
+      method: "POST",
+    }),
 };
 
 // Pending Reviews API
@@ -146,7 +142,7 @@ export const pendingApi = {
   // Pending cleanup (merge similar suggestions)
   findSimilar: (threshold?: number) =>
     fetchApi<SimilarGroupsResponse>(
-      `/api/pending/similar${threshold ? `?threshold=${threshold}` : ""}`
+      `/api/pending/similar${threshold ? `?threshold=${threshold}` : ""}`,
     ),
   mergeSuggestions: (itemIds: string[], finalName: string) =>
     fetchApi<MergePendingResponse>("/api/pending/merge", {
@@ -176,8 +172,7 @@ export const metadataApi = {
     }),
 
   // Custom Fields
-  listCustomFields: () =>
-    fetchApi<CustomFieldMetadata[]>("/api/metadata/custom-fields"),
+  listCustomFields: () => fetchApi<CustomFieldMetadata[]>("/api/metadata/custom-fields"),
   getCustomField: (fieldId: number) =>
     fetchApi<CustomFieldMetadata>(`/api/metadata/custom-fields/${fieldId}`),
   updateCustomField: (fieldId: number, data: CustomFieldMetadataUpdate) =>
@@ -200,7 +195,7 @@ export const metadataApi = {
 export const schemaApi = {
   getBlocked: (blockType?: string) =>
     fetchApi<BlockedSuggestion[]>(
-      `/api/schema/blocked${blockType ? `?block_type=${blockType}` : ""}`
+      `/api/schema/blocked${blockType ? `?block_type=${blockType}` : ""}`,
     ),
   block: (request: BlockSuggestionRequest) =>
     fetchApi<BlockedSuggestion>("/api/schema/blocked", {
@@ -213,15 +208,14 @@ export const schemaApi = {
     }),
   checkBlocked: (name: string, blockType: string) =>
     fetchApi<{ is_blocked: boolean }>(
-      `/api/schema/blocked/check?name=${encodeURIComponent(name)}&block_type=${blockType}`
+      `/api/schema/blocked/check?name=${encodeURIComponent(name)}&block_type=${blockType}`,
     ),
 };
 
 // Jobs API
 export const jobsApi = {
   getStatus: () => fetchApi<Record<string, JobStatus>>("/api/jobs/status"),
-  getJobStatus: (jobName: string) =>
-    fetchApi<JobStatus>(`/api/jobs/status/${jobName}`),
+  getJobStatus: (jobName: string) => fetchApi<JobStatus>(`/api/jobs/status/${jobName}`),
   triggerMetadataEnhancement: () =>
     fetchApi<{ message: string; status: string }>("/api/jobs/metadata-enhancement/run", {
       method: "POST",
@@ -236,22 +230,18 @@ export const jobsApi = {
       method: "POST",
       body: JSON.stringify({ analysis_type: analysisType }),
     }),
-  getBootstrapStatus: () =>
-    fetchApi<BootstrapProgress>("/api/jobs/bootstrap/status"),
+  getBootstrapStatus: () => fetchApi<BootstrapProgress>("/api/jobs/bootstrap/status"),
   cancelBootstrap: () =>
     fetchApi<{ message: string; status: string }>("/api/jobs/bootstrap/cancel", {
       method: "POST",
     }),
   skipBootstrapDocument: (count: number = 1) =>
-    fetchApi<{ message: string; status: string; count?: number }>(
-      `/api/jobs/bootstrap/skip?count=${count}`,
-      {
-        method: "POST",
-      }
-    ),
+    fetchApi<{ message: string; status: string; count?: number }>("/api/jobs/bootstrap/skip", {
+      method: "POST",
+      body: JSON.stringify({ count }),
+    }),
   // Job Schedules
-  getSchedules: () =>
-    fetchApi<JobScheduleStatus>("/api/jobs/schedule"),
+  getSchedules: () => fetchApi<JobScheduleStatus>("/api/jobs/schedule"),
   updateSchedule: (request: ScheduleUpdateRequest) =>
     fetchApi<ScheduleUpdateResponse>("/api/jobs/schedule", {
       method: "PATCH",
@@ -263,8 +253,7 @@ export const jobsApi = {
       method: "POST",
       body: JSON.stringify({ docs_per_second: docsPerSecond, skip_existing: skipExisting }),
     }),
-  getBulkOCRStatus: () =>
-    fetchApi<BulkOCRProgress>("/api/jobs/bulk-ocr/status"),
+  getBulkOCRStatus: () => fetchApi<BulkOCRProgress>("/api/jobs/bulk-ocr/status"),
   cancelBulkOCR: () =>
     fetchApi<{ message: string; status: string }>("/api/jobs/bulk-ocr/cancel", {
       method: "POST",
@@ -275,8 +264,7 @@ export const jobsApi = {
       method: "POST",
       body: JSON.stringify(request),
     }),
-  getBulkIngestStatus: () =>
-    fetchApi<BulkIngestProgress>("/api/jobs/bulk-ingest/status"),
+  getBulkIngestStatus: () => fetchApi<BulkIngestProgress>("/api/jobs/bulk-ingest/status"),
   cancelBulkIngest: () =>
     fetchApi<{ message: string; status: string }>("/api/jobs/bulk-ingest/cancel", {
       method: "POST",
@@ -287,7 +275,7 @@ export const jobsApi = {
 export const searchApi = {
   search: (query: string, limit = 10) =>
     fetchApi<SearchResponse>(
-      `/api/search?${new URLSearchParams({ q: query, limit: String(limit) })}`
+      `/api/search?${new URLSearchParams({ q: query, limit: String(limit) })}`,
     ),
 };
 
@@ -309,7 +297,7 @@ export const translationApi = {
     }),
   getTranslations: (targetLang: string, contentType?: string) =>
     fetchApi<{ translations: TranslationEntry[] }>(
-      `/api/translation/translations/${targetLang}${contentType ? `?content_type=${contentType}` : ""}`
+      `/api/translation/translations/${targetLang}${contentType ? `?content_type=${contentType}` : ""}`,
     ),
   clearCache: (targetLang?: string, contentType?: string) =>
     fetchApi<{ success: boolean }>("/api/translation/cache/clear", {
@@ -329,12 +317,18 @@ export interface Settings {
   ollama_model_large: string;
   ollama_model_small: string;
   ollama_model_translation: string;
-	  qdrant_url: string;
-	  qdrant_collection: string;
+  qdrant_url: string;
+  qdrant_collection: string;
   auto_processing_enabled: boolean;
   auto_processing_interval_minutes: number;
   language: string;
+  debug_log_level: string;
+  debug_log_prompts: boolean;
+  debug_log_responses: boolean;
+  debug_save_processing_history: boolean;
   pipeline_custom_fields: boolean;
+  pipeline_document_type: boolean;
+  pipeline_document_links: boolean;
   tags: {
     todo: string;
     ocr: string;
@@ -448,12 +442,19 @@ export interface OllamaStatus {
 }
 
 // Pending Reviews Types
-export type PendingItemType = "correspondent" | "document_type" | "tag" | "human_decision" | "consolidation";
+export type PendingItemType =
+  | "correspondent"
+  | "document_type"
+  | "tag"
+  | "human_decision"
+  | "consolidation";
 export type SchemaItemType =
   | "schema_correspondent"
   | "schema_document_type"
   | "schema_tag"
   | "schema_custom_field"
+  | "schema_merge"
+  | "schema_delete"
   | "schema_cleanup";
 export type AllPendingItemType = PendingItemType | SchemaItemType;
 
@@ -531,21 +532,23 @@ export interface PendingCounts {
   human_decision?: number;
   consolidation?: number;
   schema?: number;
-	  total: number;
+  total: number;
   // Schema suggestion counts (from bootstrap analysis)
   schema_correspondent: number;
   schema_document_type: number;
   schema_tag: number;
   schema_custom_field: number;
+  schema_merge?: number;
+  schema_delete?: number;
   schema_cleanup: number;
   metadata_description: number;
 }
 
-	export interface SearchableEntities {
-	  correspondents: EntityOption[];
-	  document_types: EntityOption[];
-	  tags: EntityOption[];
-	}
+export interface SearchableEntities {
+  correspondents: EntityOption[];
+  document_types: EntityOption[];
+  tags: EntityOption[];
+}
 
 // Pending cleanup (similar suggestions) types
 export interface SimilarGroup {
@@ -751,9 +754,9 @@ export interface BootstrapProgress {
   completed_at: string | null;
   error_message: string | null;
   // Enhanced progress tracking
-  total_documents: number | null;           // Total docs in Paperless (for "covering X documents")
-  current_entity_count: number | null;      // Count of entities in current phase (e.g., 47 correspondents)
-  avg_seconds_per_category: number | null;  // For time estimation
+  total_documents: number | null; // Total docs in Paperless (for "covering X documents")
+  current_entity_count: number | null; // Count of entities in current phase (e.g., 47 correspondents)
+  avg_seconds_per_category: number | null; // For time estimation
   estimated_remaining_seconds: number | null; // ETA calculation
 }
 

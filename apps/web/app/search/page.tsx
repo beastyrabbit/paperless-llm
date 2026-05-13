@@ -1,28 +1,19 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useTranslations } from "next-intl";
 import {
-  Search,
-  FileText,
-  User,
-  Tag,
-  ExternalLink,
-  Loader2,
-  AlertCircle,
-} from "lucide-react";
-import {
+  Badge,
+  Button,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-  Button,
   Input,
-  Badge,
   ScrollArea,
 } from "@repo/ui";
-import { searchApi, SearchResult, settingsApi } from "@/lib/api";
-import { useEffect } from "react";
+import { AlertCircle, ExternalLink, FileText, Loader2, Search, Tag, User } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useState } from "react";
+import { SearchResult, searchApi, settingsApi } from "@/lib/api";
 
 export default function SearchPage() {
   const t = useTranslations("search");
@@ -99,6 +90,7 @@ export default function SearchPage() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
                 <Input
+                  aria-label={t("searchPlaceholder")}
                   placeholder={t("searchPlaceholder")}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -132,9 +124,7 @@ export default function SearchPage() {
         <Card>
           <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm font-medium">
-              {hasSearched
-                ? t("resultsCount", { count: results.length })
-                : t("enterQuery")}
+              {hasSearched ? t("resultsCount", { count: results.length }) : t("enterQuery")}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -147,9 +137,10 @@ export default function SearchPage() {
               <ScrollArea className="h-[calc(100vh-340px)]">
                 <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
                   {results.map((result) => (
-                    <div
+                    <button
+                      type="button"
                       key={result.docId}
-                      className="px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 cursor-pointer transition-colors"
+                      className="block w-full px-4 py-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-900/50 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
                       onClick={() => openDocument(result.docId)}
                     >
                       <div className="flex items-start justify-between gap-4">
@@ -184,7 +175,13 @@ export default function SearchPage() {
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <Badge
-                            variant={result.score > 0.7 ? "default" : result.score > 0.4 ? "secondary" : "outline"}
+                            variant={
+                              result.score > 0.7
+                                ? "default"
+                                : result.score > 0.4
+                                  ? "secondary"
+                                  : "outline"
+                            }
                             className="text-xs"
                           >
                             {(result.score * 100).toFixed(0)}%
@@ -192,7 +189,7 @@ export default function SearchPage() {
                           <ExternalLink className="h-4 w-4 text-zinc-400" />
                         </div>
                       </div>
-                    </div>
+                    </button>
                   ))}
 
                   {hasSearched && results.length === 0 && !loading && (

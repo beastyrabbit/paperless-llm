@@ -5,17 +5,17 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Context, Effect, Layer, Stream, pipe } from "effect";
-import { ConfigService, PaperlessService, TinyBaseService } from "../services/index.js";
+import { Context, Effect, Layer, pipe, Stream } from "effect";
 import { AgentError, MistralError } from "../errors/index.js";
+import { ConfigService, PaperlessService, TinyBaseService } from "../services/index.js";
 import {
   type Agent,
-  type StreamEvent,
   emitAnalyzing,
   emitComplete,
   emitError,
   emitResult,
   emitStart,
+  type StreamEvent,
 } from "./base.js";
 
 export interface OCRInput {
@@ -70,6 +70,7 @@ export const OCRAgentServiceLive = Layer.effect(
           const configuredModel =
             dbSettings["mistral.ocr_model"] ??
             dbSettings["mistral.ocrModel"] ??
+            dbSettings["mistral.model"] ??
             mistralConfig.model ??
             "mistral-ocr-latest";
           return {
@@ -125,9 +126,10 @@ export const OCRAgentServiceLive = Layer.effect(
             }
 
             const result = (await response.json()) as MistralOCRResponse;
+            const pages = Array.isArray(result.pages) ? result.pages : [];
             return {
-              text: result.pages.map((page) => page.markdown).join("\n\n"),
-              pages: result.pages.length,
+              text: pages.map((page) => page.markdown).join("\n\n"),
+              pages: pages.length,
             };
           },
           catch: (error) =>
@@ -386,6 +388,39 @@ export const OCRAgentServiceLive = Layer.effect(
 
         const pdfBytes = yield* paperless.downloadPdf(docId);
         const ocrResult = yield* runMistralOCR(pdfBytes);
+        const extractedText = ocrResult.text.trim();
+        if (extractedText.length === 0 || ocrResult.pages <= 0) {
+          const error = "Mistral OCR returned no text or pages.";
+          yield* tinybase
+            .appendRunSummary(docId, {
+              id: `ocr-${Date.now()}`,
+              agent: "ocr_agent",
+              status: "failed",
+              summary: error,
+              createdAt: new Date().toISOString(),
+            })
+            .pipe(Effect.catchAll(() => Effect.void));
+          yield* tinybase.addProcessingLog({
+            docId,
+            timestamp: new Date().toISOString(),
+            step: "ocr",
+            eventType: "error",
+            data: {
+              success: false,
+              error,
+              textLength: ocrResult.text.length,
+              pages: ocrResult.pages,
+            },
+          });
+          return {
+            success: false,
+            docId,
+            textLength: ocrResult.text.length,
+            pages: ocrResult.pages,
+            ocrPersisted: false,
+            error,
+          };
+        }
         const versionResult = yield* persistOcrResult(
           docId,
           pdfBytes,

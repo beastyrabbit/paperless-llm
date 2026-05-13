@@ -5,17 +5,17 @@
  * applied by deterministic backend tools.
  */
 import {
-  Agent as PiAgent,
   type AgentEvent,
   type AgentMessage,
   type AgentTool,
+  Agent as PiAgent,
 } from "@earendil-works/pi-agent-core";
 import { type Model, streamSimple } from "@earendil-works/pi-ai";
 import { Context, Effect, Layer, Option, pipe } from "effect";
 import { Type } from "typebox";
-import { ConfigService, PaperlessService, TinyBaseService } from "../services/index.js";
 import { AgentError } from "../errors/index.js";
 import type { CustomField, CustomFieldValue, Document } from "../models/index.js";
+import { ConfigService, PaperlessService, TinyBaseService } from "../services/index.js";
 
 export interface DocumentAgentInput {
   docId: number;
@@ -512,24 +512,33 @@ export const PiDocumentAgentServiceLive = Layer.effect(
     const getRuntimeSettings = () =>
       pipe(
         tinybase.getAllSettings(),
-        Effect.map((settings) => ({
-          ollamaUrl: settings["ollama.url"] ?? config.config.ollama.url,
-          model:
-            settings["ollama.model_large"] ??
-            settings["ollama.modelLarge"] ??
-            config.config.ollama.modelLarge,
-          modelSmall:
-            settings["ollama.model_small"] ??
-            settings["ollama.modelSmall"] ??
-            config.config.ollama.modelSmall,
-          dryRunModel: process.env["PI_DRY_RUN_MODEL"],
-        })),
+        Effect.map((settings) => {
+          const saveHistorySetting =
+            settings["debug.save_processing_history"] ?? settings["debug.saveProcessingHistory"];
+          return {
+            ollamaUrl: settings["ollama.url"] ?? config.config.ollama.url,
+            model:
+              settings["ollama.model_large"] ??
+              settings["ollama.modelLarge"] ??
+              config.config.ollama.modelLarge,
+            modelSmall:
+              settings["ollama.model_small"] ??
+              settings["ollama.modelSmall"] ??
+              config.config.ollama.modelSmall,
+            dryRunModel: process.env["PI_DRY_RUN_MODEL"],
+            saveProcessingHistory:
+              saveHistorySetting === undefined
+                ? true
+                : saveHistorySetting === "true" || saveHistorySetting === "1",
+          };
+        }),
         Effect.catchAll(() =>
           Effect.succeed({
             ollamaUrl: config.config.ollama.url,
             model: config.config.ollama.modelLarge,
             modelSmall: config.config.ollama.modelSmall,
             dryRunModel: process.env["PI_DRY_RUN_MODEL"],
+            saveProcessingHistory: true,
           }),
         ),
       );
@@ -695,6 +704,14 @@ export const PiDocumentAgentServiceLive = Layer.effect(
         description: "Retrieve a Paperless document by ID.",
         parameters: getDocumentParams,
         execute: async (_toolCallId, params) => {
+          if (params.docId !== doc.id) {
+            const payload = {
+              document: null,
+              error: "The document agent may only retrieve the current document by ID.",
+            };
+            return textResult(JSON.stringify(payload), payload);
+          }
+
           const found = await Effect.runPromise(
             paperless.getDocument(params.docId).pipe(
               Effect.map((candidate) => summarizeDocumentForAgent(candidate, 1_500)),
@@ -1047,11 +1064,30 @@ export const PiDocumentAgentServiceLive = Layer.effect(
                 ? redactSensitiveMetadataText(normalizeName(params.summary))
                 : "";
 
-              if (!dryRun && metadataPolicy.summary && summary) {
-                yield* paperless.addNote(doc.id, summary).pipe(Effect.catchAll(() => Effect.void));
-              }
               if (metadataPolicy.summary && summary) {
-                applied["summary"] = summary;
+                if (!dryRun) {
+                  const noteResult = yield* Effect.either(paperless.addNote(doc.id, summary));
+                  if (noteResult._tag === "Left") {
+                    yield* tinybase
+                      .addProcessingLog({
+                        docId: doc.id,
+                        timestamp: new Date().toISOString(),
+                        step: "document_agent",
+                        eventType: "result",
+                        data: {
+                          warning: true,
+                          message:
+                            "Document metadata was applied, but summary note creation failed.",
+                          error: String(noteResult.left),
+                        },
+                      })
+                      .pipe(Effect.catchAll(() => Effect.void));
+                  } else {
+                    applied["summary"] = summary;
+                  }
+                } else {
+                  applied["summary"] = summary;
+                }
               }
 
               const extractedFacts = params.extractedFactsJson?.trim()
@@ -1248,7 +1284,9 @@ export const PiDocumentAgentServiceLive = Layer.effect(
               ),
               tools: createTools(doc, sessionId, pausedRef, appliedRef, dryRun, metadataPolicy),
               messages:
-                input.resume === true && Array.isArray(memory.transcript)
+                input.resume === true &&
+                settings.saveProcessingHistory &&
+                Array.isArray(memory.transcript)
                   ? (memory.transcript as AgentMessage[])
                   : [],
             },
@@ -1428,7 +1466,7 @@ export const PiDocumentAgentServiceLive = Layer.effect(
             yield* tinybase
               .patchDocumentMemory(input.docId, {
                 sessionId,
-                transcript: agent.state.messages,
+                transcript: settings.saveProcessingHistory ? agent.state.messages : [],
                 finalDecisions: appliedRef.current,
               })
               .pipe(Effect.catchAll(() => Effect.void));

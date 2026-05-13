@@ -4,60 +4,58 @@
  * Centralized exports for all TinyBase-related functionality.
  */
 
-// Provider and context
-export { AppTinyBaseProvider, useTinyBase } from './provider';
-
-// Store factory
-export { createAppStore, type AppStore } from './store';
-
-// Schemas and types
-export {
-  valuesSchema,
-  tablesSchema,
-  type ValuesSchema,
-  type TablesSchema,
-  type SettingKey,
-  API_TO_STORE_KEY_MAP,
-  STORE_TO_API_KEY_MAP,
-} from './schemas';
-
-// Settings hooks
-export {
-  useSetting,
-  useStringSetting,
-  useBooleanSetting,
-  useNumberSetting,
-  useAllSettings,
-  useSettingWithUpdate,
-  useSyncStatus,
-  // Convenience hooks
-  usePaperlessUrl,
-  usePaperlessToken,
-  useOllamaUrl,
-  useOllamaModelLarge,
-  useOllamaModelSmall,
-  useMistralApiKey,
-  useMistralModel,
-  useQdrantUrl,
-  useAutoProcessingEnabled,
-  useAutoProcessingInterval,
-  useDebugLogLevel,
-  usePipelineOcr,
-  usePipelineTitle,
-  usePipelineCorrespondent,
-  usePipelineTags,
-  usePipelineCustomFields,
-  useVectorSearchEnabled,
-  useVectorSearchTopK,
-  useVectorSearchMinScore,
-} from './hooks/useSettings';
-
 // Processing logs hooks
 export {
+  useLogOperations,
+  useLogTree,
   useProcessingLogs,
   useProcessingLogsByStep,
-  useStepLogs,
   useProcessingStream,
-  useLogTree,
-  useLogOperations,
-} from './hooks/useProcessingLogs';
+  useStepLogs,
+} from "./hooks/useProcessingLogs";
+// Settings hooks
+export {
+  useAllSettings,
+  useAutoProcessingEnabled,
+  useAutoProcessingInterval,
+  useBooleanSetting,
+  useDebugLogLevel,
+  useMistralApiKey,
+  useMistralModel,
+  useNumberSetting,
+  useOllamaModelLarge,
+  useOllamaModelSmall,
+  useOllamaUrl,
+  usePaperlessToken,
+  // Convenience hooks
+  usePaperlessUrl,
+  usePipelineCorrespondent,
+  usePipelineCustomFields,
+  usePipelineDocumentLinks,
+  usePipelineDocumentType,
+  usePipelineOcr,
+  usePipelineTags,
+  usePipelineTitle,
+  useQdrantUrl,
+  useSetting,
+  useSettingWithUpdate,
+  useStringSetting,
+  useSyncStatus,
+  useVectorSearchEnabled,
+  useVectorSearchMinScore,
+  useVectorSearchTopK,
+} from "./hooks/useSettings";
+// Provider and context
+export { AppTinyBaseProvider, useTinyBase } from "./provider";
+// Schemas and types
+export {
+  API_TO_STORE_KEY_MAP,
+  type SettingKey,
+  STORE_TO_API_KEY_MAP,
+  type TablesSchema,
+  tablesSchema,
+  type ValuesSchema,
+  valuesSchema,
+} from "./schemas";
+// Store factory
+export { type AppStore, createAppStore } from "./store";

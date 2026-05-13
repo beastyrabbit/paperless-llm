@@ -1,61 +1,62 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
 import {
-  CheckCircle2,
-  User,
-  Tag,
-  FileText,
-  Check,
-  X,
-  Loader2,
-  RefreshCw,
-  AlertCircle,
-  Square,
-  CheckSquare,
-  Trash2,
-  Search,
-  Ban,
-  Unlock,
-  Globe,
-  GitMerge,
-  ArrowRight,
-  Sparkles,
-} from "lucide-react";
-import {
+  Badge,
+  Button,
+  badgeVariants,
   Card,
   CardContent,
-  Button,
-  Badge,
+  Checkbox,
+  cn,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Input,
+  Label,
   RadioGroup,
   RadioGroupItem,
-  Label,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Input,
-  Checkbox,
-  cn,
 } from "@repo/ui";
 import {
-  pendingApi,
-  PendingItem,
+  AlertCircle,
+  ArrowRight,
+  Ban,
+  Check,
+  CheckCircle2,
+  CheckSquare,
+  FileText,
+  GitMerge,
+  Globe,
+  Loader2,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Square,
+  Tag,
+  Trash2,
+  Unlock,
+  User,
+  X,
+} from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  BlockedItemsResponse,
   PendingCounts,
+  PendingItem,
+  pendingApi,
   RejectBlockType,
   RejectionCategory,
-  SearchableEntities,
-  BlockedItemsResponse,
   SchemaCleanupMetadata,
+  SearchableEntities,
   SimilarGroup,
 } from "@/lib/api";
 
@@ -68,31 +69,38 @@ const sections = [
 
 type SectionKey = (typeof sections)[number]["key"];
 
+const cleanupItemTypes = new Set([
+  "schema_cleanup",
+  "schema_merge",
+  "schema_delete",
+  "consolidation",
+]);
+
 export default function PendingPage() {
   const t = useTranslations("pending");
   const searchParams = useSearchParams();
   const docIdFilter = searchParams.get("docId");
   const [items, setItems] = useState<PendingItem[]>([]);
-	  const [counts, setCounts] = useState<PendingCounts>({
-	    correspondent: 0,
-	    document_type: 0,
-	    tag: 0,
-	    title: 0,
-	    human_decision: 0,
-	    consolidation: 0,
-	    schema: 0,
-	    total: 0,
+  const [counts, setCounts] = useState<PendingCounts>({
+    correspondent: 0,
+    document_type: 0,
+    tag: 0,
+    title: 0,
+    human_decision: 0,
+    consolidation: 0,
+    schema: 0,
+    total: 0,
     schema_correspondent: 0,
     schema_document_type: 0,
     schema_tag: 0,
     schema_custom_field: 0,
+    schema_merge: 0,
+    schema_delete: 0,
     schema_cleanup: 0,
     metadata_description: 0,
   });
   const [activeSection, setActiveSection] = useState<SectionKey>("correspondent");
-  const [expandedReasoning, setExpandedReasoning] = useState<Set<string>>(
-    new Set()
-  );
+  const [expandedReasoning, setExpandedReasoning] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -120,7 +128,9 @@ export default function PendingPage() {
   // Bulk rejection modal state
   const [bulkRejectModalOpen, setBulkRejectModalOpen] = useState(false);
   const [bulkBlockType, setBulkBlockType] = useState<RejectBlockType>("none");
-  const [bulkRejectionCategory, setBulkRejectionCategory] = useState<RejectionCategory | null>(null);
+  const [bulkRejectionCategory, setBulkRejectionCategory] = useState<RejectionCategory | null>(
+    null,
+  );
   const [bulkRejectionReason, setBulkRejectionReason] = useState("");
 
   // Schema cleanup state
@@ -241,11 +251,11 @@ export default function PendingPage() {
   }, [loadData]);
 
   // Combine schema counts with regular counts for display
-	  const getCount = (type: SectionKey) => {
-	    if (type === "human_decision") {
-	      return counts.human_decision || 0;
-	    }
-	    const schemaKey = `schema_${type}` as keyof typeof counts;
+  const getCount = (type: SectionKey) => {
+    if (type === "human_decision") {
+      return counts.human_decision || 0;
+    }
+    const schemaKey = `schema_${type}` as keyof typeof counts;
     const schemaCount = (counts[schemaKey] as number) || 0;
     return counts[type] + schemaCount;
   };
@@ -254,16 +264,20 @@ export default function PendingPage() {
   const totalCount = sections.reduce((sum, section) => sum + getCount(section.key), 0);
 
   // Get schema cleanup items (memoized to prevent infinite loops)
-	  const cleanupItems = useMemo(
-	    () => items.filter((item) => item.type === "schema_cleanup" || item.type === "consolidation"),
-	    [items]
-	  );
-	  const cleanupCount = (counts.schema_cleanup || 0) + (counts.consolidation || 0);
+  const cleanupItems = useMemo(
+    () => items.filter((item) => cleanupItemTypes.has(item.type)),
+    [items],
+  );
+  const cleanupCount =
+    (counts.schema_cleanup || 0) +
+    (counts.schema_merge || 0) +
+    (counts.schema_delete || 0) +
+    (counts.consolidation || 0);
 
   // Create a stable key for cleanup items to detect changes
   const cleanupItemIds = useMemo(
     () => cleanupItems.map((item) => item.id).join(","),
-    [cleanupItems]
+    [cleanupItems],
   );
 
   // Initialize merge names when cleanup items change
@@ -278,12 +292,12 @@ export default function PendingPage() {
           hasChanges = true;
           const metadata = item.metadata as unknown as SchemaCleanupMetadata;
           // For merges, default to target_name; for deletes, use entity_name
-	          if (metadata.cleanup_type === "merge") {
-	            updated[item.id] = metadata.target_name || "";
-	          } else if ("proposal" in metadata) {
-	            const proposal = metadata.proposal as { proposedName?: string } | undefined;
-	            updated[item.id] = proposal?.proposedName || item.suggestion;
-	          } else {
+          if (metadata.cleanup_type === "merge") {
+            updated[item.id] = metadata.target_name || "";
+          } else if ("proposal" in metadata) {
+            const proposal = metadata.proposal as { proposedName?: string } | undefined;
+            updated[item.id] = proposal?.proposedName || item.suggestion;
+          } else {
             updated[item.id] = metadata.entity_name || "";
           }
         }
@@ -299,21 +313,22 @@ export default function PendingPage() {
     setError(null);
     try {
       const metadata = item.metadata as unknown as SchemaCleanupMetadata;
-	      const finalName = item.type === "consolidation" || metadata.cleanup_type === "merge"
-	        ? cleanupMergeNames[item.id]
-	        : undefined;
+      const finalName =
+        item.type === "consolidation" || metadata.cleanup_type === "merge"
+          ? cleanupMergeNames[item.id]
+          : undefined;
 
       const response = await pendingApi.approveCleanup(item.id, finalName);
       if (response.error) {
         setError(response.error);
       } else {
         // Remove item from local state
-	        setItems((prev) => prev.filter((i) => i.id !== item.id));
-	        setCounts((prev) => ({
-	          ...prev,
-	          [item.type]: Math.max(0, ((prev[item.type as keyof PendingCounts] as number) || 0) - 1),
-	          total: Math.max(0, prev.total - 1),
-	        }));
+        setItems((prev) => prev.filter((i) => i.id !== item.id));
+        setCounts((prev) => ({
+          ...prev,
+          [item.type]: Math.max(0, ((prev[item.type as keyof PendingCounts] as number) || 0) - 1),
+          total: Math.max(0, prev.total - 1),
+        }));
       }
     } finally {
       setCleanupActionLoading(null);
@@ -330,12 +345,12 @@ export default function PendingPage() {
         setError(response.error);
       } else {
         // Remove item from local state
-	        setItems((prev) => prev.filter((i) => i.id !== item.id));
-	        setCounts((prev) => ({
-	          ...prev,
-	          [item.type]: Math.max(0, ((prev[item.type as keyof PendingCounts] as number) || 0) - 1),
-	          total: Math.max(0, prev.total - 1),
-	        }));
+        setItems((prev) => prev.filter((i) => i.id !== item.id));
+        setCounts((prev) => ({
+          ...prev,
+          [item.type]: Math.max(0, ((prev[item.type as keyof PendingCounts] as number) || 0) - 1),
+          total: Math.max(0, prev.total - 1),
+        }));
       }
     } finally {
       setCleanupActionLoading(null);
@@ -400,40 +415,38 @@ export default function PendingPage() {
     const query = searchQuery.toLowerCase().trim();
     let entities: string[] = [];
 
-	    switch (activeSection) {
-	      case "correspondent":
-	        entities = existingEntities.correspondents.map((entity) => entity.name);
-	        break;
-	      case "document_type":
-	        entities = existingEntities.document_types.map((entity) => entity.name);
-	        break;
-	      case "tag":
-	        entities = existingEntities.tags.map((entity) => entity.name);
-	        break;
-	      case "human_decision":
-	        entities = [];
-	        break;
-	    }
+    switch (activeSection) {
+      case "correspondent":
+        entities = existingEntities.correspondents.map((entity) => entity.name);
+        break;
+      case "document_type":
+        entities = existingEntities.document_types.map((entity) => entity.name);
+        break;
+      case "tag":
+        entities = existingEntities.tags.map((entity) => entity.name);
+        break;
+      case "human_decision":
+        entities = [];
+        break;
+    }
 
-    return entities
-      .filter((name) => name.toLowerCase().includes(query))
-      .slice(0, 10); // Limit to 10 results
+    return entities.filter((name) => name.toLowerCase().includes(query)).slice(0, 10); // Limit to 10 results
   };
 
   const searchResults = getFilteredExistingEntities();
 
   // Filter items by section - include both regular types and schema_* types
   // Also filter by docId if specified in URL
-	  const filteredItems = items.filter((item) => {
-	    const matchesSection = item.type === activeSection || item.type === `schema_${activeSection}`;
-	    const matchesDocId = !docIdFilter || item.docId === Number(docIdFilter);
-	    return matchesSection && matchesDocId;
-	  });
+  const filteredItems = items.filter((item) => {
+    const matchesSection = item.type === activeSection || item.type === `schema_${activeSection}`;
+    const matchesDocId = !docIdFilter || item.docId === Number(docIdFilter);
+    return matchesSection && matchesDocId;
+  });
 
   // Count items matching docId filter across all sections
-	  const docFilteredCount = docIdFilter
-	    ? items.filter((item) => item.docId === Number(docIdFilter)).length
-	    : 0;
+  const docFilteredCount = docIdFilter
+    ? items.filter((item) => item.docId === Number(docIdFilter)).length
+    : 0;
 
   const handleSelectOption = (id: string, option: string) => {
     setSelectedValues((prev) => ({ ...prev, [id]: option }));
@@ -673,11 +686,11 @@ export default function PendingPage() {
         return t("correspondents").toLowerCase().replace(/s$/, "");
       case "document_type":
         return t("documentTypes").toLowerCase().replace(/s$/, "");
-	      case "tag":
-	        return t("tags").toLowerCase().replace(/s$/, "");
-	      case "human_decision":
-	        return t("humanDecision").toLowerCase();
-	      default:
+      case "tag":
+        return t("tags").toLowerCase().replace(/s$/, "");
+      case "human_decision":
+        return t("humanDecision").toLowerCase();
+      default:
         return baseType;
     }
   };
@@ -728,9 +741,7 @@ export default function PendingPage() {
         <div className="flex h-16 items-center justify-between px-8">
           <div>
             <h1 className="text-xl font-bold tracking-tight">{t("title")}</h1>
-            <p className="text-sm text-zinc-500">
-              {t("subtitle", { count: totalCount })}
-            </p>
+            <p className="text-sm text-zinc-500">{t("subtitle", { count: totalCount })}</p>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -781,12 +792,7 @@ export default function PendingPage() {
                 </Badge>
               )}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => loadData(true)}
-              disabled={loading}
-            >
+            <Button variant="outline" size="sm" onClick={() => loadData(true)} disabled={loading}>
               <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
               {t("refresh")}
             </Button>
@@ -800,9 +806,7 @@ export default function PendingPage() {
           <div className="mb-6 flex items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-700 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-400">
             <div className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
-              <span>
-                {t("filterByDocument", { docId: docIdFilter, count: docFilteredCount })}
-              </span>
+              <span>{t("filterByDocument", { docId: docIdFilter, count: docFilteredCount })}</span>
             </div>
             <a href="/pending">
               <Button variant="outline" size="sm" className="gap-1">
@@ -818,12 +822,7 @@ export default function PendingPage() {
           <div className="mb-6 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-400">
             <AlertCircle className="h-5 w-5" />
             <span>{error}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="ml-auto"
-              onClick={() => setError(null)}
-            >
+            <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setError(null)}>
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -848,130 +847,154 @@ export default function PendingPage() {
               </Card>
             ) : (
               <div className="space-y-4">
-	                {/* Pi consolidation proposals */}
-	                {cleanupItems.filter((i) => i.type === "consolidation").length > 0 && (
-	                  <div>
-	                    <h3 className="text-sm font-medium text-zinc-500 mb-3 flex items-center gap-2">
-	                      <GitMerge className="h-4 w-4" />
-	                      {t("cleanup.consolidationRequests")} ({cleanupItems.filter((i) => i.type === "consolidation").length})
-	                    </h3>
-	                    <div className="space-y-3">
-	                      {cleanupItems
-	                        .filter((i) => i.type === "consolidation")
-	                        .map((item) => {
-	                          const metadata = item.metadata as {
-	                            proposal?: {
-	                              action?: string;
-	                              attributeType?: string;
-	                              names?: string[];
-	                              proposedName?: string;
-	                              affectedDocumentCount?: number;
-	                              confidence?: number;
-	                            };
-	                          };
-	                          const proposal = metadata.proposal;
-	                          const isLoading = cleanupActionLoading === item.id;
-
-	                          return (
-	                            <Card key={item.id} className="overflow-hidden">
-	                              <CardContent className="p-4">
-	                                <div className="flex flex-wrap items-center gap-2 mb-3">
-	                                  <Badge variant="outline" className="text-xs">
-	                                    {proposal?.attributeType?.replace("_", " ") ?? "catalog"}
-	                                  </Badge>
-	                                  <Badge variant="secondary" className="text-xs">
-	                                    {proposal?.action?.replace("_", " ") ?? "review"}
-	                                  </Badge>
-	                                  {typeof proposal?.confidence === "number" && (
-	                                    <Badge variant="outline" className="text-xs">
-	                                      {Math.round(proposal.confidence * 100)}%
-	                                    </Badge>
-	                                  )}
-	                                </div>
-
-	                                <div className="mb-3 flex flex-wrap gap-2">
-	                                  {(proposal?.names ?? item.alternatives).map((name) => (
-	                                    <Badge key={name} variant="outline">
-	                                      {name}
-	                                    </Badge>
-	                                  ))}
-	                                </div>
-
-	                                <div className="mb-3">
-	                                  <Label className="text-xs text-zinc-500 mb-1 block">
-	                                    {t("cleanup.finalName")}
-	                                  </Label>
-	                                  <Input
-	                                    value={cleanupMergeNames[item.id] ?? proposal?.proposedName ?? item.suggestion}
-	                                    onChange={(e) => setCleanupMergeNames((prev) => ({
-	                                      ...prev,
-	                                      [item.id]: e.target.value,
-	                                    }))}
-	                                    disabled={isLoading}
-	                                    className="h-8 text-sm"
-	                                  />
-	                                </div>
-
-	                                <p className="text-sm text-zinc-500 mb-1">{item.reasoning}</p>
-	                                {typeof proposal?.affectedDocumentCount === "number" && (
-	                                  <p className="text-xs text-zinc-400 mb-3">
-	                                    {proposal.affectedDocumentCount} {t("cleanup.documents")}
-	                                  </p>
-	                                )}
-
-	                                <div className="flex justify-end gap-2">
-	                                  <Button
-	                                    size="sm"
-	                                    variant="ghost"
-	                                    className="text-zinc-500 hover:text-red-600"
-	                                    onClick={() => handleCleanupReject(item)}
-	                                    disabled={isLoading}
-	                                  >
-	                                    {isLoading ? (
-	                                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-	                                    ) : (
-	                                      <X className="h-4 w-4 mr-1" />
-	                                    )}
-	                                    {t("cleanup.dismiss")}
-	                                  </Button>
-	                                  <Button
-	                                    size="sm"
-	                                    className="bg-emerald-600 hover:bg-emerald-700"
-	                                    onClick={() => handleCleanupApprove(item)}
-	                                    disabled={isLoading}
-	                                  >
-	                                    {isLoading ? (
-	                                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-	                                    ) : (
-	                                      <Check className="h-4 w-4 mr-1" />
-	                                    )}
-	                                    {t("approve")}
-	                                  </Button>
-	                                </div>
-	                              </CardContent>
-	                            </Card>
-	                          );
-	                        })}
-	                    </div>
-	                  </div>
-	                )}
-
-	                {/* Merge requests */}
-	                {cleanupItems.filter(i => (i.metadata as unknown as SchemaCleanupMetadata).cleanup_type === "merge").length > 0 && (
+                {/* Pi consolidation proposals */}
+                {cleanupItems.filter((i) => i.type === "consolidation").length > 0 && (
                   <div>
                     <h3 className="text-sm font-medium text-zinc-500 mb-3 flex items-center gap-2">
                       <GitMerge className="h-4 w-4" />
-                      {t("cleanup.mergeRequests")} ({cleanupItems.filter(i => (i.metadata as unknown as SchemaCleanupMetadata).cleanup_type === "merge").length})
+                      {t("cleanup.consolidationRequests")} (
+                      {cleanupItems.filter((i) => i.type === "consolidation").length})
                     </h3>
                     <div className="space-y-3">
                       {cleanupItems
-                        .filter(i => (i.metadata as unknown as SchemaCleanupMetadata).cleanup_type === "merge")
+                        .filter((i) => i.type === "consolidation")
+                        .map((item) => {
+                          const metadata = item.metadata as {
+                            proposal?: {
+                              action?: string;
+                              attributeType?: string;
+                              names?: string[];
+                              proposedName?: string;
+                              affectedDocumentCount?: number;
+                              confidence?: number;
+                            };
+                          };
+                          const proposal = metadata.proposal;
+                          const isLoading = cleanupActionLoading === item.id;
+
+                          return (
+                            <Card key={item.id} className="overflow-hidden">
+                              <CardContent className="p-4">
+                                <div className="flex flex-wrap items-center gap-2 mb-3">
+                                  <Badge variant="outline" className="text-xs">
+                                    {proposal?.attributeType?.replace("_", " ") ?? "catalog"}
+                                  </Badge>
+                                  <Badge variant="secondary" className="text-xs">
+                                    {proposal?.action?.replace("_", " ") ?? "review"}
+                                  </Badge>
+                                  {typeof proposal?.confidence === "number" && (
+                                    <Badge variant="outline" className="text-xs">
+                                      {Math.round(proposal.confidence * 100)}%
+                                    </Badge>
+                                  )}
+                                </div>
+
+                                <div className="mb-3 flex flex-wrap gap-2">
+                                  {(proposal?.names ?? item.alternatives).map((name) => (
+                                    <Badge key={name} variant="outline">
+                                      {name}
+                                    </Badge>
+                                  ))}
+                                </div>
+
+                                <div className="mb-3">
+                                  <Label className="text-xs text-zinc-500 mb-1 block">
+                                    {t("cleanup.finalName")}
+                                  </Label>
+                                  <Input
+                                    value={
+                                      cleanupMergeNames[item.id] ??
+                                      proposal?.proposedName ??
+                                      item.suggestion
+                                    }
+                                    onChange={(e) =>
+                                      setCleanupMergeNames((prev) => ({
+                                        ...prev,
+                                        [item.id]: e.target.value,
+                                      }))
+                                    }
+                                    disabled={isLoading}
+                                    className="h-8 text-sm"
+                                  />
+                                </div>
+
+                                <p className="text-sm text-zinc-500 mb-1">{item.reasoning}</p>
+                                {typeof proposal?.affectedDocumentCount === "number" && (
+                                  <p className="text-xs text-zinc-400 mb-3">
+                                    {proposal.affectedDocumentCount} {t("cleanup.documents")}
+                                  </p>
+                                )}
+
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-zinc-500 hover:text-red-600"
+                                    onClick={() => handleCleanupReject(item)}
+                                    disabled={isLoading}
+                                  >
+                                    {isLoading ? (
+                                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                                    ) : (
+                                      <X className="h-4 w-4 mr-1" />
+                                    )}
+                                    {t("cleanup.dismiss")}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    className="bg-emerald-600 hover:bg-emerald-700"
+                                    onClick={() => handleCleanupApprove(item)}
+                                    disabled={isLoading}
+                                  >
+                                    {isLoading ? (
+                                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                                    ) : (
+                                      <Check className="h-4 w-4 mr-1" />
+                                    )}
+                                    {t("approve")}
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Merge requests */}
+                {cleanupItems.filter(
+                  (i) => (i.metadata as unknown as SchemaCleanupMetadata).cleanup_type === "merge",
+                ).length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-zinc-500 mb-3 flex items-center gap-2">
+                      <GitMerge className="h-4 w-4" />
+                      {t("cleanup.mergeRequests")} (
+                      {
+                        cleanupItems.filter(
+                          (i) =>
+                            (i.metadata as unknown as SchemaCleanupMetadata).cleanup_type ===
+                            "merge",
+                        ).length
+                      }
+                      )
+                    </h3>
+                    <div className="space-y-3">
+                      {cleanupItems
+                        .filter(
+                          (i) =>
+                            (i.metadata as unknown as SchemaCleanupMetadata).cleanup_type ===
+                            "merge",
+                        )
                         .map((item) => {
                           const metadata = item.metadata as unknown as SchemaCleanupMetadata;
                           const isLoading = cleanupActionLoading === item.id;
-                          const entityIcon = metadata.entity_type === "correspondent" ? User
-                            : metadata.entity_type === "document_type" ? FileText
-                            : Tag;
+                          const entityIcon =
+                            metadata.entity_type === "correspondent"
+                              ? User
+                              : metadata.entity_type === "document_type"
+                                ? FileText
+                                : Tag;
                           const EntityIcon = entityIcon;
 
                           return (
@@ -987,14 +1010,18 @@ export default function PendingPage() {
                                 {/* Merge visualization */}
                                 <div className="flex items-center gap-3 mb-3 p-3 bg-zinc-50 dark:bg-zinc-800 rounded-lg">
                                   <div className="flex-1 text-center">
-                                    <div className="text-sm font-medium">{metadata.source_name}</div>
+                                    <div className="text-sm font-medium">
+                                      {metadata.source_name}
+                                    </div>
                                     <div className="text-xs text-zinc-500">
                                       {metadata.doc_count_source} {t("cleanup.documents")}
                                     </div>
                                   </div>
                                   <ArrowRight className="h-5 w-5 text-zinc-400" />
                                   <div className="flex-1 text-center">
-                                    <div className="text-sm font-medium">{metadata.target_name}</div>
+                                    <div className="text-sm font-medium">
+                                      {metadata.target_name}
+                                    </div>
                                     <div className="text-xs text-zinc-500">
                                       {metadata.doc_count_target} {t("cleanup.documents")}
                                     </div>
@@ -1008,10 +1035,12 @@ export default function PendingPage() {
                                   </Label>
                                   <Input
                                     value={cleanupMergeNames[item.id] ?? metadata.target_name ?? ""}
-                                    onChange={(e) => setCleanupMergeNames(prev => ({
-                                      ...prev,
-                                      [item.id]: e.target.value
-                                    }))}
+                                    onChange={(e) =>
+                                      setCleanupMergeNames((prev) => ({
+                                        ...prev,
+                                        [item.id]: e.target.value,
+                                      }))
+                                    }
                                     disabled={isLoading}
                                     className="h-8 text-sm"
                                   />
@@ -1059,21 +1088,38 @@ export default function PendingPage() {
                 )}
 
                 {/* Delete requests */}
-                {cleanupItems.filter(i => (i.metadata as unknown as SchemaCleanupMetadata).cleanup_type === "delete").length > 0 && (
+                {cleanupItems.filter(
+                  (i) => (i.metadata as unknown as SchemaCleanupMetadata).cleanup_type === "delete",
+                ).length > 0 && (
                   <div>
                     <h3 className="text-sm font-medium text-zinc-500 mb-3 flex items-center gap-2">
                       <Trash2 className="h-4 w-4" />
-                      {t("cleanup.deleteRequests")} ({cleanupItems.filter(i => (i.metadata as unknown as SchemaCleanupMetadata).cleanup_type === "delete").length})
+                      {t("cleanup.deleteRequests")} (
+                      {
+                        cleanupItems.filter(
+                          (i) =>
+                            (i.metadata as unknown as SchemaCleanupMetadata).cleanup_type ===
+                            "delete",
+                        ).length
+                      }
+                      )
                     </h3>
                     <div className="flex flex-wrap gap-2">
                       {cleanupItems
-                        .filter(i => (i.metadata as unknown as SchemaCleanupMetadata).cleanup_type === "delete")
+                        .filter(
+                          (i) =>
+                            (i.metadata as unknown as SchemaCleanupMetadata).cleanup_type ===
+                            "delete",
+                        )
                         .map((item) => {
                           const metadata = item.metadata as unknown as SchemaCleanupMetadata;
                           const isLoading = cleanupActionLoading === item.id;
-                          const entityIcon = metadata.entity_type === "correspondent" ? User
-                            : metadata.entity_type === "document_type" ? FileText
-                            : Tag;
+                          const entityIcon =
+                            metadata.entity_type === "correspondent"
+                              ? User
+                              : metadata.entity_type === "document_type"
+                                ? FileText
+                                : Tag;
                           const EntityIcon = entityIcon;
 
                           return (
@@ -1089,6 +1135,7 @@ export default function PendingPage() {
                                     size="sm"
                                     variant="ghost"
                                     className="h-7 px-2"
+                                    aria-label={`${t("reject")} ${metadata.entity_name}`}
                                     onClick={() => handleCleanupReject(item)}
                                     disabled={isLoading}
                                   >
@@ -1102,6 +1149,7 @@ export default function PendingPage() {
                                     size="sm"
                                     variant="destructive"
                                     className="h-7 px-2"
+                                    aria-label={`${t("approve")} ${metadata.entity_name}`}
                                     onClick={() => handleCleanupApprove(item)}
                                     disabled={isLoading}
                                   >
@@ -1181,7 +1229,8 @@ export default function PendingPage() {
                   <div>
                     <h3 className="text-sm font-medium text-zinc-500 mb-2 flex items-center gap-2">
                       <User className="h-4 w-4" />
-                      {t("blocked.correspondentBlocks")} ({blockedItems.correspondent_blocks?.length ?? 0})
+                      {t("blocked.correspondentBlocks")} (
+                      {blockedItems.correspondent_blocks?.length ?? 0})
                     </h3>
                     <div className="flex flex-wrap gap-2">
                       {blockedItems.correspondent_blocks?.map((item) => (
@@ -1213,7 +1262,8 @@ export default function PendingPage() {
                   <div>
                     <h3 className="text-sm font-medium text-zinc-500 mb-2 flex items-center gap-2">
                       <FileText className="h-4 w-4" />
-                      {t("blocked.documentTypeBlocks")} ({blockedItems.document_type_blocks?.length ?? 0})
+                      {t("blocked.documentTypeBlocks")} (
+                      {blockedItems.document_type_blocks?.length ?? 0})
                     </h3>
                     <div className="flex flex-wrap gap-2">
                       {blockedItems.document_type_blocks?.map((item) => (
@@ -1276,295 +1326,313 @@ export default function PendingPage() {
           </div>
         ) : (
           <>
-        {/* Section Tabs */}
-        <div className="flex gap-2 mb-6">
-          {sections.map((section) => {
-            const count = getCount(section.key);
-            const Icon = section.icon;
-            const isActive = activeSection === section.key;
-            const isDisabled = count === 0;
+            {/* Section Tabs */}
+            <div className="flex gap-2 mb-6">
+              {sections.map((section) => {
+                const count = getCount(section.key);
+                const Icon = section.icon;
+                const isActive = activeSection === section.key;
+                const isDisabled = count === 0;
 
-            return (
-              <Button
-                key={section.key}
-                variant={isActive ? "default" : "outline"}
-                disabled={isDisabled}
-                onClick={() => {
-                  setActiveSection(section.key);
-                  setSelectedItems(new Set()); // Clear selection when switching tabs
-                  setSearchQuery(""); // Clear search when switching tabs
-                }}
-                className={cn(
-                  "gap-2",
-                  isDisabled && "opacity-50 cursor-not-allowed"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {t(section.labelKey)}
-                <Badge
-                  variant={isActive ? "secondary" : "outline"}
-                  className={cn(
-                    "ml-1 min-w-[1.5rem] justify-center",
-                    isDisabled && "bg-zinc-100 dark:bg-zinc-800"
-                  )}
-                >
-                  {count}
-                </Badge>
-              </Button>
-            );
-          })}
-        </div>
-
-        {/* Bulk Actions Toolbar */}
-        {filteredItems.length > 0 && (
-          <div className="flex flex-col gap-2 mb-4 p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={selectedItems.size === filteredItems.length ? deselectAll : selectAll}
-                className="gap-2"
-              >
-                {selectedItems.size === filteredItems.length ? (
-                  <>
-                    <Square className="h-4 w-4" />
-                    {t("deselectAll")}
-                  </>
-                ) : (
-                  <>
-                    <CheckSquare className="h-4 w-4" />
-                    {t("selectAll")}
-                  </>
-                )}
-              </Button>
-
-              {selectedItems.size > 0 && (
-                <>
-                  <span className="text-sm text-zinc-500 mx-2">
-                    {t("selected", { count: selectedItems.size })}
-                  </span>
+                return (
                   <Button
-                    size="sm"
-                    className="bg-emerald-600 hover:bg-emerald-700 gap-2"
-                    onClick={handleBulkApprove}
-                    disabled={bulkLoading}
+                    key={section.key}
+                    variant={isActive ? "default" : "outline"}
+                    disabled={isDisabled}
+                    onClick={() => {
+                      setActiveSection(section.key);
+                      setSelectedItems(new Set()); // Clear selection when switching tabs
+                      setSearchQuery(""); // Clear search when switching tabs
+                    }}
+                    className={cn("gap-2", isDisabled && "opacity-50 cursor-not-allowed")}
                   >
-                    {bulkLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Check className="h-4 w-4" />
-                    )}
-                    {t("approveSelected")}
+                    <Icon className="h-4 w-4" />
+                    {t(section.labelKey)}
+                    <Badge
+                      variant={isActive ? "secondary" : "outline"}
+                      className={cn(
+                        "ml-1 min-w-[1.5rem] justify-center",
+                        isDisabled && "bg-zinc-100 dark:bg-zinc-800",
+                      )}
+                    >
+                      {count}
+                    </Badge>
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
-                    onClick={openBulkRejectModal}
-                    disabled={bulkLoading}
-                  >
-                    <X className="h-4 w-4" />
-                    {t("rejectSelected")}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="gap-2 text-zinc-500 hover:text-zinc-700"
-                    onClick={handleBulkRemove}
-                    disabled={bulkLoading}
-                  >
-                    {bulkLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                    {t("removeSelected")}
-                  </Button>
-                </>
-              )}
-
-              {/* Search existing entities */}
-              <div className="relative ml-auto">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-                <Input
-                  placeholder={t("searchExisting", { type: t(sections.find(s => s.key === activeSection)?.labelKey || "").toLowerCase() })}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 w-64 h-8 text-sm"
-                />
-              </div>
+                );
+              })}
             </div>
 
-            {/* Search results */}
-            {searchQuery && (
-              <div className="flex flex-wrap gap-1 pt-2 border-t border-zinc-200 dark:border-zinc-700">
-                {searchResults.length > 0 ? (
-                  searchResults.map((name) => (
-                    <Badge
-                      key={name}
-                      variant="secondary"
-                      className="text-xs cursor-default"
-                    >
-                      <Check className="h-3 w-3 mr-1 text-emerald-500" />
-                      {name}
-                    </Badge>
-                  ))
-                ) : (
-                  <span className="text-xs text-zinc-400">{t("noResults")}</span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+            {/* Bulk Actions Toolbar */}
+            {filteredItems.length > 0 && (
+              <div className="flex flex-col gap-2 mb-4 p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={selectedItems.size === filteredItems.length ? deselectAll : selectAll}
+                    className="gap-2"
+                  >
+                    {selectedItems.size === filteredItems.length ? (
+                      <>
+                        <Square className="h-4 w-4" />
+                        {t("deselectAll")}
+                      </>
+                    ) : (
+                      <>
+                        <CheckSquare className="h-4 w-4" />
+                        {t("selectAll")}
+                      </>
+                    )}
+                  </Button>
 
-        {/* Content */}
-        {totalCount === 0 ? (
-          <Card className="py-12">
-            <CardContent className="flex flex-col items-center justify-center text-center">
-              <CheckCircle2 className="h-12 w-12 text-emerald-500 mb-4" />
-              <h3 className="text-lg font-medium">{t("allCaughtUp")}</h3>
-              <p className="text-zinc-500 mt-1">{t("noItems")}</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-3">
-            {filteredItems.map((item) => {
-              const allOptions = [item.suggestion, ...item.alternatives];
-              const selectedValue = selectedValues[item.id] ?? item.suggestion;
-              const firstSentence = getFirstSentence(item.reasoning);
-              const hasMore = item.reasoning.length > firstSentence.length;
-              const isExpanded = expandedReasoning.has(item.id);
-              const isLoading = actionLoading === item.id;
-
-              const isSelected = selectedItems.has(item.id);
-
-              return (
-                <Card
-                  key={item.id}
-                  className={cn(
-                    "overflow-hidden transition-all cursor-pointer",
-                    isSelected && "ring-2 ring-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20"
-                  )}
-                  onClick={() => toggleItemSelection(item.id)}
-                >
-                  <CardContent className="p-4">
-                    {/* Top row: Checkbox + Document title + attempt badge */}
-                    <div className="flex items-center gap-3 mb-3">
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={() => toggleItemSelection(item.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        className="data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
-                      />
-                      <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300 flex-1">
-	                        {item.docTitle}
+                  {selectedItems.size > 0 && (
+                    <>
+                      <span className="text-sm text-zinc-500 mx-2">
+                        {t("selected", { count: selectedItems.size })}
                       </span>
-                      <Badge variant="outline" className="text-xs">
-                        {t("attempt", { count: item.attempts })}
-                      </Badge>
-                    </div>
-
-                    {/* Options row */}
-                    <div className="flex flex-wrap gap-2 mb-2" onClick={(e) => e.stopPropagation()}>
-                      {allOptions.map((option) => {
-                        const isOptionSelected = option === selectedValue;
-                        return (
-                          <Button
-                            key={option}
-                            variant="outline"
-                            size="sm"
-                            disabled={isLoading}
-                            className={cn(
-                              "transition-all",
-                              isOptionSelected &&
-                                "border-emerald-500 border-2 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-950/50"
-                            )}
-                            onClick={() => handleSelectOption(item.id, option)}
-                          >
-                            {isOptionSelected && (
-                              <Check className="h-3 w-3 mr-1 text-emerald-600" />
-                            )}
-                            {option}
-                          </Button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Editable input field */}
-                    <div className="mb-3" onClick={(e) => e.stopPropagation()}>
-                      <Input
-                        value={selectedValue}
-                        onChange={(e) => handleSelectOption(item.id, e.target.value)}
-                        disabled={isLoading}
-                        placeholder={t("customName")}
-                        className="h-8 text-sm"
-                      />
-                    </div>
-
-                    {/* Reasoning */}
-                    <div className="mb-3" onClick={(e) => e.stopPropagation()}>
-                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                        {isExpanded ? item.reasoning : firstSentence}
-                        {hasMore && !isExpanded && (
-                          <button
-                            onClick={() => toggleReasoning(item.id)}
-                            className="ml-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
-                          >
-                            {t("more")}
-                          </button>
+                      <Button
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 gap-2"
+                        onClick={handleBulkApprove}
+                        disabled={bulkLoading}
+                      >
+                        {bulkLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Check className="h-4 w-4" />
                         )}
-                        {isExpanded && hasMore && (
-                          <button
-                            onClick={() => toggleReasoning(item.id)}
-                            className="ml-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
-                          >
-                            {t("less")}
-                          </button>
-                        )}
-                      </p>
-	                      {(item.lastFeedback ?? item.last_feedback) && (
-	                        <p className="text-xs text-zinc-400 dark:text-zinc-500 italic mt-1">
-	                          {t("feedback")}: {item.lastFeedback ?? item.last_feedback}
-	                        </p>
-                      )}
-                    </div>
-
-                    {/* Action buttons */}
-                    <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                        {t("approveSelected")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={openBulkRejectModal}
+                        disabled={bulkLoading}
+                      >
+                        <X className="h-4 w-4" />
+                        {t("rejectSelected")}
+                      </Button>
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="text-zinc-500 hover:text-red-600"
-                        onClick={() => openRejectModal(item)}
-                        disabled={isLoading}
+                        className="gap-2 text-zinc-500 hover:text-zinc-700"
+                        onClick={handleBulkRemove}
+                        disabled={bulkLoading}
                       >
-                        {isLoading ? (
-                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        {bulkLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                          <X className="h-4 w-4 mr-1" />
+                          <Trash2 className="h-4 w-4" />
                         )}
-                        {t("reject")}
+                        {t("removeSelected")}
                       </Button>
-                      <Button
-                        size="sm"
-                        className="bg-emerald-600 hover:bg-emerald-700"
-                        onClick={() => handleApprove(item.id)}
-                        disabled={isLoading}
-                      >
-                        {isLoading ? (
-                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                        ) : (
-                          <Check className="h-4 w-4 mr-1" />
-                        )}
-                        {t("approve")}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
+                    </>
+                  )}
+
+                  {/* Search existing entities */}
+                  <div className="relative ml-auto">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+                    <Input
+                      aria-label={t("searchExisting", {
+                        type: t(
+                          sections.find((s) => s.key === activeSection)?.labelKey || "",
+                        ).toLowerCase(),
+                      })}
+                      placeholder={t("searchExisting", {
+                        type: t(
+                          sections.find((s) => s.key === activeSection)?.labelKey || "",
+                        ).toLowerCase(),
+                      })}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-8 w-64 h-8 text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Search results */}
+                {searchQuery && (
+                  <div className="flex flex-wrap gap-1 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                    {searchResults.length > 0 ? (
+                      searchResults.map((name) => (
+                        <Badge key={name} variant="secondary" className="text-xs cursor-default">
+                          <Check className="h-3 w-3 mr-1 text-emerald-500" />
+                          {name}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-xs text-zinc-400">{t("noResults")}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Content */}
+            {totalCount === 0 ? (
+              <Card className="py-12">
+                <CardContent className="flex flex-col items-center justify-center text-center">
+                  <CheckCircle2 className="h-12 w-12 text-emerald-500 mb-4" />
+                  <h3 className="text-lg font-medium">{t("allCaughtUp")}</h3>
+                  <p className="text-zinc-500 mt-1">{t("noItems")}</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {filteredItems.map((item) => {
+                  const allOptions = [item.suggestion, ...item.alternatives];
+                  const selectedValue = selectedValues[item.id] ?? item.suggestion;
+                  const firstSentence = getFirstSentence(item.reasoning);
+                  const hasMore = item.reasoning.length > firstSentence.length;
+                  const isExpanded = expandedReasoning.has(item.id);
+                  const isLoading = actionLoading === item.id;
+
+                  const isSelected = selectedItems.has(item.id);
+
+                  return (
+                    <Card
+                      key={item.id}
+                      role="checkbox"
+                      tabIndex={0}
+                      aria-checked={isSelected}
+                      className={cn(
+                        "overflow-hidden transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2",
+                        isSelected &&
+                          "ring-2 ring-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20",
+                      )}
+                      onClick={() => toggleItemSelection(item.id)}
+                      onKeyDown={(event) => {
+                        if (event.currentTarget !== event.target) return;
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        event.preventDefault();
+                        toggleItemSelection(item.id);
+                      }}
+                    >
+                      <CardContent className="p-4">
+                        {/* Top row: Checkbox + Document title + attempt badge */}
+                        <div className="flex items-center gap-3 mb-3">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleItemSelection(item.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                          />
+                          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300 flex-1">
+                            {item.docTitle}
+                          </span>
+                          <Badge variant="outline" className="text-xs">
+                            {t("attempt", { count: item.attempts })}
+                          </Badge>
+                        </div>
+
+                        {/* Options row */}
+                        <div
+                          className="flex flex-wrap gap-2 mb-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {allOptions.map((option) => {
+                            const isOptionSelected = option === selectedValue;
+                            return (
+                              <Button
+                                key={option}
+                                variant="outline"
+                                size="sm"
+                                disabled={isLoading}
+                                className={cn(
+                                  "transition-all",
+                                  isOptionSelected &&
+                                    "border-emerald-500 border-2 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-950/50",
+                                )}
+                                onClick={() => handleSelectOption(item.id, option)}
+                              >
+                                {isOptionSelected && (
+                                  <Check className="h-3 w-3 mr-1 text-emerald-600" />
+                                )}
+                                {option}
+                              </Button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Editable input field */}
+                        <div className="mb-3" onClick={(e) => e.stopPropagation()}>
+                          <Input
+                            value={selectedValue}
+                            onChange={(e) => handleSelectOption(item.id, e.target.value)}
+                            disabled={isLoading}
+                            placeholder={t("customName")}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+
+                        {/* Reasoning */}
+                        <div className="mb-3" onClick={(e) => e.stopPropagation()}>
+                          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                            {isExpanded ? item.reasoning : firstSentence}
+                            {hasMore && !isExpanded && (
+                              <button
+                                onClick={() => toggleReasoning(item.id)}
+                                className="ml-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+                              >
+                                {t("more")}
+                              </button>
+                            )}
+                            {isExpanded && hasMore && (
+                              <button
+                                onClick={() => toggleReasoning(item.id)}
+                                className="ml-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+                              >
+                                {t("less")}
+                              </button>
+                            )}
+                          </p>
+                          {(item.lastFeedback ?? item.last_feedback) && (
+                            <p className="text-xs text-zinc-400 dark:text-zinc-500 italic mt-1">
+                              {t("feedback")}: {item.lastFeedback ?? item.last_feedback}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Action buttons */}
+                        <div
+                          className="flex justify-end gap-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-zinc-500 hover:text-red-600"
+                            onClick={() => openRejectModal(item)}
+                            disabled={isLoading}
+                          >
+                            {isLoading ? (
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            ) : (
+                              <X className="h-4 w-4 mr-1" />
+                            )}
+                            {t("reject")}
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="bg-emerald-600 hover:bg-emerald-700"
+                            onClick={() => handleApprove(item.id)}
+                            disabled={isLoading}
+                          >
+                            {isLoading ? (
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            ) : (
+                              <Check className="h-4 w-4 mr-1" />
+                            )}
+                            {t("approve")}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -1617,26 +1685,16 @@ export default function PendingPage() {
               <>
                 <Select
                   value={rejectionCategory || ""}
-                  onValueChange={(v) =>
-                    setRejectionCategory(v as RejectionCategory)
-                  }
+                  onValueChange={(v) => setRejectionCategory(v as RejectionCategory)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder={t("rejectModal.whyOptional")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="duplicate">
-                      {t("rejectModal.duplicate")}
-                    </SelectItem>
-                    <SelectItem value="too_generic">
-                      {t("rejectModal.tooGeneric")}
-                    </SelectItem>
-                    <SelectItem value="irrelevant">
-                      {t("rejectModal.irrelevant")}
-                    </SelectItem>
-                    <SelectItem value="wrong_format">
-                      {t("rejectModal.wrongFormat")}
-                    </SelectItem>
+                    <SelectItem value="duplicate">{t("rejectModal.duplicate")}</SelectItem>
+                    <SelectItem value="too_generic">{t("rejectModal.tooGeneric")}</SelectItem>
+                    <SelectItem value="irrelevant">{t("rejectModal.irrelevant")}</SelectItem>
+                    <SelectItem value="wrong_format">{t("rejectModal.wrongFormat")}</SelectItem>
                     <SelectItem value="other">{t("rejectModal.other")}</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1705,7 +1763,9 @@ export default function PendingPage() {
                 <RadioGroupItem value="per_type" id="bulk-per_type" />
                 <Label htmlFor="bulk-per_type">
                   {t("bulkRejectModal.blockPerType", {
-                    type: t(sections.find(s => s.key === activeSection)?.labelKey || "").toLowerCase(),
+                    type: t(
+                      sections.find((s) => s.key === activeSection)?.labelKey || "",
+                    ).toLowerCase(),
                   })}
                 </Label>
               </div>
@@ -1719,26 +1779,16 @@ export default function PendingPage() {
               <>
                 <Select
                   value={bulkRejectionCategory || ""}
-                  onValueChange={(v) =>
-                    setBulkRejectionCategory(v as RejectionCategory)
-                  }
+                  onValueChange={(v) => setBulkRejectionCategory(v as RejectionCategory)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder={t("rejectModal.whyOptional")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="duplicate">
-                      {t("rejectModal.duplicate")}
-                    </SelectItem>
-                    <SelectItem value="too_generic">
-                      {t("rejectModal.tooGeneric")}
-                    </SelectItem>
-                    <SelectItem value="irrelevant">
-                      {t("rejectModal.irrelevant")}
-                    </SelectItem>
-                    <SelectItem value="wrong_format">
-                      {t("rejectModal.wrongFormat")}
-                    </SelectItem>
+                    <SelectItem value="duplicate">{t("rejectModal.duplicate")}</SelectItem>
+                    <SelectItem value="too_generic">{t("rejectModal.tooGeneric")}</SelectItem>
+                    <SelectItem value="irrelevant">{t("rejectModal.irrelevant")}</SelectItem>
+                    <SelectItem value="wrong_format">{t("rejectModal.wrongFormat")}</SelectItem>
                     <SelectItem value="other">{t("rejectModal.other")}</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1786,9 +1836,7 @@ export default function PendingPage() {
               <Sparkles className="h-5 w-5" />
               {t("similar.title")}
             </DialogTitle>
-            <DialogDescription>
-              {t("similar.description")}
-            </DialogDescription>
+            <DialogDescription>{t("similar.description")}</DialogDescription>
           </DialogHeader>
 
           {(similarGroups?.length ?? 0) === 0 ? (
@@ -1805,9 +1853,12 @@ export default function PendingPage() {
 
               {similarGroups.map((group, index) => {
                 const isMerging = mergingGroupIndex === index;
-                const entityIcon = group.item_type === "correspondent" ? User
-                  : group.item_type === "document_type" ? FileText
-                  : Tag;
+                const entityIcon =
+                  group.item_type === "correspondent"
+                    ? User
+                    : group.item_type === "document_type"
+                      ? FileText
+                      : Tag;
                 const EntityIcon = entityIcon;
 
                 return (
@@ -1826,20 +1877,26 @@ export default function PendingPage() {
                       {/* Similar suggestions list */}
                       <div className="flex flex-wrap gap-2 mb-3">
                         {group.suggestions.map((suggestion, sIndex) => (
-                          <Badge
+                          <button
+                            type="button"
                             key={sIndex}
-                            variant="outline"
-                            className="cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                            onClick={() => setSimilarMergeNames(prev => ({
-                              ...prev,
-                              [index]: suggestion
-                            }))}
+                            className={cn(
+                              badgeVariants({ variant: "outline" }),
+                              "cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800",
+                            )}
+                            onClick={() =>
+                              setSimilarMergeNames((prev) => ({
+                                ...prev,
+                                [index]: suggestion,
+                              }))
+                            }
                           >
                             {suggestion}
-                            {suggestion === (similarMergeNames[index] || group.recommended_name) && (
+                            {suggestion ===
+                              (similarMergeNames[index] || group.recommended_name) && (
                               <Check className="h-3 w-3 ml-1 text-emerald-500" />
                             )}
-                          </Badge>
+                          </button>
                         ))}
                       </div>
 
@@ -1850,10 +1907,12 @@ export default function PendingPage() {
                         </Label>
                         <Input
                           value={similarMergeNames[index] ?? group.recommended_name}
-                          onChange={(e) => setSimilarMergeNames(prev => ({
-                            ...prev,
-                            [index]: e.target.value
-                          }))}
+                          onChange={(e) =>
+                            setSimilarMergeNames((prev) => ({
+                              ...prev,
+                              [index]: e.target.value,
+                            }))
+                          }
                           disabled={isMerging}
                           className="h-8 text-sm"
                         />

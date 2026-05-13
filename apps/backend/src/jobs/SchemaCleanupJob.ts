@@ -1,16 +1,16 @@
 /**
  * Schema cleanup job - applies approved schema changes (merges, deletes).
  */
-import { Effect, Context, Layer, Ref } from 'effect';
-import { PiConsolidationAgentService } from '../agents/PiConsolidationAgent.js';
-import { JobError } from '../errors/index.js';
+import { Context, Effect, Layer, Ref } from "effect";
+import { PiConsolidationAgentService } from "../agents/PiConsolidationAgent.js";
+import { JobError } from "../errors/index.js";
 
 // ===========================================================================
 // Types
 // ===========================================================================
 
 export interface SchemaCleanupProgress {
-  status: 'idle' | 'running' | 'completed' | 'error';
+  status: "idle" | "running" | "completed" | "error";
   total: number;
   processed: number;
   merged: number;
@@ -37,7 +37,8 @@ export interface SchemaCleanupJobService {
   readonly getStatus: () => Effect.Effect<SchemaCleanupProgress, never>;
 }
 
-export const SchemaCleanupJobService = Context.GenericTag<SchemaCleanupJobService>('SchemaCleanupJobService');
+export const SchemaCleanupJobService =
+  Context.GenericTag<SchemaCleanupJobService>("SchemaCleanupJobService");
 
 // ===========================================================================
 // Live Implementation
@@ -49,7 +50,7 @@ export const SchemaCleanupJobServiceLive = Layer.effect(
     const consolidationAgent = yield* PiConsolidationAgentService;
 
     const progressRef = yield* Ref.make<SchemaCleanupProgress>({
-      status: 'idle',
+      status: "idle",
       total: 0,
       processed: 0,
       merged: 0,
@@ -63,7 +64,7 @@ export const SchemaCleanupJobServiceLive = Layer.effect(
       run: () =>
         Effect.gen(function* () {
           yield* Ref.set(progressRef, {
-            status: 'running',
+            status: "running",
             total: 0,
             processed: 0,
             merged: 0,
@@ -74,19 +75,19 @@ export const SchemaCleanupJobServiceLive = Layer.effect(
           });
 
           const reportResult = yield* Effect.either(consolidationAgent.generateReport());
-          if (reportResult._tag === 'Left') {
+          if (reportResult._tag === "Left") {
             yield* Ref.update(progressRef, (p) => ({
               ...p,
-              status: 'error' as const,
+              status: "error" as const,
               completedAt: new Date().toISOString(),
             }));
 
             return yield* Effect.fail(
               new JobError({
                 message: `Schema cleanup failed: ${reportResult.left}`,
-                jobName: 'schema_cleanup',
+                jobName: "schema_cleanup",
                 cause: reportResult.left,
-              })
+              }),
             );
           }
 
@@ -100,24 +101,30 @@ export const SchemaCleanupJobServiceLive = Layer.effect(
 
           yield* Ref.update(progressRef, (p) => ({
             ...p,
-            status: 'completed' as const,
+            status: "completed" as const,
             completedAt: new Date().toISOString(),
           }));
 
-          return { merged: 0, deleted: 0, errors: 0, reportId: report.id, proposals: report.proposals.length };
-	        }).pipe(
+          return {
+            merged: 0,
+            deleted: 0,
+            errors: 0,
+            reportId: report.id,
+            proposals: report.proposals.length,
+          };
+        }).pipe(
           Effect.mapError((e) =>
             e instanceof JobError
               ? e
               : new JobError({
                   message: `Schema cleanup failed: ${e}`,
-                  jobName: 'schema_cleanup',
+                  jobName: "schema_cleanup",
                   cause: e,
-                })
-          )
+                }),
+          ),
         ),
 
       getStatus: () => Ref.get(progressRef),
     };
-  })
+  }),
 );

@@ -63,8 +63,10 @@ export interface Settings {
   pipeline_ocr: boolean;
   pipeline_title: boolean;
   pipeline_correspondent: boolean;
+  pipeline_document_type: boolean;
   pipeline_tags: boolean;
   pipeline_custom_fields: boolean;
+  pipeline_document_links: boolean;
   // Vector Search
   vector_search_enabled: boolean;
   vector_search_top_k: number;
@@ -154,8 +156,10 @@ export const DEFAULT_SETTINGS: Settings = {
   pipeline_ocr: true,
   pipeline_title: true,
   pipeline_correspondent: true,
+  pipeline_document_type: true,
   pipeline_tags: true,
   pipeline_custom_fields: true,
+  pipeline_document_links: true,
   vector_search_enabled: true,
   vector_search_top_k: 5,
   vector_search_min_score: 0.7,

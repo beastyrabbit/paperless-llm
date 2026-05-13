@@ -1,34 +1,34 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useTranslations } from "next-intl";
 import {
-  Tag,
-  RefreshCw,
-  Loader2,
-  AlertCircle,
-  CheckCircle2,
-  Plus,
-  Check,
-  X,
-  Palette,
-} from "lucide-react";
-import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-  Button,
   Input,
   Label,
-  Alert,
-  AlertDescription,
-  AlertTitle,
-  Badge,
 } from "@repo/ui";
-import { useTinyBase, useStringSetting } from "@/lib/tinybase";
+import {
+  AlertCircle,
+  Check,
+  CheckCircle2,
+  Loader2,
+  Palette,
+  Plus,
+  RefreshCw,
+  Tag,
+  X,
+} from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useState } from "react";
 import type { SettingKey } from "@/lib/tinybase";
+import { useStringSetting, useTinyBase } from "@/lib/tinybase";
 
 interface TagStatus {
   key: string;
@@ -48,7 +48,7 @@ interface TagsStatusResponse {
   color_mismatch_count: number;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE = "";
 
 // Tag setting keys mapping
 const TAG_KEYS: { key: string; settingKey: SettingKey }[] = [
@@ -64,11 +64,15 @@ const TAG_KEYS: { key: string; settingKey: SettingKey }[] = [
 function TagNameInput({ settingKey, label }: { settingKey: SettingKey; label: string }) {
   const { updateSetting } = useTinyBase();
   const value = useStringSetting(settingKey);
+  const inputId = `tag-name-${settingKey.replaceAll(".", "-")}`;
 
   return (
     <div className="space-y-2">
-      <Label className="capitalize">{label}</Label>
+      <Label htmlFor={inputId} className="capitalize">
+        {label}
+      </Label>
       <Input
+        id={inputId}
         value={value}
         onChange={(e) => updateSetting(settingKey, e.target.value)}
       />
@@ -82,15 +86,17 @@ function ColorPickerInput() {
 
   return (
     <div className="flex items-center gap-3">
-      <Label>{`Tag Color`}</Label>
+      <Label htmlFor="tag-color-picker">{`Tag Color`}</Label>
       <div className="flex items-center gap-2">
         <input
+          id="tag-color-picker"
           type="color"
           value={value || "#1e88e5"}
           onChange={(e) => updateSetting("tags.color", e.target.value)}
           className="w-10 h-10 rounded cursor-pointer border border-zinc-300 dark:border-zinc-700"
         />
         <Input
+          aria-label="Tag color hex value"
           value={value || "#1e88e5"}
           onChange={(e) => updateSetting("tags.color", e.target.value)}
           className="w-28 font-mono text-sm"
@@ -137,9 +143,7 @@ export function WorkflowTagsTab() {
   const createMissingTags = async () => {
     if (!tagsStatus) return;
 
-    const missingTags = tagsStatus.tags
-      .filter((t) => !t.exists)
-      .map((t) => t.name);
+    const missingTags = tagsStatus.tags.filter((t) => !t.exists).map((t) => t.name);
 
     if (missingTags.length === 0) return;
 
@@ -234,8 +238,8 @@ export function WorkflowTagsTab() {
                   {loading
                     ? t("workflowTags.checkingTags")
                     : tagsStatus?.all_exist
-                    ? t("workflowTags.allTagsExist")
-                    : t("workflowTags.missingTags", { count: tagsStatus?.missing_count || 0 })}
+                      ? t("workflowTags.allTagsExist")
+                      : t("workflowTags.missingTags", { count: tagsStatus?.missing_count || 0 })}
                 </CardTitle>
                 <CardDescription>
                   {tagsStatus?.all_exist
@@ -245,12 +249,7 @@ export function WorkflowTagsTab() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={fetchTagsStatus}
-                disabled={loading}
-              >
+              <Button variant="outline" size="sm" onClick={fetchTagsStatus} disabled={loading}>
                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
                 {tCommon("refresh")}
               </Button>
@@ -270,12 +269,7 @@ export function WorkflowTagsTab() {
                 </Button>
               )}
               {tagsStatus && tagsStatus.color_mismatch_count > 0 && (
-                <Button
-                  size="sm"
-                  onClick={fixColors}
-                  disabled={fixingColors}
-                  variant="outline"
-                >
+                <Button size="sm" onClick={fixColors} disabled={fixingColors} variant="outline">
                   {fixingColors ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
@@ -337,9 +331,7 @@ export function WorkflowTagsTab() {
                       )}
                     </div>
                     <div>
-                      <span className="font-medium capitalize">
-                        {tag.key.replace(/_/g, " ")}
-                      </span>
+                      <span className="font-medium capitalize">{tag.key.replace(/_/g, " ")}</span>
                       <Badge variant="outline" className="ml-2 font-mono text-xs">
                         {tag.name}
                       </Badge>
@@ -356,10 +348,7 @@ export function WorkflowTagsTab() {
                     )}
                     {/* Color match status */}
                     {tag.exists && tag.color_matches === false && (
-                      <Badge
-                        variant="outline"
-                        className="text-amber-600 border-amber-600"
-                      >
+                      <Badge variant="outline" className="text-amber-600 border-amber-600">
                         Color
                       </Badge>
                     )}
@@ -405,9 +394,7 @@ export function WorkflowTagsTab() {
               />
             ))}
           </div>
-          <p className="text-xs text-zinc-500 mt-4">
-            {t("workflowTags.tagNamesNote")}
-          </p>
+          <p className="text-xs text-zinc-500 mt-4">{t("workflowTags.tagNamesNote")}</p>
         </CardContent>
       </Card>
     </div>

@@ -1,14 +1,14 @@
 // Tab components
-export { ConnectionsTab } from "./ConnectionsTab";
-export { ProcessingTab } from "./ProcessingTab";
-export { PipelineTab } from "./PipelineTab";
-export { CustomFieldsTab } from "./CustomFieldsTab";
-export { AiTagsTab } from "./AiTagsTab";
-export { AiDocumentTypesTab } from "./AiDocumentTypesTab";
-export { WorkflowTagsTab } from "./WorkflowTagsTab";
-export { LanguageTab } from "./LanguageTab";
-export { AdvancedTab } from "./AdvancedTab";
-export { MaintenanceTab } from "./MaintenanceTab";
 
+export { AdvancedTab } from "./AdvancedTab";
+export { AiDocumentTypesTab } from "./AiDocumentTypesTab";
+export { AiTagsTab } from "./AiTagsTab";
+export { ConnectionsTab } from "./ConnectionsTab";
+export { CustomFieldsTab } from "./CustomFieldsTab";
+export { LanguageTab } from "./LanguageTab";
+export { MaintenanceTab } from "./MaintenanceTab";
+export { PipelineTab } from "./PipelineTab";
+export { ProcessingTab } from "./ProcessingTab";
 // Shared components
 export * from "./shared";
+export { WorkflowTagsTab } from "./WorkflowTagsTab";

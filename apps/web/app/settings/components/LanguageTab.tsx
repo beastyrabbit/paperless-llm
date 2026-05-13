@@ -1,10 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { useTranslations, useLocale } from "next-intl";
-import { Globe } from "lucide-react";
-import { locales, localeNames, type Locale } from "@/i18n/config";
-import { setLocale } from "@/lib/locale";
 import {
   Card,
   CardContent,
@@ -18,6 +13,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@repo/ui";
+import { Globe } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
+import { useState } from "react";
+import { type Locale, localeNames, locales } from "@/i18n/config";
+import { setLocale } from "@/lib/locale";
 
 export function LanguageTab() {
   const t = useTranslations("settings");
@@ -42,10 +42,7 @@ export function LanguageTab() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label>{t("language.title")}</Label>
-            <Select
-              value={pendingUiLocale ?? currentLocale}
-              onValueChange={handleUiLocaleChange}
-            >
+            <Select value={pendingUiLocale ?? currentLocale} onValueChange={handleUiLocaleChange}>
               <SelectTrigger>
                 <SelectValue placeholder={localeNames[currentLocale]} />
               </SelectTrigger>
@@ -57,9 +54,7 @@ export function LanguageTab() {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-zinc-500">
-              {t("language.controlsUiLanguage")}
-            </p>
+            <p className="text-xs text-zinc-500">{t("language.controlsUiLanguage")}</p>
           </div>
         </CardContent>
       </Card>

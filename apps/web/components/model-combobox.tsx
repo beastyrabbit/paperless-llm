@@ -1,10 +1,7 @@
-"use client"
-
-import * as React from "react"
-import { Check, ChevronsUpDown } from "lucide-react"
+"use client";
 
 import {
-  cn,
+  Badge,
   Button,
   Command,
   CommandEmpty,
@@ -12,26 +9,28 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  cn,
   Popover,
   PopoverContent,
   PopoverTrigger,
-  Badge,
-} from "@repo/ui"
+} from "@repo/ui";
+import { Check, ChevronsUpDown } from "lucide-react";
+import * as React from "react";
 
 interface Model {
-  name: string
-  value?: string  // Optional: if provided, use as value instead of name
-  size?: string
+  name: string;
+  value?: string; // Optional: if provided, use as value instead of name
+  size?: string;
 }
 
 interface ModelComboboxProps {
-  models: Model[]
-  value: string
-  onValueChange: (value: string) => void
-  placeholder?: string
-  searchPlaceholder?: string
-  emptyText?: string
-  disabled?: boolean
+  models: Model[];
+  value: string;
+  onValueChange: (value: string) => void;
+  placeholder?: string;
+  searchPlaceholder?: string;
+  emptyText?: string;
+  disabled?: boolean;
 }
 
 export function ModelCombobox({
@@ -43,10 +42,10 @@ export function ModelCombobox({
   emptyText = "No model found.",
   disabled = false,
 }: ModelComboboxProps) {
-  const [open, setOpen] = React.useState(false)
+  const [open, setOpen] = React.useState(false);
 
-  const getModelValue = (model: Model) => model.value ?? model.name
-  const selectedModel = models.find((model) => getModelValue(model) === value)
+  const getModelValue = (model: Model) => model.value ?? model.name;
+  const selectedModel = models.find((model) => getModelValue(model) === value);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -80,14 +79,14 @@ export function ModelCombobox({
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>
               {models.map((model, index) => {
-                const modelValue = getModelValue(model)
+                const modelValue = getModelValue(model);
                 return (
                   <CommandItem
                     key={`${modelValue}-${index}`}
                     value={model.name}
                     onSelect={() => {
-                      onValueChange(modelValue === value ? "" : modelValue)
-                      setOpen(false)
+                      onValueChange(modelValue === value ? "" : modelValue);
+                      setOpen(false);
                     }}
                   >
                     <div className="flex items-center justify-between w-full gap-2">
@@ -101,16 +100,16 @@ export function ModelCombobox({
                     <Check
                       className={cn(
                         "ml-2 h-4 w-4 shrink-0",
-                        value === modelValue ? "opacity-100" : "opacity-0"
+                        value === modelValue ? "opacity-100" : "opacity-0",
                       )}
                     />
                   </CommandItem>
-                )
+                );
               })}
             </CommandGroup>
           </CommandList>
         </Command>
       </PopoverContent>
     </Popover>
-  )
+  );
 }

@@ -1,20 +1,20 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { cn } from "@repo/ui";
+import {
+  Clock,
+  FileText,
+  LayoutDashboard,
+  MessageSquare,
+  Search,
+  Settings,
+  Zap,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import {
-  LayoutDashboard,
-  FileText,
-  Settings,
-  Clock,
-  Zap,
-  Search,
-  MessageSquare,
-} from "lucide-react";
-import { cn } from "@repo/ui";
-import { processingApi, documentsApi, AutoProcessingStatus, QueueStats } from "@/lib/api";
+import { useCallback, useEffect, useState } from "react";
+import { AutoProcessingStatus, documentsApi, processingApi, QueueStats } from "@/lib/api";
 
 const navigation = [
   { key: "dashboard", href: "/", icon: LayoutDashboard },
@@ -57,9 +57,7 @@ export function Sidebar() {
   const queueCount = queueStats?.total_in_pipeline ?? 0;
 
   // Build current full path with query params
-  const currentPath = searchParams.toString()
-    ? `${pathname}?${searchParams.toString()}`
-    : pathname;
+  const currentPath = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
 
   return (
     <aside className="flex w-64 flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
@@ -77,7 +75,7 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 space-y-1 p-4">
         {navigation.map((item) => {
-          const isActive = item.href.includes('?')
+          const isActive = item.href.includes("?")
             ? currentPath === item.href
             : pathname === item.href;
           return (
@@ -88,15 +86,13 @@ export function Sidebar() {
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
                 isActive
                   ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
-                  : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                  : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100",
               )}
             >
               <item.icon
                 className={cn(
                   "h-5 w-5",
-                  isActive
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : "text-zinc-400"
+                  isActive ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-400",
                 )}
               />
               {t(item.key)}
@@ -116,7 +112,7 @@ export function Sidebar() {
                   ? "bg-amber-500 animate-pulse"
                   : isEnabled
                     ? "bg-emerald-500"
-                    : "bg-zinc-400"
+                    : "bg-zinc-400",
               )}
             />
             <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">

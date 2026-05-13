@@ -1,57 +1,57 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useTranslations } from "next-intl";
 import {
-  Loader2,
-  AlertCircle,
-  CheckCircle2,
-  User,
-  FileText,
-  Tag,
-  Zap,
-  Play,
-  Square,
-  SkipForward,
-  ChevronUp,
-  ChevronDown,
-  Trash2,
-  Clock,
-  Calendar,
-  X,
-} from "lucide-react";
-import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-  Button,
   Input,
   Label,
-  Switch,
+  Progress,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
   Separator,
-  Alert,
-  AlertDescription,
-  AlertTitle,
-  Badge,
-  Progress,
+  Switch,
 } from "@repo/ui";
 import {
-  jobsApi,
-  settingsApi,
-  BootstrapProgress,
+  AlertCircle,
+  Calendar,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  FileText,
+  Loader2,
+  Play,
+  SkipForward,
+  Square,
+  Tag,
+  Trash2,
+  User,
+  X,
+  Zap,
+} from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useState } from "react";
+import {
   BootstrapAnalysisType,
-  JobScheduleStatus,
-  ScheduleType,
-  BulkOCRProgress,
+  BootstrapProgress,
   BulkIngestProgress,
+  BulkOCRProgress,
+  JobScheduleStatus,
+  jobsApi,
   ProcessingLogStats,
+  ScheduleType,
+  settingsApi,
 } from "@/lib/api";
 
 function formatETA(seconds: number): string {
@@ -151,7 +151,13 @@ export function MaintenanceTab() {
     loadBulkIngestStatus();
     loadScheduleStatus();
     loadProcessingLogStats();
-  }, [loadBootstrapStatus, loadBulkOCRStatus, loadBulkIngestStatus, loadScheduleStatus, loadProcessingLogStats]);
+  }, [
+    loadBootstrapStatus,
+    loadBulkOCRStatus,
+    loadBulkIngestStatus,
+    loadScheduleStatus,
+    loadProcessingLogStats,
+  ]);
 
   // Poll bootstrap status while running
   useEffect(() => {
@@ -263,7 +269,7 @@ export function MaintenanceTab() {
     jobName: "schema_cleanup" | "metadata_enhancement",
     enabled: boolean,
     schedule: ScheduleType,
-    cron?: string
+    cron?: string,
   ) => {
     setScheduleSaving(jobName);
     setMaintenanceError(null);
@@ -335,7 +341,12 @@ export function MaintenanceTab() {
           <AlertTitle>{tCommon("error")}</AlertTitle>
           <AlertDescription className="flex items-center justify-between">
             <span>{maintenanceError}</span>
-            <Button variant="ghost" size="sm" onClick={() => setMaintenanceError(null)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Dismiss error"
+              onClick={() => setMaintenanceError(null)}
+            >
               <X className="h-4 w-4" />
             </Button>
           </AlertDescription>
@@ -466,13 +477,12 @@ export function MaintenanceTab() {
                     </span>
                   </div>
                   <Progress value={bootstrapProgressPercent} className="h-2" />
-                  {isBootstrapRunning &&
-                    bootstrapProgress.estimated_remaining_seconds !== null && (
-                      <div className="text-xs text-zinc-500 mt-1">
-                        {tMaint("bootstrap.eta")}:{" "}
-                        {formatETA(bootstrapProgress.estimated_remaining_seconds)}
-                      </div>
-                    )}
+                  {isBootstrapRunning && bootstrapProgress.estimated_remaining_seconds !== null && (
+                    <div className="text-xs text-zinc-500 mt-1">
+                      {tMaint("bootstrap.eta")}:{" "}
+                      {formatETA(bootstrapProgress.estimated_remaining_seconds)}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -485,30 +495,35 @@ export function MaintenanceTab() {
               )}
 
               {/* Current Phase with Entity Count and Document Coverage */}
-              {bootstrapProgress.current_doc_title && bootstrapProgress.current_doc_title !== "Initializing..." && isBootstrapRunning && (
-                <div className="text-sm">
-                  <span className="font-medium text-zinc-700 dark:text-zinc-300">
-                    {tMaint("bootstrap.phase")} {bootstrapProgress.processed + 1}/{bootstrapProgress.total}:
-                  </span>{" "}
-                  <span className="text-zinc-600 dark:text-zinc-400">
-                    {bootstrapProgress.current_doc_title}
-                  </span>
-                  {bootstrapProgress.total_documents && (
-                    <span className="text-zinc-500 ml-1">
-                      ({tMaint("bootstrap.coveringDocs", { count: bootstrapProgress.total_documents.toLocaleString() })})
+              {bootstrapProgress.current_doc_title &&
+                bootstrapProgress.current_doc_title !== "Initializing..." &&
+                isBootstrapRunning && (
+                  <div className="text-sm">
+                    <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                      {tMaint("bootstrap.phase")} {bootstrapProgress.processed + 1}/
+                      {bootstrapProgress.total}:
+                    </span>{" "}
+                    <span className="text-zinc-600 dark:text-zinc-400">
+                      {bootstrapProgress.current_doc_title}
                     </span>
-                  )}
-                </div>
-              )}
+                    {bootstrapProgress.total_documents && (
+                      <span className="text-zinc-500 ml-1">
+                        (
+                        {tMaint("bootstrap.coveringDocs", {
+                          count: bootstrapProgress.total_documents.toLocaleString(),
+                        })}
+                        )
+                      </span>
+                    )}
+                  </div>
+                )}
 
               {/* Stats with Expandable Details */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex gap-4 text-sm">
                     <div>
-                      <span className="text-zinc-500">
-                        {tMaint("bootstrap.suggestionsFound")}:
-                      </span>{" "}
+                      <span className="text-zinc-500">{tMaint("bootstrap.suggestionsFound")}:</span>{" "}
                       <span className="font-medium text-emerald-600">
                         {bootstrapProgress.suggestions_found}
                       </span>
@@ -516,9 +531,7 @@ export function MaintenanceTab() {
                     {bootstrapProgress.errors > 0 && (
                       <div>
                         <span className="text-zinc-500">{tMaint("bootstrap.errors")}:</span>{" "}
-                        <span className="font-medium text-red-600">
-                          {bootstrapProgress.errors}
-                        </span>
+                        <span className="font-medium text-red-600">{bootstrapProgress.errors}</span>
                       </div>
                     )}
                     {bootstrapProgress.skipped > 0 && (
@@ -682,8 +695,8 @@ export function MaintenanceTab() {
                   <div className="flex justify-between text-sm text-zinc-600 dark:text-zinc-400">
                     <span>{tMaint("bulkOCR.progress")}</span>
                     <span>
-                      {bulkOCRProgress.processed}/{bulkOCRProgress.total} (
-                      {bulkOCRProgressPercent}%)
+                      {bulkOCRProgress.processed}/{bulkOCRProgress.total} ({bulkOCRProgressPercent}
+                      %)
                     </span>
                   </div>
                   <Progress value={bulkOCRProgressPercent} className="h-2" />
@@ -709,9 +722,7 @@ export function MaintenanceTab() {
                 {bulkOCRProgress.skipped > 0 && (
                   <div>
                     <span className="text-zinc-500">{tMaint("bulkOCR.skipped")}:</span>{" "}
-                    <span className="font-medium text-zinc-600">
-                      {bulkOCRProgress.skipped}
-                    </span>
+                    <span className="font-medium text-zinc-600">{bulkOCRProgress.skipped}</span>
                   </div>
                 )}
                 {bulkOCRProgress.errors > 0 && (
@@ -737,9 +748,7 @@ export function MaintenanceTab() {
       <Card>
         <CardHeader>
           <CardTitle>{tMaint("bulkIngest.title")}</CardTitle>
-          <CardDescription>
-            {tMaint("bulkIngest.description")}
-          </CardDescription>
+          <CardDescription>{tMaint("bulkIngest.description")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Configuration */}
@@ -869,9 +878,7 @@ export function MaintenanceTab() {
                 {bulkIngestProgress.skipped > 0 && (
                   <div>
                     <span className="text-zinc-500">{tMaint("bulkIngest.skipped")}:</span>{" "}
-                    <span className="font-medium text-zinc-600">
-                      {bulkIngestProgress.skipped}
-                    </span>
+                    <span className="font-medium text-zinc-600">{bulkIngestProgress.skipped}</span>
                   </div>
                 )}
                 {bulkIngestProgress.errors > 0 && (
@@ -1062,11 +1069,7 @@ function ScheduledJobSection({
         </div>
         <div className="flex items-center gap-2">
           {saving && <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />}
-          <Switch
-            checked={localEnabled}
-            onCheckedChange={handleEnabledChange}
-            disabled={saving}
-          />
+          <Switch checked={localEnabled} onCheckedChange={handleEnabledChange} disabled={saving} />
         </div>
       </div>
 

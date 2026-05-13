@@ -1,36 +1,36 @@
 "use client";
 
-import { useState, useEffect, use, useRef } from "react";
 import {
-  ArrowLeft,
-  Play,
-  FileText,
-  User,
-  Loader2,
-  Sparkles,
-  Calendar,
-  Tag,
-  ScrollText,
-  CheckCircle2,
-  XCircle,
-  ExternalLink,
-} from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Button,
-  Badge,
-  ScrollArea,
-  Separator,
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  ScrollArea,
+  Separator,
 } from "@repo/ui";
+import {
+  ArrowLeft,
+  Calendar,
+  CheckCircle2,
+  ExternalLink,
+  FileText,
+  Loader2,
+  Play,
+  ScrollText,
+  Sparkles,
+  Tag,
+  User,
+  XCircle,
+} from "lucide-react";
 import Link from "next/link";
-import { documentsApi, processingApi, settingsApi, type DocumentDetail } from "@/lib/api";
+import { use, useEffect, useRef, useState } from "react";
+import { type DocumentDetail, documentsApi, processingApi, settingsApi } from "@/lib/api";
 
 // Helper to determine processing status from tags
 function getProcessingStatus(tags: Array<{ id: number; name: string }>): string {
@@ -62,23 +62,23 @@ function isOcrComplete(status: string): boolean {
 
 // Get the next processing step based on current status
 function getNextStep(status: string): { step: string; label: string } | null {
-	  switch (status) {
-	    case "todo":
-	    case "pending":
-	    case "unknown":
-	      return { step: "ocr", label: "OCR" };
-	    case "ocr":
-	      return { step: "metadata", label: "Metadata" };
-	    case "metadata":
-	      return { step: "metadata", label: "Metadata" };
-	    case "index":
-	      return { step: "index", label: "Index" };
-	    case "review":
-	      return { step: "review", label: "Review" };
-	    case "done":
-	      return null;
-	    case "ocr_done":
-	      return { step: "metadata", label: "Metadata" };
+  switch (status) {
+    case "todo":
+    case "pending":
+    case "unknown":
+      return { step: "ocr", label: "OCR" };
+    case "ocr":
+      return { step: "metadata", label: "Metadata" };
+    case "metadata":
+      return { step: "metadata", label: "Metadata" };
+    case "index":
+      return { step: "index", label: "Index" };
+    case "review":
+      return { step: "review", label: "Review" };
+    case "done":
+      return null;
+    case "ocr_done":
+      return { step: "metadata", label: "Metadata" };
     case "summary_done":
       return { step: "title", label: "Title" };
     case "schema_review":
@@ -91,22 +91,18 @@ function getNextStep(status: string): { step: string; label: string } | null {
       return { step: "tags", label: "Tags" };
     case "tags_done":
       return { step: "custom_fields", label: "Custom Fields" };
-	    case "processed":
-	      return null; // Already fully processed
+    case "processed":
+      return null; // Already fully processed
     case "failed":
       return { step: "retry", label: "Retry" };
-	    case "manual_review":
-	      return { step: "review", label: "Review" };
-	    default:
-	      return { step: "metadata", label: "Metadata" };
-	  }
-	}
+    case "manual_review":
+      return { step: "review", label: "Review" };
+    default:
+      return { step: "metadata", label: "Metadata" };
+  }
+}
 
-export default function DocumentDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const docId = parseInt(resolvedParams.id);
 
@@ -210,7 +206,11 @@ export default function DocumentDetailPage({
           }, 500);
         }
 
-        if (data.type === "needs_review" || data.type === "pipeline_paused" || data.type === "schema_review_needed") {
+        if (
+          data.type === "needs_review" ||
+          data.type === "pipeline_paused" ||
+          data.type === "schema_review_needed"
+        ) {
           setProcessing(false);
           setProcessingComplete(false);
           eventSource.close();
@@ -258,12 +258,12 @@ export default function DocumentDetailPage({
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-gradient-to-br from-zinc-50 via-white to-emerald-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-emerald-950/20">
         <p className="text-red-500">{error || "Document not found"}</p>
-        <Link href="/documents">
-          <Button variant="outline">
+        <Button variant="outline" asChild>
+          <Link href="/documents">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Documents
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
     );
   }
@@ -274,15 +274,13 @@ export default function DocumentDetailPage({
       <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/80">
         <div className="flex h-16 items-center justify-between px-8">
           <div className="flex items-center gap-4">
-            <Link href="/documents">
-              <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" asChild>
+              <Link href="/documents" aria-label="Back to documents">
                 <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
             <div>
-              <h1 className="text-xl font-bold tracking-tight">
-                Document #{docId}
-              </h1>
+              <h1 className="text-xl font-bold tracking-tight">Document #{docId}</h1>
               <div className="flex items-center gap-2">
                 <p className="text-sm text-zinc-500 truncate max-w-md">{document.title}</p>
                 <Badge variant="outline" className="text-xs">
@@ -355,11 +353,7 @@ export default function DocumentDetailPage({
 
             {/* Full Pipeline button */}
             {!isProcessed && (
-              <Button
-                onClick={() => startProcessing(true)}
-                disabled={processing}
-                size="sm"
-              >
+              <Button onClick={() => startProcessing(true)} disabled={processing} size="sm">
                 {processing ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -452,9 +446,7 @@ export default function DocumentDetailPage({
                   <User className="h-4 w-4 text-zinc-400" />
                   <div>
                     <p className="text-sm text-zinc-500">Correspondent</p>
-                    <p className="font-medium">
-                      {document.correspondent || "Not assigned"}
-                    </p>
+                    <p className="font-medium">{document.correspondent || "Not assigned"}</p>
                   </div>
                 </div>
 
@@ -465,9 +457,7 @@ export default function DocumentDetailPage({
                   <FileText className="h-4 w-4 text-zinc-400" />
                   <div>
                     <p className="text-sm text-zinc-500">Document Type</p>
-                    <p className="font-medium">
-                      {document.document_type || "Not assigned"}
-                    </p>
+                    <p className="font-medium">{document.document_type || "Not assigned"}</p>
                   </div>
                 </div>
 
@@ -478,9 +468,7 @@ export default function DocumentDetailPage({
                   <Calendar className="h-4 w-4 text-zinc-400" />
                   <div>
                     <p className="text-sm text-zinc-500">Created</p>
-                    <p className="font-medium">
-                      {new Date(document.created).toLocaleDateString()}
-                    </p>
+                    <p className="font-medium">{new Date(document.created).toLocaleDateString()}</p>
                   </div>
                 </div>
 
@@ -497,9 +485,7 @@ export default function DocumentDetailPage({
                       document.tags.map((tag) => (
                         <Badge
                           key={tag.id}
-                          variant={
-                            tag.name.startsWith("llm-") ? "secondary" : "outline"
-                          }
+                          variant={tag.name.startsWith("llm-") ? "secondary" : "outline"}
                         >
                           {tag.name}
                         </Badge>

@@ -1,14 +1,27 @@
 /**
  * Settings API handlers.
  */
-import { Effect, pipe } from 'effect';
-import { ConfigService } from '../../config/index.js';
-import { PaperlessService, OllamaService, MistralService, TinyBaseService, QdrantService } from '../../services/index.js';
-import type { Settings, SettingsUpdate, ConnectionTestResult, TagsStatus } from './api.js';
+import { Effect, pipe } from "effect";
+import { ConfigService } from "../../config/index.js";
+import {
+  MistralService,
+  OllamaService,
+  PaperlessService,
+  QdrantService,
+  TinyBaseService,
+} from "../../services/index.js";
+import type { ConnectionTestResult, Settings, SettingsUpdate } from "./api.js";
 
 // ===========================================================================
 // Get Settings
 // ===========================================================================
+
+const MASKED_SECRET = "********";
+
+const maskSecret = (value: string): string => (value ? MASKED_SECRET : "");
+
+const isMaskedSecret = (value: unknown): boolean =>
+  typeof value === "string" && /^[*]+$/.test(value);
 
 export const getSettings = Effect.gen(function* () {
   const config = yield* ConfigService;
@@ -24,7 +37,7 @@ export const getSettings = Effect.gen(function* () {
   const getBool = (key: string, fallback: boolean): boolean => {
     const val = dbSettings[key];
     if (val === undefined) return fallback;
-    return val === 'true' || val === '1';
+    return val === "true" || val === "1";
   };
   const getNum = (key: string, fallback: number): number => {
     const val = dbSettings[key];
@@ -33,7 +46,8 @@ export const getSettings = Effect.gen(function* () {
     return isNaN(num) ? fallback : num;
   };
 
-  const { paperless, ollama, mistral, qdrant, autoProcessing, tags, language, debug } = config.config;
+  const { paperless, ollama, mistral, qdrant, autoProcessing, tags, language, debug } =
+    config.config;
   const pipeline = config.config.pipeline ?? {
     enableOcr: true,
     enableSummary: false,
@@ -42,82 +56,110 @@ export const getSettings = Effect.gen(function* () {
     enableDocumentType: true,
     enableTags: true,
     enableCustomFields: false,
+    enableDocumentLinks: true,
   };
 
   // Merge DB settings with config defaults
-  const paperlessUrl = get('paperless.url', paperless.url || '');
-  const paperlessToken = get('paperless.token', paperless.token || '');
-  const paperlessExternalUrl = get('paperless.external_url', '');
-  const ollamaUrl = get('ollama.url', ollama.url || '');
-  const ollamaModelLarge = get('ollama.model_large', ollama.modelLarge || '');
-  const ollamaModelSmall = get('ollama.model_small', ollama.modelSmall || '');
-  const ollamaEmbeddingModel = get('ollama.embedding_model', (ollama as Record<string, unknown>).embeddingModel as string || '');
-  const ollamaModelTranslation = get('ollama.model_translation', (ollama as Record<string, unknown>).modelTranslation as string || '');
-  const mistralApiKey = get('mistral.api_key', mistral.apiKey || '');
-  const mistralModel = get('mistral.model', mistral.model || '');
-  const qdrantUrl = get('qdrant.url', qdrant.url || '');
-  const qdrantCollection = get('qdrant.collection', (qdrant as Record<string, unknown>).collection as string || 'paperless-documents');
-  const vectorSearchEnabled = getBool('vector_search.enabled', false);
-  const vectorSearchTopK = getNum('vector_search.top_k', 5);
-  const vectorSearchMinScore = parseFloat(get('vector_search.min_score', '0.7')) || 0.7;
+  const paperlessUrl = get("paperless.url", paperless.url || "");
+  const paperlessToken = get("paperless.token", paperless.token || "");
+  const paperlessExternalUrl = get("paperless.external_url", "");
+  const ollamaUrl = get("ollama.url", ollama.url || "");
+  const ollamaModelLarge = get("ollama.model_large", ollama.modelLarge || "");
+  const ollamaModelSmall = get("ollama.model_small", ollama.modelSmall || "");
+  const ollamaEmbeddingModel = get(
+    "ollama.embedding_model",
+    ((ollama as Record<string, unknown>).embeddingModel as string) || "",
+  );
+  const ollamaModelTranslation = get(
+    "ollama.model_translation",
+    ((ollama as Record<string, unknown>).modelTranslation as string) || "",
+  );
+  const mistralApiKey = get("mistral.api_key", mistral.apiKey || "");
+  const mistralModel = get("mistral.model", mistral.model || "");
+  const qdrantUrl = get("qdrant.url", qdrant.url || "");
+  const qdrantCollection = get(
+    "qdrant.collectionName",
+    dbSettings["qdrant.collection"] ??
+      dbSettings["qdrant_collection"] ??
+      qdrant.collectionName ??
+      "documents",
+  );
+  const vectorSearchEnabled = getBool("vector_search.enabled", false);
+  const vectorSearchTopK = getNum("vector_search.top_k", 5);
+  const vectorSearchMinScore = parseFloat(get("vector_search.min_score", "0.7")) || 0.7;
 
   const workflowTags = {
-    todo: get('tags.todo', tags.todo),
-    ocr: get('tags.ocr', tags.ocr),
-    metadata: get('tags.metadata', tags.metadata),
-    review: get('tags.review', tags.review),
-    index: get('tags.index', tags.index),
-    done: get('tags.done', tags.done),
-    failed: get('tags.failed', tags.failed),
+    todo: get("tags.todo", tags.todo),
+    ocr: get("tags.ocr", tags.ocr),
+    metadata: get("tags.metadata", tags.metadata),
+    review: get("tags.review", tags.review),
+    index: get("tags.index", tags.index),
+    done: get("tags.done", tags.done),
+    failed: get("tags.failed", tags.failed),
   };
 
-  // Return actual values - this is a local application, no need to mask secrets
   const settings: Settings = {
     paperless_url: paperlessUrl,
-    paperless_token: paperlessToken,
+    paperless_token: maskSecret(paperlessToken),
+    paperless_token_configured: paperlessToken.length > 0,
     paperless_external_url: paperlessExternalUrl,
     ollama_url: ollamaUrl,
     ollama_model_large: ollamaModelLarge,
     ollama_model_small: ollamaModelSmall,
     ollama_embedding_model: ollamaEmbeddingModel,
     ollama_model_translation: ollamaModelTranslation,
-    mistral_api_key: mistralApiKey,
+    mistral_api_key: maskSecret(mistralApiKey),
+    mistral_api_key_configured: mistralApiKey.length > 0,
     mistral_model: mistralModel,
     qdrant_url: qdrantUrl,
     qdrant_collection: qdrantCollection,
     vector_search_enabled: vectorSearchEnabled,
     vector_search_top_k: vectorSearchTopK,
     vector_search_min_score: vectorSearchMinScore,
-    auto_processing_enabled: getBool('auto_processing.enabled', autoProcessing.enabled),
-    auto_processing_interval_minutes: getNum('auto_processing.interval_minutes', autoProcessing.intervalMinutes),
-    confirmation_enabled: getBool('auto_processing.confirmation_enabled', autoProcessing.confirmationEnabled),
-    confirmation_max_retries: getNum('auto_processing.confirmation_max_retries', autoProcessing.confirmationMaxRetries),
-    language: get('language', language),
-    debug: getBool('debug', debug),
+    auto_processing_enabled: getBool("auto_processing.enabled", autoProcessing.enabled),
+    auto_processing_interval_minutes: getNum(
+      "auto_processing.interval_minutes",
+      autoProcessing.intervalMinutes,
+    ),
+    confirmation_enabled: getBool(
+      "auto_processing.confirmation_enabled",
+      autoProcessing.confirmationEnabled,
+    ),
+    confirmation_max_retries: getNum(
+      "auto_processing.confirmation_max_retries",
+      autoProcessing.confirmationMaxRetries,
+    ),
+    language: get("language", language),
+    debug: getBool("debug", debug),
+    debug_log_level: get("debug.log_level", "INFO"),
+    debug_log_prompts: getBool("debug.log_prompts", false),
+    debug_log_responses: getBool("debug.log_responses", false),
+    debug_save_processing_history: getBool("debug.save_processing_history", true),
     // Include tags configuration for frontend filtering
     tags: {
-      color: get('tags.color', '#1e88e5'),
+      color: get("tags.color", "#1e88e5"),
       ...workflowTags,
       // Compatibility aliases for settings imported from the pre-Pi workflow.
-      pending: get('tags.pending', workflowTags.todo),
-      ocr_done: get('tags.ocr_done', workflowTags.ocr),
-      summary_done: get('tags.summary_done', workflowTags.metadata),
-      schema_review: get('tags.schema_review', workflowTags.review),
-      title_done: get('tags.title_done', workflowTags.metadata),
-      correspondent_done: get('tags.correspondent_done', workflowTags.metadata),
-      document_type_done: get('tags.document_type_done', workflowTags.metadata),
-      tags_done: get('tags.tags_done', workflowTags.index),
-      processed: get('tags.processed', workflowTags.done),
-      manual_review: get('tags.manual_review', workflowTags.review),
+      pending: get("tags.pending", workflowTags.todo),
+      ocr_done: get("tags.ocr_done", workflowTags.ocr),
+      summary_done: get("tags.summary_done", workflowTags.metadata),
+      schema_review: get("tags.schema_review", workflowTags.review),
+      title_done: get("tags.title_done", workflowTags.metadata),
+      correspondent_done: get("tags.correspondent_done", workflowTags.metadata),
+      document_type_done: get("tags.document_type_done", workflowTags.metadata),
+      tags_done: get("tags.tags_done", workflowTags.index),
+      processed: get("tags.processed", workflowTags.done),
+      manual_review: get("tags.manual_review", workflowTags.review),
     },
     // Pipeline settings
-    pipeline_ocr: getBool('pipeline.ocr', pipeline.enableOcr),
-    pipeline_summary: getBool('pipeline.summary', pipeline.enableSummary),
-    pipeline_title: getBool('pipeline.title', pipeline.enableTitle),
-    pipeline_correspondent: getBool('pipeline.correspondent', pipeline.enableCorrespondent),
-    pipeline_document_type: getBool('pipeline.document_type', pipeline.enableDocumentType),
-    pipeline_tags: getBool('pipeline.tags', pipeline.enableTags),
-    pipeline_custom_fields: getBool('pipeline.custom_fields', pipeline.enableCustomFields),
+    pipeline_ocr: getBool("pipeline.ocr", pipeline.enableOcr),
+    pipeline_summary: getBool("pipeline.summary", pipeline.enableSummary),
+    pipeline_title: getBool("pipeline.title", pipeline.enableTitle),
+    pipeline_correspondent: getBool("pipeline.correspondent", pipeline.enableCorrespondent),
+    pipeline_document_type: getBool("pipeline.document_type", pipeline.enableDocumentType),
+    pipeline_tags: getBool("pipeline.tags", pipeline.enableTags),
+    pipeline_custom_fields: getBool("pipeline.custom_fields", pipeline.enableCustomFields),
+    pipeline_document_links: getBool("pipeline.document_links", pipeline.enableDocumentLinks),
   };
 
   return settings;
@@ -130,81 +172,88 @@ export const getSettings = Effect.gen(function* () {
 // Map frontend field names to TinyBase keys
 const SETTINGS_KEY_MAP: Record<string, string> = {
   // Paperless connection
-  paperless_url: 'paperless.url',
-  paperless_token: 'paperless.token',
-  paperless_external_url: 'paperless.external_url',
+  paperless_url: "paperless.url",
+  paperless_token: "paperless.token",
+  paperless_external_url: "paperless.external_url",
   // Ollama
-  ollama_url: 'ollama.url',
-  ollama_model_large: 'ollama.model_large',
-  ollama_model_small: 'ollama.model_small',
-  ollama_embedding_model: 'ollama.embedding_model',
-  ollama_model_translation: 'ollama.model_translation',
+  ollama_url: "ollama.url",
+  ollama_model_large: "ollama.model_large",
+  ollama_model_small: "ollama.model_small",
+  ollama_embedding_model: "ollama.embedding_model",
+  ollama_model_translation: "ollama.model_translation",
   // Mistral
-  mistral_api_key: 'mistral.api_key',
-  mistral_model: 'mistral.model',
+  mistral_api_key: "mistral.api_key",
+  mistral_model: "mistral.model",
   // Qdrant
-  qdrant_url: 'qdrant.url',
-  qdrant_collection: 'qdrant.collection',
+  qdrant_url: "qdrant.url",
+  qdrant_collection: "qdrant.collectionName",
+  "qdrant.collection": "qdrant.collectionName",
   // Auto processing
-  auto_processing_enabled: 'auto_processing.enabled',
-  auto_processing_interval_minutes: 'auto_processing.interval_minutes',
-  confirmation_enabled: 'auto_processing.confirmation_enabled',
-  confirmation_max_retries: 'auto_processing.confirmation_max_retries',
+  auto_processing_enabled: "auto_processing.enabled",
+  auto_processing_interval_minutes: "auto_processing.interval_minutes",
+  confirmation_enabled: "auto_processing.confirmation_enabled",
+  confirmation_max_retries: "auto_processing.confirmation_max_retries",
   // Language
-  language: 'language',
+  language: "language",
   // Debug
-  debug: 'debug',
-  'debug.log_level': 'debug.log_level',
-  'debug.log_prompts': 'debug.log_prompts',
-  'debug.log_responses': 'debug.log_responses',
-  'debug.save_processing_history': 'debug.save_processing_history',
+  debug: "debug",
+  debug_log_level: "debug.log_level",
+  debug_log_prompts: "debug.log_prompts",
+  debug_log_responses: "debug.log_responses",
+  debug_save_processing_history: "debug.save_processing_history",
+  "debug.log_level": "debug.log_level",
+  "debug.log_prompts": "debug.log_prompts",
+  "debug.log_responses": "debug.log_responses",
+  "debug.save_processing_history": "debug.save_processing_history",
   // Pipeline settings
-  'pipeline.ocr': 'pipeline.ocr',
-  'pipeline.summary': 'pipeline.summary',
-  'pipeline.title': 'pipeline.title',
-  'pipeline.correspondent': 'pipeline.correspondent',
-  'pipeline.document_type': 'pipeline.document_type',
-  'pipeline.tags': 'pipeline.tags',
-  'pipeline.custom_fields': 'pipeline.custom_fields',
+  "pipeline.ocr": "pipeline.ocr",
+  "pipeline.summary": "pipeline.summary",
+  "pipeline.title": "pipeline.title",
+  "pipeline.correspondent": "pipeline.correspondent",
+  "pipeline.document_type": "pipeline.document_type",
+  "pipeline.tags": "pipeline.tags",
+  "pipeline.custom_fields": "pipeline.custom_fields",
+  "pipeline.document_links": "pipeline.document_links",
   // Pipeline settings (underscore format from frontend)
-  pipeline_ocr: 'pipeline.ocr',
-  pipeline_summary: 'pipeline.summary',
-  pipeline_title: 'pipeline.title',
-  pipeline_correspondent: 'pipeline.correspondent',
-  pipeline_document_type: 'pipeline.document_type',
-  pipeline_tags: 'pipeline.tags',
-  pipeline_custom_fields: 'pipeline.custom_fields',
+  pipeline_ocr: "pipeline.ocr",
+  pipeline_summary: "pipeline.summary",
+  pipeline_title: "pipeline.title",
+  pipeline_correspondent: "pipeline.correspondent",
+  pipeline_document_type: "pipeline.document_type",
+  pipeline_tags: "pipeline.tags",
+  pipeline_custom_fields: "pipeline.custom_fields",
+  pipeline_document_links: "pipeline.document_links",
   // Vector search
-  vector_search_enabled: 'vector_search.enabled',
-  vector_search_top_k: 'vector_search.top_k',
-  vector_search_min_score: 'vector_search.min_score',
+  vector_search_enabled: "vector_search.enabled",
+  vector_search_top_k: "vector_search.top_k",
+  vector_search_min_score: "vector_search.min_score",
   // Workflow tags - passthrough
-  'tags.color': 'tags.color',
-  tags_color: 'tags.color',
-  'tags.todo': 'tags.todo',
-  tags_todo: 'tags.todo',
-  'tags.ocr': 'tags.ocr',
-  tags_ocr: 'tags.ocr',
-  'tags.metadata': 'tags.metadata',
-  tags_metadata: 'tags.metadata',
-  'tags.review': 'tags.review',
-  tags_review: 'tags.review',
-  'tags.index': 'tags.index',
-  tags_index: 'tags.index',
-  'tags.done': 'tags.done',
-  tags_done: 'tags.done',
-  'tags.failed': 'tags.failed',
-  tags_failed: 'tags.failed',
-  'tags.pending': 'tags.pending',
-  'tags.ocr_done': 'tags.ocr_done',
-  'tags.summary_done': 'tags.summary_done',
-  'tags.schema_review': 'tags.schema_review',
-  'tags.correspondent_done': 'tags.correspondent_done',
-  'tags.document_type_done': 'tags.document_type_done',
-  'tags.title_done': 'tags.title_done',
-  'tags.tags_done': 'tags.tags_done',
-  'tags.processed': 'tags.processed',
-  'tags.manual_review': 'tags.manual_review',
+  "tags.color": "tags.color",
+  tags_color: "tags.color",
+  "tags.todo": "tags.todo",
+  tags_todo: "tags.todo",
+  "tags.ocr": "tags.ocr",
+  tags_ocr: "tags.ocr",
+  "tags.metadata": "tags.metadata",
+  tags_metadata: "tags.metadata",
+  "tags.review": "tags.review",
+  tags_review: "tags.review",
+  "tags.index": "tags.index",
+  tags_index: "tags.index",
+  "tags.done": "tags.done",
+  tags_done: "tags.done",
+  "tags.failed": "tags.failed",
+  tags_failed: "tags.failed",
+  "tags.pending": "tags.pending",
+  "tags.ocr_done": "tags.ocr_done",
+  "tags.summary_done": "tags.summary_done",
+  "tags.schema_review": "tags.schema_review",
+  "tags.correspondent_done": "tags.correspondent_done",
+  "tags.document_type_done": "tags.document_type_done",
+  "tags.title_done": "tags.title_done",
+  "tags.tags_done": "tags.tags_done",
+  "tags.processed": "tags.processed",
+  "tags.manual_review": "tags.manual_review",
 };
 
 export const updateSettings = (updates: SettingsUpdate) =>
@@ -215,7 +264,7 @@ export const updateSettings = (updates: SettingsUpdate) =>
     for (const [key, value] of Object.entries(updates)) {
       if (value === undefined) continue;
 
-      if (key === 'tags' && value && typeof value === 'object' && !Array.isArray(value)) {
+      if (key === "tags" && value && typeof value === "object" && !Array.isArray(value)) {
         for (const [tagKey, tagValue] of Object.entries(value as Record<string, unknown>)) {
           if (tagValue === undefined || tagValue === null) continue;
           const dbKey = SETTINGS_KEY_MAP[`tags.${tagKey}`] ?? `tags.${tagKey}`;
@@ -226,9 +275,11 @@ export const updateSettings = (updates: SettingsUpdate) =>
 
       // Map frontend key to TinyBase key
       const dbKey = SETTINGS_KEY_MAP[key] ?? key;
+      if ((dbKey === "paperless.token" || dbKey === "mistral.api_key") && isMaskedSecret(value))
+        continue;
 
       // Convert value to string for storage
-      const strValue = typeof value === 'boolean' ? String(value) : String(value);
+      const strValue = typeof value === "boolean" ? String(value) : String(value);
       yield* tinybase.setSetting(dbKey, strValue);
     }
 
@@ -243,7 +294,11 @@ export const updateSettings = (updates: SettingsUpdate) =>
 /**
  * Helper to get a setting value from TinyBase with fallback to ConfigService
  */
-const getSettingValue = (dbSettings: Record<string, string>, key: string, configFallback: string): string => {
+const getSettingValue = (
+  dbSettings: Record<string, string>,
+  key: string,
+  configFallback: string,
+): string => {
   return dbSettings[key] ?? configFallback;
 };
 
@@ -252,11 +307,11 @@ export const testPaperlessConnection = Effect.gen(function* () {
   const tinybase = yield* TinyBaseService;
   const dbSettings = yield* tinybase.getAllSettings();
 
-  const url = getSettingValue(dbSettings, 'paperless.url', config.config.paperless.url);
-  const token = getSettingValue(dbSettings, 'paperless.token', config.config.paperless.token);
+  const url = getSettingValue(dbSettings, "paperless.url", config.config.paperless.url);
+  const token = getSettingValue(dbSettings, "paperless.token", config.config.paperless.token);
 
   if (!url || !token) {
-    return { status: 'error' as const, message: 'Paperless-ngx not configured', details: null };
+    return { status: "error" as const, message: "Paperless-ngx not configured", details: null };
   }
 
   const result: ConnectionTestResult = yield* Effect.tryPromise({
@@ -265,12 +320,16 @@ export const testPaperlessConnection = Effect.gen(function* () {
         headers: { Authorization: `Token ${token}` },
       });
       if (response.ok) {
-        return { status: 'success' as const, message: 'Connected to Paperless-ngx', details: null };
+        return { status: "success" as const, message: "Connected to Paperless-ngx", details: null };
       }
-      return { status: 'error' as const, message: `Failed to connect: HTTP ${response.status}`, details: null };
+      return {
+        status: "error" as const,
+        message: `Failed to connect: HTTP ${response.status}`,
+        details: null,
+      };
     },
     catch: (e) => ({
-      status: 'error' as const,
+      status: "error" as const,
       message: `Failed to connect to Paperless-ngx: ${e}`,
       details: null,
     }),
@@ -284,22 +343,26 @@ export const testOllamaConnection = Effect.gen(function* () {
   const tinybase = yield* TinyBaseService;
   const dbSettings = yield* tinybase.getAllSettings();
 
-  const url = getSettingValue(dbSettings, 'ollama.url', config.config.ollama.url);
+  const url = getSettingValue(dbSettings, "ollama.url", config.config.ollama.url);
 
   if (!url) {
-    return { status: 'error' as const, message: 'Ollama not configured', details: null };
+    return { status: "error" as const, message: "Ollama not configured", details: null };
   }
 
   const result: ConnectionTestResult = yield* Effect.tryPromise({
     try: async () => {
       const response = await fetch(`${url}/api/tags`);
       if (response.ok) {
-        return { status: 'success' as const, message: 'Connected to Ollama', details: null };
+        return { status: "success" as const, message: "Connected to Ollama", details: null };
       }
-      return { status: 'error' as const, message: `Failed to connect: HTTP ${response.status}`, details: null };
+      return {
+        status: "error" as const,
+        message: `Failed to connect: HTTP ${response.status}`,
+        details: null,
+      };
     },
     catch: (e) => ({
-      status: 'error' as const,
+      status: "error" as const,
       message: `Failed to connect to Ollama: ${e}`,
       details: null,
     }),
@@ -313,24 +376,28 @@ export const testMistralConnection = Effect.gen(function* () {
   const tinybase = yield* TinyBaseService;
   const dbSettings = yield* tinybase.getAllSettings();
 
-  const apiKey = getSettingValue(dbSettings, 'mistral.api_key', config.config.mistral.apiKey);
+  const apiKey = getSettingValue(dbSettings, "mistral.api_key", config.config.mistral.apiKey);
 
   if (!apiKey) {
-    return { status: 'error' as const, message: 'Mistral API key not configured', details: null };
+    return { status: "error" as const, message: "Mistral API key not configured", details: null };
   }
 
   const result: ConnectionTestResult = yield* Effect.tryPromise({
     try: async () => {
-      const response = await fetch('https://api.mistral.ai/v1/models', {
+      const response = await fetch("https://api.mistral.ai/v1/models", {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (response.ok) {
-        return { status: 'success' as const, message: 'Connected to Mistral AI', details: null };
+        return { status: "success" as const, message: "Connected to Mistral AI", details: null };
       }
-      return { status: 'error' as const, message: `Failed to connect: HTTP ${response.status}`, details: null };
+      return {
+        status: "error" as const,
+        message: `Failed to connect: HTTP ${response.status}`,
+        details: null,
+      };
     },
     catch: (e) => ({
-      status: 'error' as const,
+      status: "error" as const,
       message: `Failed to connect to Mistral AI: ${e}`,
       details: null,
     }),
@@ -345,11 +412,18 @@ export const testQdrantConnection = Effect.gen(function* () {
   const qdrant = yield* QdrantService;
   const dbSettings = yield* tinybase.getAllSettings();
 
-  const url = getSettingValue(dbSettings, 'qdrant.url', config.config.qdrant.url);
-  const collectionName = getSettingValue(dbSettings, 'qdrant.collection', config.config.qdrant.collectionName || 'paperless-documents');
+  const url = getSettingValue(dbSettings, "qdrant.url", config.config.qdrant.url);
+  const collectionName = getSettingValue(
+    dbSettings,
+    "qdrant.collectionName",
+    dbSettings["qdrant.collection"] ??
+      dbSettings["qdrant_collection"] ??
+      config.config.qdrant.collectionName ??
+      "documents",
+  );
 
   if (!url) {
-    return { status: 'error' as const, message: 'Qdrant not configured', details: null };
+    return { status: "error" as const, message: "Qdrant not configured", details: null };
   }
 
   // First, test basic connectivity
@@ -357,33 +431,39 @@ export const testQdrantConnection = Effect.gen(function* () {
     try: async () => {
       const response = await fetch(`${url}/collections`);
       if (response.ok) {
-        return { status: 'success' as const, message: 'Connected to Qdrant', details: null };
+        return { status: "success" as const, message: "Connected to Qdrant", details: null };
       }
-      return { status: 'error' as const, message: `Failed to connect: HTTP ${response.status}`, details: null };
+      return {
+        status: "error" as const,
+        message: `Failed to connect: HTTP ${response.status}`,
+        details: null,
+      };
     },
     catch: (e) => ({
-      status: 'error' as const,
+      status: "error" as const,
       message: `Failed to connect to Qdrant: ${e}`,
       details: null,
     }),
   });
 
-  if (connectResult.status === 'error') {
+  if (connectResult.status === "error") {
     return connectResult;
   }
 
   // Now ensure the collection exists (create if needed)
   const ensureResult = yield* qdrant.ensureCollection().pipe(
     Effect.map(() => ({
-      status: 'success' as const,
+      status: "success" as const,
       message: `Connected to Qdrant. Collection "${collectionName}" ready.`,
       details: null,
     })),
-    Effect.catchAll((e) => Effect.succeed({
-      status: 'warning' as const,
-      message: `Connected to Qdrant, but collection setup failed: ${e.message}`,
-      details: null,
-    }))
+    Effect.catchAll((e) =>
+      Effect.succeed({
+        status: "warning" as const,
+        message: `Connected to Qdrant, but collection setup failed: ${e.message}`,
+        details: null,
+      }),
+    ),
   );
 
   return ensureResult;
@@ -398,7 +478,7 @@ export const getOllamaModels = Effect.gen(function* () {
 
   const models = yield* pipe(
     ollama.listModels(),
-    Effect.catchAll(() => Effect.succeed([]))
+    Effect.catchAll(() => Effect.succeed([])),
   );
 
   // Return in format expected by frontend: { models: [...] }
@@ -416,7 +496,7 @@ export const getOllamaStatus = Effect.gen(function* () {
 
   const runningModels = yield* pipe(
     ollama.getRunningModels(),
-    Effect.catchAll(() => Effect.succeed([]))
+    Effect.catchAll(() => Effect.succeed([])),
   );
 
   // Return running status and model details
@@ -439,7 +519,7 @@ export const getMistralModels = Effect.gen(function* () {
 
   const models = yield* pipe(
     mistral.listModels(),
-    Effect.catchAll(() => Effect.succeed([]))
+    Effect.catchAll(() => Effect.succeed([])),
   );
 
   // Return in format expected by frontend: { models: [...] }
@@ -457,9 +537,9 @@ export const getMistralModels = Effect.gen(function* () {
 // Import Config from YAML
 // ===========================================================================
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { parse as parseYaml } from 'yaml';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { parse as parseYaml } from "yaml";
 
 interface ImportConfigResult {
   success: boolean;
@@ -470,10 +550,7 @@ interface ImportConfigResult {
 /**
  * Flatten a nested object into key-value pairs with dot notation.
  */
-const flattenObject = (
-  obj: Record<string, unknown>,
-  prefix = ''
-): Record<string, string> => {
+const flattenObject = (obj: Record<string, unknown>, prefix = ""): Record<string, string> => {
   const result: Record<string, string> = {};
 
   for (const [key, value] of Object.entries(obj)) {
@@ -483,7 +560,7 @@ const flattenObject = (
       continue;
     } else if (Array.isArray(value)) {
       result[newKey] = JSON.stringify(value);
-    } else if (typeof value === 'object') {
+    } else if (typeof value === "object") {
       Object.assign(result, flattenObject(value as Record<string, unknown>, newKey));
     } else {
       result[newKey] = String(value);
@@ -502,11 +579,11 @@ export const importConfigFromYaml = Effect.gen(function* () {
 
   // Try multiple paths for config.yaml
   const possiblePaths = [
-    path.join(process.cwd(), 'config.yaml'),
-    path.join(process.cwd(), '../backend/config.yaml'),
-    path.join(process.cwd(), '../../config.yaml'),
-    path.join(process.cwd(), '../../apps/backend/config.yaml'),
-    '/app/config.yaml', // Docker container path
+    path.join(process.cwd(), "config.yaml"),
+    path.join(process.cwd(), "../backend/config.yaml"),
+    path.join(process.cwd(), "../../config.yaml"),
+    path.join(process.cwd(), "../../apps/backend/config.yaml"),
+    "/app/config.yaml", // Docker container path
   ];
 
   let configPath: string | null = null;
@@ -520,19 +597,19 @@ export const importConfigFromYaml = Effect.gen(function* () {
   if (!configPath) {
     return {
       success: false,
-      message: 'No config.yaml found. Tried: ' + possiblePaths.join(', '),
+      message: "No config.yaml found. Tried: " + possiblePaths.join(", "),
       imported_keys: [],
     } as ImportConfigResult;
   }
 
   try {
-    const content = fs.readFileSync(configPath, 'utf-8');
+    const content = fs.readFileSync(configPath, "utf-8");
     const yamlConfig = parseYaml(content) as Record<string, unknown>;
 
     if (!yamlConfig || Object.keys(yamlConfig).length === 0) {
       return {
         success: false,
-        message: 'Config file is empty or invalid',
+        message: "Config file is empty or invalid",
         imported_keys: [],
       } as ImportConfigResult;
     }
@@ -570,7 +647,7 @@ export const checkAndImportSettings = Effect.gen(function* () {
   if (Object.keys(existingSettings).length > 0) {
     return {
       imported: false,
-      message: 'Settings already exist, skipping import',
+      message: "Settings already exist, skipping import",
       existing_count: Object.keys(existingSettings).length,
     };
   }
@@ -595,24 +672,24 @@ export const getTagsStatus = Effect.gen(function* () {
 
   const tagConfig = config.config.tags;
   const dbSettings = yield* tinybase.getAllSettings();
-  const expectedColor = dbSettings['tags.color'] ?? '#1e88e5';
+  const expectedColor = dbSettings["tags.color"] ?? "#1e88e5";
   const workflowTags = {
-    todo: dbSettings['tags.todo'] ?? tagConfig.todo,
-    ocr: dbSettings['tags.ocr'] ?? tagConfig.ocr,
-    metadata: dbSettings['tags.metadata'] ?? tagConfig.metadata,
-    review: dbSettings['tags.review'] ?? tagConfig.review,
-    index: dbSettings['tags.index'] ?? tagConfig.index,
-    done: dbSettings['tags.done'] ?? tagConfig.done,
-    failed: dbSettings['tags.failed'] ?? tagConfig.failed,
+    todo: dbSettings["tags.todo"] ?? tagConfig.todo,
+    ocr: dbSettings["tags.ocr"] ?? tagConfig.ocr,
+    metadata: dbSettings["tags.metadata"] ?? tagConfig.metadata,
+    review: dbSettings["tags.review"] ?? tagConfig.review,
+    index: dbSettings["tags.index"] ?? tagConfig.index,
+    done: dbSettings["tags.done"] ?? tagConfig.done,
+    failed: dbSettings["tags.failed"] ?? tagConfig.failed,
   };
 
   const existingTagsResult = yield* pipe(
     paperless.getTags(),
-    Effect.catchAll(() => Effect.succeed([]))
+    Effect.catchAll(() => Effect.succeed([])),
   );
   // Map tag name to { id, color }
   const existingTagsMap = new Map(
-    existingTagsResult.map((t) => [t.name, { id: t.id, color: t.color ?? null }])
+    existingTagsResult.map((t) => [t.name, { id: t.id, color: t.color ?? null }]),
   );
 
   // Build tags array with key (snake_case), name, exists, tag_id, color info
@@ -620,8 +697,8 @@ export const getTagsStatus = Effect.gen(function* () {
     const tagInfo = existingTagsMap.get(name);
     const actualColor = tagInfo?.color ?? null;
     // Normalize colors to lowercase for comparison
-    const colorMatches = actualColor !== null &&
-      actualColor.toLowerCase() === expectedColor.toLowerCase();
+    const colorMatches =
+      actualColor !== null && actualColor.toLowerCase() === expectedColor.toLowerCase();
 
     return {
       key,
@@ -650,13 +727,22 @@ export const createWorkflowTags = (tagNames: string[]) =>
   Effect.gen(function* () {
     const paperless = yield* PaperlessService;
 
-    const results: Array<{ name: string; id: number }> = [];
+    const created: string[] = [];
+    const failed: string[] = [];
+    const details: Array<{ name: string; id: number }> = [];
     for (const name of tagNames) {
-      const id = yield* paperless.getOrCreateTag(name);
-      results.push({ name, id });
+      const id = yield* paperless
+        .getOrCreateTag(name)
+        .pipe(Effect.catchAll(() => Effect.succeed(null)));
+      if (id === null) {
+        failed.push(name);
+      } else {
+        created.push(name);
+        details.push({ name, id });
+      }
     }
 
-    return { created: results };
+    return { created, failed, details };
   });
 
 export const fixWorkflowTagColors = Effect.gen(function* () {
@@ -665,23 +751,23 @@ export const fixWorkflowTagColors = Effect.gen(function* () {
   const config = yield* ConfigService;
 
   const dbSettings = yield* tinybase.getAllSettings();
-  const expectedColor = dbSettings['tags.color'] ?? '#1e88e5';
+  const expectedColor = dbSettings["tags.color"] ?? "#1e88e5";
   const workflowTags = {
-    todo: dbSettings['tags.todo'] ?? config.config.tags.todo,
-    ocr: dbSettings['tags.ocr'] ?? config.config.tags.ocr,
-    metadata: dbSettings['tags.metadata'] ?? config.config.tags.metadata,
-    review: dbSettings['tags.review'] ?? config.config.tags.review,
-    index: dbSettings['tags.index'] ?? config.config.tags.index,
-    done: dbSettings['tags.done'] ?? config.config.tags.done,
-    failed: dbSettings['tags.failed'] ?? config.config.tags.failed,
+    todo: dbSettings["tags.todo"] ?? config.config.tags.todo,
+    ocr: dbSettings["tags.ocr"] ?? config.config.tags.ocr,
+    metadata: dbSettings["tags.metadata"] ?? config.config.tags.metadata,
+    review: dbSettings["tags.review"] ?? config.config.tags.review,
+    index: dbSettings["tags.index"] ?? config.config.tags.index,
+    done: dbSettings["tags.done"] ?? config.config.tags.done,
+    failed: dbSettings["tags.failed"] ?? config.config.tags.failed,
   };
 
   const existingTags = yield* pipe(
     paperless.getTags(),
-    Effect.catchAll(() => Effect.succeed([]))
+    Effect.catchAll(() => Effect.succeed([])),
   );
   const existingTagsMap = new Map(
-    existingTags.map((t) => [t.name, { id: t.id, color: t.color ?? null }])
+    existingTags.map((t) => [t.name, { id: t.id, color: t.color ?? null }]),
   );
 
   const updated: string[] = [];
@@ -693,14 +779,14 @@ export const fixWorkflowTagColors = Effect.gen(function* () {
     if (!tagInfo) continue; // Tag doesn't exist, skip
 
     const actualColor = tagInfo.color;
-    const colorMatches = actualColor !== null &&
-      actualColor.toLowerCase() === expectedColor.toLowerCase();
+    const colorMatches =
+      actualColor !== null && actualColor.toLowerCase() === expectedColor.toLowerCase();
 
     if (!colorMatches) {
       const result = yield* pipe(
         paperless.updateTagColor(tagInfo.id, expectedColor),
         Effect.map(() => true),
-        Effect.catchAll(() => Effect.succeed(false))
+        Effect.catchAll(() => Effect.succeed(false)),
       );
       if (result) {
         updated.push(name);
@@ -723,12 +809,12 @@ export const getAiTags = Effect.gen(function* () {
 
   const tags = yield* pipe(
     paperless.getTags(),
-    Effect.catchAll(() => Effect.succeed([]))
+    Effect.catchAll(() => Effect.succeed([])),
   );
 
   // Get selected tag IDs from TinyBase
-  const selectedJson = yield* tinybase.getSetting('ai_tag_ids');
-  const selectedTagIds = selectedJson ? JSON.parse(selectedJson) as number[] : [];
+  const selectedJson = yield* tinybase.getSetting("ai_tag_ids");
+  const selectedTagIds = selectedJson ? (JSON.parse(selectedJson) as number[]) : [];
 
   return {
     tags: tags.map((t) => ({
@@ -748,7 +834,7 @@ export const updateAiTags = (selectedTagIds: number[]) =>
     const tinybase = yield* TinyBaseService;
 
     // Store the selected tags in TinyBase
-    yield* tinybase.setSetting('ai_tag_ids', JSON.stringify(selectedTagIds));
+    yield* tinybase.setSetting("ai_tag_ids", JSON.stringify(selectedTagIds));
 
     return { success: true, selected_tag_ids: selectedTagIds };
   });
@@ -763,12 +849,12 @@ export const getCustomFields = Effect.gen(function* () {
 
   const fields = yield* pipe(
     paperless.getCustomFields(),
-    Effect.catchAll(() => Effect.succeed([]))
+    Effect.catchAll(() => Effect.succeed([])),
   );
 
   // Get selected field IDs from TinyBase
-  const selectedJson = yield* tinybase.getSetting('custom_field_ids');
-  const selectedFieldIds = selectedJson ? JSON.parse(selectedJson) as number[] : [];
+  const selectedJson = yield* tinybase.getSetting("custom_field_ids");
+  const selectedFieldIds = selectedJson ? (JSON.parse(selectedJson) as number[]) : [];
 
   return {
     fields: fields.map((f) => ({
@@ -785,7 +871,7 @@ export const updateCustomFields = (selectedFieldIds: number[]) =>
     const tinybase = yield* TinyBaseService;
 
     // Store the selected fields in TinyBase
-    yield* tinybase.setSetting('custom_field_ids', JSON.stringify(selectedFieldIds));
+    yield* tinybase.setSetting("custom_field_ids", JSON.stringify(selectedFieldIds));
 
     return { success: true, selected_fields: selectedFieldIds };
   });
@@ -800,18 +886,18 @@ export const getAiDocumentTypes = Effect.gen(function* () {
 
   const docTypes = yield* pipe(
     paperless.getDocumentTypes(),
-    Effect.catchAll(() => Effect.succeed([]))
+    Effect.catchAll(() => Effect.succeed([])),
   );
 
   // Get selected document type IDs from TinyBase
-  const selectedJson = yield* tinybase.getSetting('ai_document_type_ids');
-  const selectedTypeIds = selectedJson ? JSON.parse(selectedJson) as number[] : [];
+  const selectedJson = yield* tinybase.getSetting("ai_document_type_ids");
+  const selectedTypeIds = selectedJson ? (JSON.parse(selectedJson) as number[]) : [];
 
   return {
     document_types: docTypes.map((dt) => ({
       id: dt.id,
       name: dt.name,
-      slug: dt.slug ?? '',
+      slug: dt.slug ?? "",
       document_count: dt.document_count ?? 0,
     })),
     selected_type_ids: selectedTypeIds,
@@ -823,7 +909,7 @@ export const updateAiDocumentTypes = (selectedTypeIds: number[]) =>
     const tinybase = yield* TinyBaseService;
 
     // Store the selected types in TinyBase
-    yield* tinybase.setSetting('ai_document_type_ids', JSON.stringify(selectedTypeIds));
+    yield* tinybase.setSetting("ai_document_type_ids", JSON.stringify(selectedTypeIds));
 
     return { success: true, selected_type_ids: selectedTypeIds };
   });
@@ -877,5 +963,5 @@ export const getProcessingLogStats = Effect.gen(function* () {
 export const clearAllProcessingLogs = Effect.gen(function* () {
   const tinybase = yield* TinyBaseService;
   yield* tinybase.clearAllProcessingLogs();
-  return { success: true, message: 'All processing logs cleared' };
+  return { success: true, message: "All processing logs cleared" };
 });

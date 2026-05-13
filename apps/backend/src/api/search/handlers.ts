@@ -1,9 +1,9 @@
 /**
  * Search API handlers for semantic document search.
  */
-import { Effect } from 'effect';
-import { QdrantService } from '../../services/QdrantService.js';
-import { PaperlessService } from '../../services/PaperlessService.js';
+import { Effect } from "effect";
+import { PaperlessService } from "../../services/PaperlessService.js";
+import { QdrantService } from "../../services/QdrantService.js";
 
 /**
  * Search documents using semantic vector search.
@@ -11,21 +11,23 @@ import { PaperlessService } from '../../services/PaperlessService.js';
 export const searchDocuments = (query: string, limit?: number) =>
   Effect.gen(function* () {
     if (!query || query.trim().length === 0) {
-      return { results: [], query: '', total: 0 };
+      return { results: [], query: "", total: 0 };
     }
 
     const qdrant = yield* QdrantService;
-    const results = yield* qdrant.searchSimilar(query, {
-      limit: limit ?? 10,
-      filterProcessed: false, // Search all documents, not just processed ones
-    }).pipe(
-      Effect.catchAll((e) => {
-        // Log the error for debugging
-        console.error('[Search] Qdrant search failed:', e);
-        // Return empty results on error instead of failing
-        return Effect.succeed([]);
+    const results = yield* qdrant
+      .searchSimilar(query, {
+        limit: limit ?? 10,
+        filterProcessed: false, // Search all documents, not just processed ones
       })
-    );
+      .pipe(
+        Effect.catchAll((e) => {
+          // Log the error for debugging
+          console.error("[Search] Qdrant search failed:", e);
+          // Return empty results on error instead of failing
+          return Effect.succeed([]);
+        }),
+      );
 
     return {
       results,
@@ -43,9 +45,9 @@ export const indexDocument = (docId: number) =>
     const paperless = yield* PaperlessService;
 
     // Get document details
-    const doc = yield* paperless.getDocument(docId).pipe(
-      Effect.catchAll((e) => Effect.fail(new Error(`Failed to get document: ${e}`)))
-    );
+    const doc = yield* paperless
+      .getDocument(docId)
+      .pipe(Effect.catchAll((e) => Effect.fail(new Error(`Failed to get document: ${e}`))));
 
     // Get all tags, correspondents, document types for metadata
     const [allTags, allCorrespondents, allDocTypes] = yield* Effect.all([
@@ -63,19 +65,24 @@ export const indexDocument = (docId: number) =>
     const documentType = doc.document_type ? typeMap.get(doc.document_type) : undefined;
 
     // Index into Qdrant
-    yield* qdrant.upsertDocument({
-      docId: doc.id,
-      title: doc.title,
-      content: doc.content ?? '',
-      tags: tagNames,
-      correspondent,
-      documentType,
-    }).pipe(
-      Effect.catchAll((e) => {
-        const msg = e && typeof e === 'object' && 'message' in e ? (e as {message: string}).message : String(e);
-        return Effect.fail(new Error(`Failed to index: ${msg}`));
+    yield* qdrant
+      .upsertDocument({
+        docId: doc.id,
+        title: doc.title,
+        content: doc.content ?? "",
+        tags: tagNames,
+        correspondent,
+        documentType,
       })
-    );
+      .pipe(
+        Effect.catchAll((e) => {
+          const msg =
+            e && typeof e === "object" && "message" in e
+              ? (e as { message: string }).message
+              : String(e);
+          return Effect.fail(new Error(`Failed to index: ${msg}`));
+        }),
+      );
 
     return {
       success: true,
@@ -91,5 +98,5 @@ export const indexDocument = (docId: number) =>
         docId,
         error: msg,
       });
-    })
+    }),
   );

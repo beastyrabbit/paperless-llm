@@ -98,9 +98,7 @@ async function recordDemo() {
 
   console.log("\nVideo saved to: ./demo-videos/");
   console.log("\nTo convert to MP4, run:");
-  console.log(
-    '  ffmpeg -i demo-videos/*.webm -c:v libx264 -crf 23 docs/images/demo.mp4'
-  );
+  console.log("  ffmpeg -i demo-videos/*.webm -c:v libx264 -crf 23 docs/images/demo.mp4");
 }
 
 recordDemo().catch(console.error);

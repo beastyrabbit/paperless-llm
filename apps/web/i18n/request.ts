@@ -5,9 +5,9 @@
  * Reads the user's preferred locale from the NEXT_LOCALE cookie.
  */
 
-import { getRequestConfig } from "next-intl/server";
 import { cookies } from "next/headers";
-import { defaultLocale, locales, type Locale } from "./config";
+import { getRequestConfig } from "next-intl/server";
+import { defaultLocale, type Locale, locales } from "./config";
 
 export const LOCALE_COOKIE_NAME = "NEXT_LOCALE";
 

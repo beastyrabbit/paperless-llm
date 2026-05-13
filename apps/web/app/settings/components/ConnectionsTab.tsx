@@ -1,32 +1,32 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { useTranslations } from "next-intl";
 import {
-  Loader2,
-  TestTube,
-  RefreshCw,
-  Database,
-  Eye,
-  EyeOff,
-} from "lucide-react";
-import {
+  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-  Label,
   Input,
-  Button,
-  Switch,
+  Label,
   Separator,
+  Switch,
 } from "@repo/ui";
-import { useTinyBase, useStringSetting, useBooleanSetting, useNumberSetting } from "@/lib/tinybase";
-import { StatusIndicator, type ConnectionStatus, type OllamaModel, type MistralModel } from "./shared";
+import { Database, Eye, EyeOff, Loader2, RefreshCw, TestTube } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ModelCombobox } from "@/components/model-combobox";
+import { useBooleanSetting, useNumberSetting, useStringSetting, useTinyBase } from "@/lib/tinybase";
+import {
+  type ConnectionStatus,
+  type MistralModel,
+  type OllamaModel,
+  StatusIndicator,
+} from "./shared";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE = "";
+const isMaskedSecret = (value: string): boolean => /^[*]+$/.test(value);
+const editableSecretValue = (value: string): string => (isMaskedSecret(value) ? "" : value);
 
 export function ConnectionsTab() {
   const t = useTranslations("settings");
@@ -100,29 +100,32 @@ export function ConnectionsTab() {
   }, []);
 
   // Test connection
-  const testConnection = useCallback(async (service: string) => {
-    setConnectionStatus((prev) => ({ ...prev, [service]: "testing" }));
-    try {
-      const response = await fetch(`${API_BASE}/api/settings/test-connection/${service}`, {
-        method: "POST",
-      });
-      const data = await response.json();
-      setConnectionStatus((prev) => ({
-        ...prev,
-        [service]: data.status === "success" ? "success" : "error",
-      }));
+  const testConnection = useCallback(
+    async (service: string) => {
+      setConnectionStatus((prev) => ({ ...prev, [service]: "testing" }));
+      try {
+        const response = await fetch(`${API_BASE}/api/settings/test-connection/${service}`, {
+          method: "POST",
+        });
+        const data = await response.json();
+        setConnectionStatus((prev) => ({
+          ...prev,
+          [service]: data.status === "success" ? "success" : "error",
+        }));
 
-      // If connection successful, load models
-      if (data.status === "success" && service === "ollama") {
-        fetchOllamaModels();
+        // If connection successful, load models
+        if (data.status === "success" && service === "ollama") {
+          fetchOllamaModels();
+        }
+        if (data.status === "success" && service === "mistral") {
+          fetchMistralModels();
+        }
+      } catch {
+        setConnectionStatus((prev) => ({ ...prev, [service]: "error" }));
       }
-      if (data.status === "success" && service === "mistral") {
-        fetchMistralModels();
-      }
-    } catch {
-      setConnectionStatus((prev) => ({ ...prev, [service]: "error" }));
-    }
-  }, [fetchOllamaModels, fetchMistralModels]);
+    },
+    [fetchOllamaModels, fetchMistralModels],
+  );
 
   // Auto-test connections when settings are loaded (isSyncing becomes false)
   useEffect(() => {
@@ -151,7 +154,15 @@ export function ConnectionsTab() {
     };
 
     autoTest();
-  }, [isSyncing, paperlessUrl, paperlessToken, ollamaUrl, qdrantUrl, mistralApiKey, testConnection]);
+  }, [
+    isSyncing,
+    paperlessUrl,
+    paperlessToken,
+    ollamaUrl,
+    qdrantUrl,
+    mistralApiKey,
+    testConnection,
+  ]);
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -180,14 +191,21 @@ export function ConnectionsTab() {
               <Input
                 id="paperless_token"
                 type={showSecrets.paperless_token ? "text" : "password"}
-                placeholder="Your Paperless API token"
-                value={paperlessToken}
+                placeholder={
+                  isMaskedSecret(paperlessToken)
+                    ? "Paperless API token configured"
+                    : "Your Paperless API token"
+                }
+                value={editableSecretValue(paperlessToken)}
                 onChange={(e) => updateSetting("paperless.token", e.target.value)}
               />
               <Button
                 variant="outline"
                 size="icon"
                 type="button"
+                aria-label={
+                  showSecrets.paperless_token ? "Hide Paperless token" : "Show Paperless token"
+                }
                 onClick={() =>
                   setShowSecrets((prev) => ({
                     ...prev,
@@ -211,9 +229,7 @@ export function ConnectionsTab() {
               value={paperlessExternalUrl}
               onChange={(e) => updateSetting("paperless.external_url", e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">
-              {t("paperless.externalUrlDescription")}
-            </p>
+            <p className="text-xs text-muted-foreground">{t("paperless.externalUrlDescription")}</p>
           </div>
           <Button
             variant="outline"
@@ -252,6 +268,7 @@ export function ConnectionsTab() {
               <Button
                 variant="outline"
                 size="icon"
+                aria-label={t("testConnection")}
                 onClick={() => testConnection("ollama")}
                 disabled={connectionStatus.ollama === "testing"}
               >
@@ -275,12 +292,11 @@ export function ConnectionsTab() {
                 <Button
                   variant="ghost"
                   size="sm"
+                  aria-label="Refresh Ollama models"
                   onClick={fetchOllamaModels}
                   disabled={loadingModels.ollama}
                 >
-                  <RefreshCw
-                    className={`h-4 w-4 ${loadingModels.ollama ? "animate-spin" : ""}`}
-                  />
+                  <RefreshCw className={`h-4 w-4 ${loadingModels.ollama ? "animate-spin" : ""}`} />
                 </Button>
               </div>
 
@@ -334,7 +350,6 @@ export function ConnectionsTab() {
               </div>
             </>
           )}
-
         </CardContent>
       </Card>
 
@@ -354,14 +369,21 @@ export function ConnectionsTab() {
               <Input
                 id="mistral_api_key"
                 type={showSecrets.mistral_api_key ? "text" : "password"}
-                placeholder="Your Mistral API key"
-                value={mistralApiKey}
+                placeholder={
+                  isMaskedSecret(mistralApiKey)
+                    ? "Mistral API key configured"
+                    : "Your Mistral API key"
+                }
+                value={editableSecretValue(mistralApiKey)}
                 onChange={(e) => updateSetting("mistral.api_key", e.target.value)}
               />
               <Button
                 variant="outline"
                 size="icon"
                 type="button"
+                aria-label={
+                  showSecrets.mistral_api_key ? "Hide Mistral API key" : "Show Mistral API key"
+                }
                 onClick={() =>
                   setShowSecrets((prev) => ({
                     ...prev,
@@ -378,6 +400,7 @@ export function ConnectionsTab() {
               <Button
                 variant="outline"
                 size="icon"
+                aria-label={t("testConnection")}
                 onClick={() => testConnection("mistral")}
                 disabled={connectionStatus.mistral === "testing"}
               >
@@ -396,12 +419,11 @@ export function ConnectionsTab() {
               <Button
                 variant="ghost"
                 size="sm"
+                aria-label="Refresh Mistral models"
                 onClick={fetchMistralModels}
                 disabled={loadingModels.mistral}
               >
-                <RefreshCw
-                  className={`h-4 w-4 ${loadingModels.mistral ? "animate-spin" : ""}`}
-                />
+                <RefreshCw className={`h-4 w-4 ${loadingModels.mistral ? "animate-spin" : ""}`} />
               </Button>
             </div>
             <ModelCombobox
@@ -440,6 +462,7 @@ export function ConnectionsTab() {
               <Button
                 variant="outline"
                 size="icon"
+                aria-label={t("testConnection")}
                 onClick={() => testConnection("qdrant")}
                 disabled={connectionStatus.qdrant === "testing"}
               >
@@ -466,10 +489,11 @@ export function ConnectionsTab() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label>{t("qdrant.vectorSearch")}</Label>
+                <Label htmlFor="vector-search-enabled">{t("qdrant.vectorSearch")}</Label>
                 <p className="text-xs text-zinc-500">{t("qdrant.vectorSearchDesc")}</p>
               </div>
               <Switch
+                id="vector-search-enabled"
                 checked={vectorSearchEnabled}
                 onCheckedChange={(v) => updateSetting("vector_search.enabled", v)}
               />
@@ -478,8 +502,9 @@ export function ConnectionsTab() {
             {vectorSearchEnabled && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{t("qdrant.topKResults")}</Label>
+                  <Label htmlFor="vector-search-top-k">{t("qdrant.topKResults")}</Label>
                   <Input
+                    id="vector-search-top-k"
                     type="number"
                     min={1}
                     max={20}
@@ -490,18 +515,16 @@ export function ConnectionsTab() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("qdrant.minScore")}</Label>
+                  <Label htmlFor="vector-search-min-score">{t("qdrant.minScore")}</Label>
                   <Input
+                    id="vector-search-min-score"
                     type="number"
                     min={0}
                     max={1}
                     step={0.1}
                     value={vectorSearchMinScore}
                     onChange={(e) =>
-                      updateSetting(
-                        "vector_search.min_score",
-                        parseFloat(e.target.value) || 0.7
-                      )
+                      updateSetting("vector_search.min_score", parseFloat(e.target.value) || 0.7)
                     }
                   />
                 </div>

@@ -1,46 +1,37 @@
 "use client";
 
-import { useState, useEffect, use, useRef, useMemo } from "react";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, cn, ScrollArea } from "@repo/ui";
 import {
   ArrowLeft,
-  Loader2,
+  ArrowRight,
   Brain,
-  Search,
-  MessageSquare,
-  Sparkles,
+  Check,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
-  FileText,
-  Tag,
-  User,
-  FileType,
-  RefreshCw,
-  Trash2,
-  Wrench,
-  ArrowRight,
-  CheckCircle2,
-  XCircle,
   Copy,
-  Check,
+  FileText,
+  FileType,
+  Loader2,
+  MessageSquare,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Tag,
+  Trash2,
+  User,
+  Wrench,
+  XCircle,
 } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Button,
-  Badge,
-  ScrollArea,
-} from "@repo/ui";
 import Link from "next/link";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import { documentsApi, type ProcessingLogEntry } from "@/lib/api";
-import { cn } from "@repo/ui";
+import { useTinyBase } from "@/lib/tinybase";
 import {
+  useLogOperations,
   useProcessingLogs,
   useProcessingLogsByStep,
-  useLogOperations,
 } from "@/lib/tinybase/hooks/useProcessingLogs";
-import { useTinyBase } from "@/lib/tinybase";
 
 // Step configuration for icons and labels
 const stepConfig: Record<string, { icon: typeof FileText; label: string; color: string }> = {
@@ -59,7 +50,7 @@ const stepConfig: Record<string, { icon: typeof FileText; label: string; color: 
 
 function findLastLog(
   logs: ProcessingLogEntry[],
-  predicate: (log: ProcessingLogEntry) => boolean
+  predicate: (log: ProcessingLogEntry) => boolean,
 ): ProcessingLogEntry | undefined {
   for (let index = logs.length - 1; index >= 0; index--) {
     const log = logs[index];
@@ -143,8 +134,14 @@ function toToonValue(value: unknown, indent = 0): string {
   if (typeof value === "number") return String(value);
   if (typeof value === "string") {
     // Escape special characters and wrap in quotes if contains special chars
-    if (value.includes(",") || value.includes("\n") || value.includes(":") || value.includes("{") || value.includes("[")) {
-      return `"${value.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+    if (
+      value.includes(",") ||
+      value.includes("\n") ||
+      value.includes(":") ||
+      value.includes("{") ||
+      value.includes("[")
+    ) {
+      return `"${value.replace(/"/g, '\\"').replace(/\n/g, "\\n")}"`;
     }
     return value;
   }
@@ -152,27 +149,27 @@ function toToonValue(value: unknown, indent = 0): string {
   if (Array.isArray(value)) {
     if (value.length === 0) return "[]";
     // Check if array of primitives
-    if (value.every(v => typeof v !== "object" || v === null)) {
-      return `[${value.map(v => toToonValue(v)).join(",")}]`;
+    if (value.every((v) => typeof v !== "object" || v === null)) {
+      return `[${value.map((v) => toToonValue(v)).join(",")}]`;
     }
     // Array of objects - check if uniform structure for tabular
-    if (value.every(v => typeof v === "object" && v !== null && !Array.isArray(v))) {
+    if (value.every((v) => typeof v === "object" && v !== null && !Array.isArray(v))) {
       const keys = Object.keys(value[0] as Record<string, unknown>);
-      const isUniform = value.every(v => {
+      const isUniform = value.every((v) => {
         const vKeys = Object.keys(v as Record<string, unknown>);
-        return vKeys.length === keys.length && keys.every(k => vKeys.includes(k));
+        return vKeys.length === keys.length && keys.every((k) => vKeys.includes(k));
       });
 
       if (isUniform && keys.length > 0) {
         // Tabular TOON format
-        const rows = value.map(v =>
-          keys.map(k => toToonValue((v as Record<string, unknown>)[k])).join(",")
+        const rows = value.map((v) =>
+          keys.map((k) => toToonValue((v as Record<string, unknown>)[k])).join(","),
         );
         return `[${value.length}]{${keys.join(",")}}:\n${prefix}  ${rows.join(`\n${prefix}  `)}`;
       }
     }
     // Fall back to array of TOON objects
-    return `[\n${value.map(v => `${prefix}  ${toToonValue(v, indent + 1)}`).join(",\n")}\n${prefix}]`;
+    return `[\n${value.map((v) => `${prefix}  ${toToonValue(v, indent + 1)}`).join(",\n")}\n${prefix}]`;
   }
 
   if (typeof value === "object") {
@@ -190,13 +187,13 @@ function logsToToon(logs: ProcessingLogEntry[]): string {
   if (logs.length === 0) return "logs[0]{}:";
 
   // Group by step for better organization
-  const steps = [...new Set(logs.map(l => l.step))];
+  const steps = [...new Set(logs.map((l) => l.step))];
 
   let toon = `# Processing Logs (${logs.length} entries)\n`;
   toon += `# Steps: ${steps.join(", ")}\n\n`;
 
   for (const step of steps) {
-    const stepLogs = logs.filter(l => l.step === step);
+    const stepLogs = logs.filter((l) => l.step === step);
     toon += `## ${step} (${stepLogs.length} events)\n`;
 
     for (const log of stepLogs) {
@@ -259,19 +256,29 @@ function LogTreeNode({ node, depth = 0 }: { node: LogNode; depth?: number }) {
   return (
     <div className={cn(depth > 0 && "ml-6 border-l-2 border-muted pl-3")}>
       <div
+        role={hasChildren ? "button" : undefined}
+        tabIndex={hasChildren ? 0 : undefined}
+        aria-expanded={hasChildren ? expanded : undefined}
         className={cn(
           "rounded-lg border p-2.5",
           getLogBgClass(node.eventType),
-          hasChildren && "cursor-pointer"
+          hasChildren &&
+            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2",
         )}
         onClick={() => hasChildren && setExpanded(!expanded)}
+        onKeyDown={(event) => {
+          if (!hasChildren || (event.key !== "Enter" && event.key !== " ")) return;
+          if ((event.target as HTMLElement).closest("button,a,input,textarea")) return;
+          event.preventDefault();
+          setExpanded(!expanded);
+        }}
       >
         <div className="flex items-start gap-2">
           {hasChildren ? (
             <ChevronRight
               className={cn(
                 "h-4 w-4 mt-0.5 transition-transform shrink-0",
-                expanded && "rotate-90"
+                expanded && "rotate-90",
               )}
             />
           ) : (
@@ -296,7 +303,7 @@ function LogTreeNode({ node, depth = 0 }: { node: LogNode; depth?: number }) {
               <pre
                 className={cn(
                   "text-xs whitespace-pre-wrap font-mono bg-background/50 rounded p-2 overflow-x-auto",
-                  !dataExpanded && isLongData && "max-h-24 overflow-hidden"
+                  !dataExpanded && isLongData && "max-h-24 overflow-hidden",
                 )}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -332,11 +339,7 @@ function LogTreeNode({ node, depth = 0 }: { node: LogNode; depth?: number }) {
   );
 }
 
-export default function ProcessingPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default function ProcessingPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const docId = parseInt(resolvedParams.id);
 
@@ -385,8 +388,8 @@ export default function ProcessingPage({
       "qdrant_index",
       "pipeline",
     ];
-    const ordered = orderedSteps.filter(step => logsByStep[step]?.length > 0);
-    const remaining = Object.keys(logsByStep).filter(step => !orderedSteps.includes(step));
+    const ordered = orderedSteps.filter((step) => logsByStep[step]?.length > 0);
+    const remaining = Object.keys(logsByStep).filter((step) => !orderedSteps.includes(step));
     return [...ordered, ...remaining];
   }, [logsByStep]);
 
@@ -423,7 +426,7 @@ export default function ProcessingPage({
       <header className="border-b px-6 py-3 flex items-center justify-between bg-card">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" asChild>
-            <Link href={`/documents/${docId}`}>
+            <Link href={`/documents/${docId}`} aria-label="Back to document">
               <ArrowLeft className="h-5 w-5" />
             </Link>
           </Button>
@@ -441,16 +444,14 @@ export default function ProcessingPage({
             onClick={handleRefresh}
             disabled={isRefreshing || isSyncing}
           >
-            <RefreshCw className={cn("h-4 w-4 mr-2", (isRefreshing || isSyncing) && "animate-spin")} />
+            <RefreshCw
+              className={cn("h-4 w-4 mr-2", (isRefreshing || isSyncing) && "animate-spin")}
+            />
             Refresh
           </Button>
           {logs.length > 0 && (
             <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={copyRawLog}
-              >
+              <Button variant="outline" size="sm" onClick={copyRawLog}>
                 {copied ? (
                   <Check className="h-4 w-4 mr-2 text-green-500" />
                 ) : copyError ? (
@@ -460,11 +461,7 @@ export default function ProcessingPage({
                 )}
                 {copied ? "Copied!" : copyError ? "Failed" : "Copy TOON"}
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleClear}
-              >
+              <Button variant="outline" size="sm" onClick={handleClear}>
                 <Trash2 className="h-4 w-4 mr-2" />
                 Clear
               </Button>
@@ -493,9 +490,11 @@ export default function ProcessingPage({
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-muted-foreground">
-                  This document hasn&apos;t been processed yet, or logs have been cleared.
-                  Go to the{" "}
-                  <Link href={`/documents/${docId}`} className="text-primary underline hover:no-underline">
+                  This document hasn&apos;t been processed yet, or logs have been cleared. Go to the{" "}
+                  <Link
+                    href={`/documents/${docId}`}
+                    className="text-primary underline hover:no-underline"
+                  >
                     document page
                   </Link>{" "}
                   to start processing.
@@ -529,28 +528,45 @@ export default function ProcessingPage({
                 const stepLogs = logsByStep[step] || [];
                 const isExpanded = expandedStep === step;
                 const latestLog = stepLogs[stepLogs.length - 1];
-                const config = stepConfig[step] || { icon: Sparkles, label: step, color: "text-muted-foreground" };
+                const config = stepConfig[step] || {
+                  icon: Sparkles,
+                  label: step,
+                  color: "text-muted-foreground",
+                };
                 const StepIcon = config.icon;
 
                 // Check if step had errors
-                const hasError = stepLogs.some(l => l.eventType === "error");
-                const hasResult = stepLogs.some(l => l.eventType === "result" || l.eventType === "tool_result" || l.eventType === "state_transition");
-                const resultLog = stepLogs.find(l => l.eventType === "result");
-                const finalToolLog = findLastLog(stepLogs, l =>
-                  l.eventType === "tool_result" &&
-                  (l.data?.toolName === "finish_document_metadata" || l.data?.toolName === "request_human_decision")
+                const hasError = stepLogs.some((l) => l.eventType === "error");
+                const hasResult = stepLogs.some(
+                  (l) =>
+                    l.eventType === "result" ||
+                    l.eventType === "tool_result" ||
+                    l.eventType === "state_transition",
                 );
-                const stateTransitionLog = findLastLog(stepLogs, l => l.eventType === "state_transition");
+                const resultLog = stepLogs.find((l) => l.eventType === "result");
+                const finalToolLog = findLastLog(
+                  stepLogs,
+                  (l) =>
+                    l.eventType === "tool_result" &&
+                    (l.data?.toolName === "finish_document_metadata" ||
+                      l.data?.toolName === "request_human_decision"),
+                );
+                const stateTransitionLog = findLastLog(
+                  stepLogs,
+                  (l) => l.eventType === "state_transition",
+                );
                 const resultSuccess = Boolean(
                   resultLog?.data?.success ??
-                  (finalToolLog ? !finalToolLog.data?.isError : undefined) ??
-                  stateTransitionLog
+                    (finalToolLog ? !finalToolLog.data?.isError : undefined) ??
+                    stateTransitionLog,
                 );
 
                 return (
                   <div key={step} className="border rounded-lg overflow-hidden bg-card">
                     {/* Accordion Header */}
                     <button
+                      type="button"
+                      aria-expanded={isExpanded}
                       className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/50 transition-colors"
                       onClick={() => setExpandedStep(isExpanded ? null : step)}
                     >
@@ -583,7 +599,7 @@ export default function ProcessingPage({
                         <ChevronDown
                           className={cn(
                             "h-4 w-4 transition-transform duration-200",
-                            isExpanded && "rotate-180"
+                            isExpanded && "rotate-180",
                           )}
                         />
                       </div>
@@ -600,7 +616,6 @@ export default function ProcessingPage({
                   </div>
                 );
               })}
-
             </div>
           </ScrollArea>
         )}

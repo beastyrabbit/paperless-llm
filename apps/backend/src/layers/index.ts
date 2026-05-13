@@ -1,28 +1,28 @@
 /**
  * Layer composition for the application.
  */
-import { Layer } from 'effect';
-import { ConfigServiceLive } from '../config/index.js';
-import {
-  PaperlessServiceLive,
-  TinyBaseServiceLive,
-  OllamaServiceLive,
-  MistralServiceLive,
-  QdrantServiceLive,
-  AutoProcessingServiceLive,
-} from '../services/index.js';
-import {
-  BootstrapJobServiceLive,
-  SchemaCleanupJobServiceLive,
-  BulkOcrJobServiceLive,
-  BulkIngestJobServiceLive,
-} from '../jobs/index.js';
+import { Layer } from "effect";
 import {
   OCRAgentServiceLive,
-  PiDocumentAgentServiceLive,
   PiConsolidationAgentServiceLive,
+  PiDocumentAgentServiceLive,
   ProcessingPipelineServiceLive,
-} from '../agents/index.js';
+} from "../agents/index.js";
+import { ConfigServiceLive } from "../config/index.js";
+import {
+  BootstrapJobServiceLive,
+  BulkIngestJobServiceLive,
+  BulkOcrJobServiceLive,
+  SchemaCleanupJobServiceLive,
+} from "../jobs/index.js";
+import {
+  AutoProcessingServiceLive,
+  MistralServiceLive,
+  OllamaServiceLive,
+  PaperlessServiceLive,
+  QdrantServiceLive,
+  TinyBaseServiceLive,
+} from "../services/index.js";
 
 /**
  * Configuration layer - foundation for all other layers.
@@ -32,10 +32,7 @@ export const ConfigLayer = ConfigServiceLive();
 /**
  * Database layer - requires Config.
  */
-export const DatabaseLayer = Layer.provideMerge(
-  TinyBaseServiceLive,
-  ConfigLayer
-);
+export const DatabaseLayer = Layer.provideMerge(TinyBaseServiceLive, ConfigLayer);
 
 /**
  * External services layer - requires Config.
@@ -43,20 +40,14 @@ export const DatabaseLayer = Layer.provideMerge(
  * Use CoreServicesLayer or AppLayer for full service access.
  */
 export const ExternalServicesLayer = Layer.provideMerge(
-  Layer.mergeAll(
-    OllamaServiceLive,
-    MistralServiceLive
-  ),
-  ConfigLayer
+  Layer.mergeAll(OllamaServiceLive, MistralServiceLive),
+  ConfigLayer,
 );
 
 /**
  * Base services layer - services with minimal dependencies.
  */
-const BaseServicesLayer = Layer.mergeAll(
-  OllamaServiceLive,
-  MistralServiceLive
-);
+const BaseServicesLayer = Layer.mergeAll(OllamaServiceLive, MistralServiceLive);
 
 /**
  * Core services layer - all fundamental services.
@@ -65,14 +56,8 @@ const BaseServicesLayer = Layer.mergeAll(
  * 2. Then Paperless + Qdrant on top
  */
 const CoreServicesLayer = Layer.provideMerge(
-  Layer.mergeAll(
-    PaperlessServiceLive,
-    QdrantServiceLive
-  ),
-  Layer.provideMerge(
-    BaseServicesLayer,
-    TinyBaseServiceLive
-  )
+  Layer.mergeAll(PaperlessServiceLive, QdrantServiceLive),
+  Layer.provideMerge(BaseServicesLayer, TinyBaseServiceLive),
 );
 
 /**
@@ -81,7 +66,7 @@ const CoreServicesLayer = Layer.provideMerge(
 const AgentsLayer = Layer.mergeAll(
   OCRAgentServiceLive,
   PiDocumentAgentServiceLive,
-  PiConsolidationAgentServiceLive
+  PiConsolidationAgentServiceLive,
 );
 
 /**
@@ -92,19 +77,16 @@ const JobsLayer = Layer.provideMerge(
     BootstrapJobServiceLive,
     SchemaCleanupJobServiceLive,
     BulkOcrJobServiceLive,
-    BulkIngestJobServiceLive
+    BulkIngestJobServiceLive,
   ),
-  AgentsLayer
+  AgentsLayer,
 );
 
 /**
  * Processing Pipeline layer - orchestrates all agents.
  * Requires all agents to be provided first.
  */
-const PipelineLayer = Layer.provideMerge(
-  ProcessingPipelineServiceLive,
-  AgentsLayer
-);
+const PipelineLayer = Layer.provideMerge(ProcessingPipelineServiceLive, AgentsLayer);
 
 /**
  * Full application layer with all services including jobs and agents.
@@ -115,8 +97,8 @@ export const AppLayer = Layer.provideMerge(
   AutoProcessingServiceLive,
   Layer.provideMerge(
     Layer.mergeAll(JobsLayer, PipelineLayer),
-    Layer.provideMerge(CoreServicesLayer, ConfigLayer)
-  )
+    Layer.provideMerge(CoreServicesLayer, ConfigLayer),
+  ),
 );
 
 /**

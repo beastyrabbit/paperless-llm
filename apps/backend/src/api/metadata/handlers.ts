@@ -3,9 +3,9 @@
  *
  * Real implementations that store tag descriptions and translations in TinyBase.
  */
-import { Effect } from 'effect';
-import { TinyBaseService } from '../../services/TinyBaseService.js';
-import { OllamaService } from '../../services/OllamaService.js';
+import { Effect } from "effect";
+import { OllamaService } from "../../services/OllamaService.js";
+import { TinyBaseService } from "../../services/TinyBaseService.js";
 
 // ===========================================================================
 // Tags - with descriptions stored in TinyBase
@@ -20,8 +20,8 @@ export const listTags = Effect.gen(function* () {
   const tagMeta: Array<{ paperless_tag_id: number; description: string }> = [];
 
   for (const [key, value] of Object.entries(allSettings)) {
-    if (key.startsWith('tag_description_')) {
-      const tagId = parseInt(key.replace('tag_description_', ''), 10);
+    if (key.startsWith("tag_description_")) {
+      const tagId = parseInt(key.replace("tag_description_", ""), 10);
       if (!isNaN(tagId) && value) {
         tagMeta.push({
           paperless_tag_id: tagId,
@@ -67,20 +67,22 @@ export const updateTag = (tagId: number, data: { tag_name?: string; description?
 export const deleteTag = (tagId: number) =>
   Effect.gen(function* () {
     const tinybase = yield* TinyBaseService;
-    yield* tinybase.setSetting(`tag_description_${tagId}`, '');
+    yield* tinybase.setSetting(`tag_description_${tagId}`, "");
 
     // Also delete any translations
     const allSettings = yield* tinybase.getAllSettings();
     for (const key of Object.keys(allSettings)) {
       if (key.startsWith(`tag_translation_${tagId}_`)) {
-        yield* tinybase.setSetting(key, '');
+        yield* tinybase.setSetting(key, "");
       }
     }
 
     return { deleted: true };
   });
 
-export const bulkUpdateTags = (items: Array<{ id: number; tag_name?: string; description?: string }>) =>
+export const bulkUpdateTags = (
+  items: Array<{ id: number; tag_name?: string; description?: string }>,
+) =>
   Effect.gen(function* () {
     const tinybase = yield* TinyBaseService;
     const results: Array<{ id: number; description: string | null }> = [];
@@ -146,16 +148,16 @@ export const updateTagTranslation = (tagId: number, lang: string, data: { text: 
 // ===========================================================================
 
 // Supported UI/prompt languages
-const SUPPORTED_LANGS = ['en', 'de', 'fr', 'es', 'it', 'nl', 'pt', 'pl', 'ru', 'ja', 'zh'];
+const SUPPORTED_LANGS = ["en", "de", "fr", "es", "it", "nl", "pt", "pl", "ru", "ja", "zh"];
 
 // Optimize tag description using LLM
 export const optimizeTagDescription = (
   tagId: number,
-  data: { description: string; tag_name: string }
+  data: { description: string; tag_name: string },
 ) =>
   Effect.gen(function* () {
     const ollama = yield* OllamaService;
-    const model = ollama.getModel('small');
+    const model = ollama.getModel("small");
 
     const prompt = `You are helping to optimize a tag description for a document management system.
 
@@ -183,12 +185,12 @@ Return ONLY the optimized description text, nothing else.`;
 // Translate tag description to all supported languages
 export const translateTagDescription = (
   tagId: number,
-  data: { description: string; source_lang: string }
+  data: { description: string; source_lang: string },
 ) =>
   Effect.gen(function* () {
     const ollama = yield* OllamaService;
     const tinybase = yield* TinyBaseService;
-    const model = ollama.getModel('small');
+    const model = ollama.getModel("small");
 
     const targetLangs = SUPPORTED_LANGS.filter((l) => l !== data.source_lang);
     const translations: Array<{ lang: string; text: string }> = [];
@@ -204,11 +206,11 @@ Text to translate:
           temperature: 0.2,
           num_predict: 300,
         }),
-        () => Effect.succeed('')
+        () => Effect.succeed(""),
       );
 
       if (result.trim()) {
-        const translatedText = result.trim().replace(/^["']|["']$/g, ''); // Remove quotes
+        const translatedText = result.trim().replace(/^["']|["']$/g, ""); // Remove quotes
         translations.push({ lang: targetLang, text: translatedText });
         // Also save to TinyBase
         yield* tinybase.setSetting(`tag_translation_${tagId}_${targetLang}`, translatedText);
@@ -234,30 +236,28 @@ export const getCustomField = (fieldId: number) =>
   Effect.succeed({
     id: fieldId,
     name: `Field ${fieldId}`,
-    data_type: 'string',
+    data_type: "string",
     extra_data: null,
   });
 
-export const updateCustomField = (
-  fieldId: number,
-  data: { name?: string; extra_data?: unknown }
-) =>
+export const updateCustomField = (fieldId: number, data: { name?: string; extra_data?: unknown }) =>
   Effect.succeed({
     id: fieldId,
     name: data.name ?? `Field ${fieldId}`,
-    data_type: 'string',
+    data_type: "string",
     extra_data: data.extra_data ?? null,
   });
 
-export const deleteCustomField = (fieldId: number) =>
-  Effect.succeed({ deleted: true });
+export const deleteCustomField = (fieldId: number) => Effect.succeed({ deleted: true });
 
 export const bulkUpdateCustomFields = (
-  items: Array<{ id: number; name?: string; extra_data?: unknown }>
+  items: Array<{ id: number; name?: string; extra_data?: unknown }>,
 ) =>
-  Effect.succeed(items.map((item) => ({
-    id: item.id,
-    name: item.name ?? `Field ${item.id}`,
-    data_type: 'string',
-    extra_data: item.extra_data ?? null,
-  })));
+  Effect.succeed(
+    items.map((item) => ({
+      id: item.id,
+      name: item.name ?? `Field ${item.id}`,
+      data_type: "string",
+      extra_data: item.extra_data ?? null,
+    })),
+  );
