@@ -468,11 +468,11 @@ export const normalizeFinishMetadataArguments = (args: unknown) => {
 };
 
 const sensitiveMetadataKeywordPattern =
-  /freischaltcode|pin|tan|passwort|kennwort|aktivierungscode|activation code|login code|security code/i;
+  /freischaltcode|\bpin\b|\btan\b|passwort|kennwort|aktivierungscode|activation code|login code|security code/i;
 
 const sensitiveValuePattern = /\b[A-Z0-9]{6,}\b/g;
 
-const redactSensitiveMetadataText = (value: string): string => {
+export const redactSensitiveMetadataText = (value: string): string => {
   if (!sensitiveMetadataKeywordPattern.test(value)) return value;
   return value.replace(sensitiveValuePattern, "[redacted]");
 };

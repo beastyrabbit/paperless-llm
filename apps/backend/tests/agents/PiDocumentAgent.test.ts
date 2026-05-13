@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeFinishMetadataArguments,
   parseFieldAssignmentsJson,
+  redactSensitiveMetadataText,
 } from "../../src/agents/PiDocumentAgent.js";
 
 describe("parseFieldAssignmentsJson", () => {
@@ -52,5 +53,19 @@ describe("normalizeFinishMetadataArguments", () => {
       linkedDocumentsJson: '[{"field":39,"document_ids":[281,283]}]',
       tagIdsToRemove: [106],
     });
+  });
+});
+
+describe("redactSensitiveMetadataText", () => {
+  it("does not match pin or tan inside unrelated words", () => {
+    expect(redactSensitiveMetadataText("Spinning Studio INVOICE2024")).toBe(
+      "Spinning Studio INVOICE2024",
+    );
+    expect(redactSensitiveMetadataText("Kontostand REF202405")).toBe("Kontostand REF202405");
+  });
+
+  it("redacts uppercase codes when standalone pin or tan keywords are present", () => {
+    expect(redactSensitiveMetadataText("PIN ABCDEF123")).toBe("PIN [redacted]");
+    expect(redactSensitiveMetadataText("TAN ZXCVBN987")).toBe("TAN [redacted]");
   });
 });
