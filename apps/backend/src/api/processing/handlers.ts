@@ -11,7 +11,7 @@ import { AutoProcessingService, TinyBaseService } from "../../services/index.js"
 // Processing Control
 // ===========================================================================
 
-export const startProcessing = (docId: number, step?: string) =>
+export const startProcessing = (docId: number, step?: string, dryRun?: boolean) =>
   Effect.gen(function* () {
     const pipeline = yield* ProcessingPipelineService;
 
@@ -27,7 +27,7 @@ export const startProcessing = (docId: number, step?: string) =>
       };
     } else {
       // Process all steps
-      const result = yield* pipeline.processDocument({ docId });
+      const result = yield* pipeline.processDocument({ docId, dryRun });
       return {
         status: result.success ? "completed" : result.needsReview ? "needs_review" : "failed",
         doc_id: docId,

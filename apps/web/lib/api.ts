@@ -77,10 +77,10 @@ export const documentsApi = {
 
 // Processing API
 export const processingApi = {
-  start: (docId: number, step?: string) =>
+  start: (docId: number, step?: string, dryRun?: boolean) =>
     fetchApi(`/api/processing/${docId}/start`, {
       method: "POST",
-      body: JSON.stringify({ step }),
+      body: JSON.stringify({ step, dryRun }),
     }),
   stream: (docId: number, options?: { step?: string; full?: boolean }) => {
     const params = new URLSearchParams();

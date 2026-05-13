@@ -10,12 +10,13 @@ import {
   type AgentTool,
   Agent as PiAgent,
 } from "@earendil-works/pi-agent-core";
-import { type Model, streamSimple } from "@earendil-works/pi-ai";
+import { streamSimple } from "@earendil-works/pi-ai";
 import { Context, Effect, Layer } from "effect";
 import { Type } from "typebox";
 import { AgentError } from "../errors/index.js";
 import type { Correspondent, CustomField, DocumentType, Tag } from "../models/index.js";
 import { ConfigService, PaperlessService, TinyBaseService } from "../services/index.js";
+import { buildOllamaModel } from "./piOllamaModel.js";
 
 export type ConsolidationAction = "merge" | "rename" | "delete" | "keep_separate" | "needs_review";
 export type ConsolidationAttributeType = "tag" | "correspondent" | "document_type" | "custom_field";
@@ -75,25 +76,6 @@ const textResult = <T>(text: string, details: T, terminate = false) => ({
   content: [{ type: "text" as const, text }],
   details,
   terminate,
-});
-
-const buildOllamaModel = (url: string, modelId: string): Model<"openai-completions"> => ({
-  id: modelId,
-  name: modelId,
-  provider: "ollama",
-  api: "openai-completions",
-  baseUrl: `${url.replace(/\/$/, "")}/v1`,
-  reasoning: false,
-  input: ["text"],
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 32_000,
-  maxTokens: 4_096,
-  compat: {
-    supportsStore: false,
-    supportsDeveloperRole: false,
-    supportsReasoningEffort: false,
-    maxTokensField: "max_tokens",
-  },
 });
 
 const normalize = (name: string): string =>

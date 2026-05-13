@@ -24,6 +24,7 @@ export interface PipelineInput {
   mockOcr?: boolean;
   auto?: boolean;
   resume?: boolean;
+  dryRun?: boolean;
   onAgentEvent?: (event: PipelineStreamEvent) => void;
 }
 
@@ -321,6 +322,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
       metadataPolicy: MetadataPolicy,
       auto?: boolean,
       resume?: boolean,
+      dryRun?: boolean,
       onAgentEvent?: (event: PipelineStreamEvent) => void,
     ) =>
       Effect.gen(function* () {
@@ -329,6 +331,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
           docId,
           auto,
           resume,
+          dryRun,
           metadataPolicy,
           onEvent: onAgentEvent
             ? (agentEvent) => onAgentEvent(toPipelineAgentEvent(docId, "metadata", agentEvent))
@@ -449,6 +452,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                 pipelineConfig.metadataPolicy,
                 input.auto,
                 input.resume,
+                input.dryRun,
                 input.onAgentEvent,
               );
               steps["metadata"] = { step: "metadata", success: result.success, data: result };
@@ -615,6 +619,7 @@ export const ProcessingPipelineServiceLive = Layer.effect(
                       const metadataResult = yield* processMetadata(
                         docId,
                         pipelineConfig.metadataPolicy,
+                        undefined,
                         undefined,
                         undefined,
                         (agentEvent) => emit.single(agentEvent),

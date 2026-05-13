@@ -314,8 +314,8 @@ addRoute("POST", "/api/documents/:id/cleanup-tags", (params, body) => {
 // ===========================================================================
 
 addRoute("POST", "/api/processing/:docId/start", (params, body) => {
-  const { step } = body as { step?: string };
-  return processingHandlers.startProcessing(parseInt(params.docId!, 10), step);
+  const { step, dryRun } = body as { step?: string; dryRun?: boolean };
+  return processingHandlers.startProcessing(parseInt(params.docId!, 10), step, dryRun);
 });
 
 addRoute("POST", "/api/processing/:docId/confirm", (params) => {
