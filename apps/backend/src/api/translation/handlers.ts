@@ -21,12 +21,12 @@ export const translate = (data: { text: string; source_lang?: string; target_lan
 // Translations Cache
 // ===========================================================================
 
-export const getTranslations = (targetLang: string, contentType?: string) =>
+export const getTranslations = (_targetLang: string, _contentType?: string) =>
   Effect.succeed({
     translations: [],
   });
 
-export const clearCache = (targetLang?: string, contentType?: string) =>
+export const clearCache = (_targetLang?: string, _contentType?: string) =>
   Effect.succeed({ success: true });
 
 // ===========================================================================

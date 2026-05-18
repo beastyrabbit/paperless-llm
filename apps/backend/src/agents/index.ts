@@ -18,14 +18,8 @@ export {
   runConfirmationLoop,
   type StreamEvent,
 } from "./base.js";
-export {
-  CorrespondentAgentGraphService,
-  type CorrespondentAgentGraphService as CorrespondentAgentGraphServiceInterface,
-  CorrespondentAgentGraphService as CorrespondentAgentService,
-  CorrespondentAgentGraphServiceLive,
-  CorrespondentAgentGraphServiceLive as CorrespondentAgentServiceLive,
-  type CorrespondentInput,
-} from "./CorrespondentAgentGraph.js";
+// Compatibility exports retained for old callers. These agents intentionally
+// return skipped/no-op results; active extraction runs through PiDocumentAgent.
 export type {
   CustomFieldsGraphInput as CustomFieldsInput,
   CustomFieldsGraphResult as CustomFieldsResult,
@@ -57,14 +51,6 @@ export {
   type DocumentLinksGraphResult,
 } from "./DocumentLinksAgentGraph.js";
 export {
-  DocumentTypeAgentGraphService,
-  type DocumentTypeAgentGraphService as DocumentTypeAgentGraphServiceInterface,
-  DocumentTypeAgentGraphService as DocumentTypeAgentService,
-  DocumentTypeAgentGraphServiceLive,
-  DocumentTypeAgentGraphServiceLive as DocumentTypeAgentServiceLive,
-  type DocumentTypeInput,
-} from "./DocumentTypeAgentGraph.js";
-export {
   OCRAgentService,
   type OCRAgentService as OCRAgentServiceInterface,
   OCRAgentServiceLive,
@@ -88,6 +74,17 @@ export {
   PiDocumentAgentServiceLive,
 } from "./PiDocumentAgent.js";
 export {
+  type PiTagExplorerAgentService as PiTagExplorerAgentServiceInterface,
+  PiTagExplorerAgentService,
+  PiTagExplorerAgentServiceLive,
+  type TagExplorerCatalogTag,
+  type TagExplorerInput,
+  type TagExplorerNewTagProposal,
+  type TagExplorerRejectedIdea,
+  type TagExplorerResult,
+  type TagExplorerSimilarDocument,
+} from "./PiTagExplorerAgent.js";
+export {
   type PipelineInput,
   type PipelineResult,
   type PipelineStepResult,
@@ -97,6 +94,8 @@ export {
   ProcessingPipelineServiceLive,
   type ProcessingState,
 } from "./ProcessingPipeline.js";
+// Compatibility schema-analysis exports retained for old callers. Catalog
+// cleanup proposals now run through PiConsolidationAgent/SchemaCleanupJob.
 export type {
   SchemaAnalysisGraphInput as SchemaAnalysisInput,
   SchemaAnalysisGraphResult as SchemaAnalysisResult,
@@ -110,28 +109,3 @@ export {
   type SchemaAnalysisGraphInput,
   type SchemaAnalysisGraphResult,
 } from "./SchemaAnalysisAgentGraph.js";
-// Legacy compatibility exports for callers that still import per-field agents.
-export {
-  SummaryAgentService,
-  type SummaryAgentService as SummaryAgentServiceInterface,
-  SummaryAgentServiceLive,
-  type SummaryInput,
-  type SummaryResult,
-} from "./SummaryAgentGraph.js";
-export {
-  TagsAgentGraphService,
-  type TagsAgentGraphService as TagsAgentGraphServiceInterface,
-  TagsAgentGraphService as TagsAgentService,
-  TagsAgentGraphServiceLive,
-  TagsAgentGraphServiceLive as TagsAgentServiceLive,
-  type TagsInput,
-  type TagsResult,
-} from "./TagsAgentGraph.js";
-export {
-  TitleAgentGraphService,
-  type TitleAgentGraphService as TitleAgentGraphServiceInterface,
-  TitleAgentGraphService as TitleAgentService,
-  TitleAgentGraphServiceLive,
-  TitleAgentGraphServiceLive as TitleAgentServiceLive,
-  type TitleInput,
-} from "./TitleAgentGraph.js";

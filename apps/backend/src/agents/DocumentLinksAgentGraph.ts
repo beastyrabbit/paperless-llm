@@ -1,5 +1,11 @@
 /**
- * Compatibility document links agent. New processing uses PiDocumentAgent.
+ * Compatibility document links agent.
+ *
+ * This service is intentionally retained for callers that still import the old
+ * DocumentLinksAgentGraph API. It does not infer or apply document links;
+ * document-link extraction is owned by PiDocumentAgent.
+ *
+ * @deprecated Use PiDocumentAgentService for document-link extraction.
  */
 import { Context, Effect, Layer, Stream } from "effect";
 import { AgentError } from "../errors/index.js";
@@ -45,6 +51,9 @@ export interface DocumentLinksGraphResult extends AgentProcessResult {
   skipReason?: string;
 }
 
+/**
+ * @deprecated Compatibility-only service; use PiDocumentAgentService instead.
+ */
 export interface DocumentLinksAgentGraphService
   extends Agent<DocumentLinksGraphInput, DocumentLinksGraphResult> {
   readonly name: "document_links";
@@ -60,6 +69,12 @@ export const DocumentLinksAgentGraphService = Context.GenericTag<DocumentLinksAg
   "DocumentLinksAgentGraphService",
 );
 
+/**
+ * Compatibility layer that records a skipped result and returns no link updates.
+ * It must not be wired into the active processing pipeline.
+ *
+ * @deprecated Compatibility-only layer; use PiDocumentAgentServiceLive instead.
+ */
 export const DocumentLinksAgentGraphServiceLive = Layer.effect(
   DocumentLinksAgentGraphService,
   Effect.gen(function* () {

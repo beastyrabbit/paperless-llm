@@ -19,14 +19,14 @@ ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json ./
 
 # Copy all package.json files
+COPY packages/api-contracts/package.json ./packages/api-contracts/
 COPY packages/ui/package.json ./packages/ui/
-COPY packages/eslint-config/package.json ./packages/eslint-config/
 COPY packages/typescript-config/package.json ./packages/typescript-config/
 COPY apps/web/package.json ./apps/web/
 
 # Copy workspace packages source (needed for @repo/ui which exports raw TS)
+COPY packages/api-contracts ./packages/api-contracts
 COPY packages/typescript-config ./packages/typescript-config
-COPY packages/eslint-config ./packages/eslint-config
 COPY packages/ui ./packages/ui
 
 # Copy frontend app
@@ -64,5 +64,8 @@ COPY --from=builder /app/apps/web/messages ./apps/web/messages
 USER nextjs
 
 EXPOSE 3765
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD wget -qO- http://127.0.0.1:3765/ || exit 1
 
 CMD ["node", "apps/web/server.js"]

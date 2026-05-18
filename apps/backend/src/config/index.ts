@@ -1,9 +1,14 @@
 /**
  * Configuration service for the application.
  */
-import { Context, Effect, Layer, pipe } from "effect";
-import type { ResolvedConfig } from "./schema.js";
-import { ConfigLoadError, loadEnvConfig, loadYamlConfig, mergeConfigs } from "./yaml-loader.js";
+import { Context, Effect, Layer, pipe, Schema } from "effect";
+import { type AppConfig, AppConfigSchema, type ResolvedConfig } from "./schema.js";
+import {
+  type ConfigLoadError,
+  loadEnvConfig,
+  loadYamlConfig,
+  mergeConfigs,
+} from "./yaml-loader.js";
 
 // Default configuration values
 const defaultConfig: ResolvedConfig = {
@@ -13,43 +18,52 @@ const defaultConfig: ResolvedConfig = {
   },
   ollama: {
     url: "http://localhost:11434",
-    modelLarge: "llama3.2",
-    modelSmall: "llama3.2",
+    model: "llama3.2",
+    embeddingModel: "nomic-embed-text",
   },
   mistral: {
     apiKey: "",
     model: "pixtral-12b-latest",
+    apiBaseUrl: "https://api.mistral.ai",
   },
   qdrant: {
     url: "http://localhost:6333",
     collectionName: "documents",
     embeddingDimension: 768, // Must match embedding model (nomic-embed-text=768, mxbai-embed-large=1024)
   },
+  ocrBudget: {
+    dailyPageLimit: null,
+    runPageLimit: null,
+    dailyTokenLimit: null,
+    runTokenLimit: null,
+  },
   autoProcessing: {
     enabled: false,
     intervalMinutes: 5,
+    includeUntagged: false,
     confirmationEnabled: true,
     confirmationMaxRetries: 3,
+    confirmationMinConfidence: 0.7,
   },
   tags: {
-    todo: "llm-todo",
-    ocr: "llm-ocr",
-    metadata: "llm-metadata",
-    review: "llm-review",
-    index: "llm-index",
-    done: "llm-done",
-    failed: "llm-failed",
+    todo: "ai-queued",
+    ocr: "ai-processing",
+    metadata: "ai-processing",
+    review: "ai-needs-input",
+    index: "ai-processing",
+    done: "ai-done",
+    failed: "ai-failed",
     // Compatibility aliases for persisted settings and older callers.
-    pending: "llm-todo",
-    ocrDone: "llm-ocr",
-    summaryDone: "llm-metadata",
-    schemaReview: "llm-review",
-    titleDone: "llm-metadata",
-    correspondentDone: "llm-metadata",
-    documentTypeDone: "llm-metadata",
-    tagsDone: "llm-index",
-    processed: "llm-done",
-    manualReview: "llm-review",
+    pending: "ai-queued",
+    ocrDone: "ai-processing",
+    summaryDone: "ai-processing",
+    schemaReview: "ai-needs-input",
+    titleDone: "ai-processing",
+    correspondentDone: "ai-processing",
+    documentTypeDone: "ai-processing",
+    tagsDone: "ai-processing",
+    processed: "ai-done",
+    manualReview: "ai-needs-input",
   },
   pipeline: {
     enableOcr: true,
@@ -60,6 +74,23 @@ const defaultConfig: ResolvedConfig = {
     enableTags: true,
     enableCustomFields: false,
     enableDocumentLinks: true,
+    // Safety bound against infinite workflow loops in full-pipeline SSE processing.
+    maxSteps: 10,
+  },
+  http: {
+    requestTimeoutMs: 120_000,
+    agentPromptTimeoutMs: 120_000,
+    mistralRetryAttempts: 3,
+    mistralRetryBaseDelayMs: 5_000,
+    rateLimitEnabled: true,
+    rateLimitWindowMs: 60_000,
+    rateLimitMaxRequests: 300,
+    rateLimitTrustProxy: false,
+  },
+  concurrency: {
+    ollamaMaxConcurrent: 1,
+    mistralMaxConcurrent: 1,
+    ocrMaxConcurrent: 1,
   },
   language: "en",
   debug: false,
@@ -78,63 +109,133 @@ export interface ConfigService {
  */
 export const ConfigService = Context.GenericTag<ConfigService>("ConfigService");
 
-/**
- * Apply defaults to a partial config.
- */
-const applyDefaults = (partial: Record<string, unknown>): ResolvedConfig => {
-  const result = { ...defaultConfig };
+const validateAppConfig = (value: unknown): Effect.Effect<AppConfig, ConfigLoadError> =>
+  Effect.try({
+    try: () => Schema.decodeUnknownSync(AppConfigSchema)(value),
+    catch: (error) => ({
+      _tag: "ConfigLoadError" as const,
+      message: "Invalid application configuration",
+      cause: error,
+    }),
+  });
 
-  for (const key of Object.keys(partial)) {
-    const value = partial[key];
-    if (value === undefined) continue;
+const applyDefaults = (partial: AppConfig): ResolvedConfig => ({
+  paperless: {
+    ...defaultConfig.paperless,
+    ...partial.paperless,
+  },
+  ollama: {
+    ...defaultConfig.ollama,
+    ...partial.ollama,
+  },
+  mistral: {
+    ...defaultConfig.mistral,
+    ...partial.mistral,
+  },
+  qdrant: {
+    ...defaultConfig.qdrant,
+    ...partial.qdrant,
+  },
+  ocrBudget: {
+    ...defaultConfig.ocrBudget,
+    ...partial.ocrBudget,
+  },
+  autoProcessing: {
+    ...defaultConfig.autoProcessing,
+    ...partial.autoProcessing,
+  },
+  tags: {
+    ...defaultConfig.tags,
+    ...partial.tags,
+  },
+  pipeline: {
+    ...defaultConfig.pipeline,
+    ...partial.pipeline,
+  },
+  http: {
+    ...defaultConfig.http,
+    ...partial.http,
+  },
+  concurrency: {
+    ...defaultConfig.concurrency,
+    ...partial.concurrency,
+  },
+  language: partial.language ?? defaultConfig.language,
+  debug: partial.debug ?? defaultConfig.debug,
+});
 
-    if (
-      typeof value === "object" &&
-      value !== null &&
-      !Array.isArray(value) &&
-      key in defaultConfig
-    ) {
-      const defaultSection = defaultConfig[key as keyof ResolvedConfig];
-      if (typeof defaultSection === "object" && defaultSection !== null) {
-        (result as Record<string, unknown>)[key] = {
-          ...defaultSection,
-          ...(value as Record<string, unknown>),
-        };
-      }
-    } else {
-      (result as Record<string, unknown>)[key] = value;
-    }
-  }
+const truthyEnvValues = new Set(["1", "true", "yes", "on"]);
 
-  return result;
+const isTruthyEnvValue = (value: string | undefined): boolean =>
+  truthyEnvValues.has(value?.trim().toLowerCase() ?? "");
+
+const shouldRequireSecrets = (): boolean =>
+  isTruthyEnvValue(process.env["PAPERLESS_LLM_REQUIRE_SECRETS"]) ||
+  process.env["NODE_ENV"] === "production";
+
+const shouldRequireApiAuthToken = (): boolean =>
+  shouldRequireSecrets() ||
+  isTruthyEnvValue(process.env["PAPERLESS_LLM_PROD_READ_ONLY"]) ||
+  isTruthyEnvValue(process.env["PAPERLESS_LLM_READ_ONLY"]);
+
+const getConfiguredApiAuthToken = (): string =>
+  process.env["PAPERLESS_LLM_API_TOKEN"] ?? process.env["LOCAL_LLM_API_KEY"] ?? "";
+
+const isMissingSecret = (value: string): boolean => {
+  const normalized = value.trim().toLowerCase();
+  return normalized.length === 0 || normalized.startsWith("your-");
+};
+
+const validateRequiredSecrets = (
+  resolved: ResolvedConfig,
+): Effect.Effect<ResolvedConfig, ConfigLoadError> => {
+  if (!shouldRequireSecrets() && !shouldRequireApiAuthToken()) return Effect.succeed(resolved);
+
+  const missing = [
+    shouldRequireSecrets() && isMissingSecret(resolved.paperless.token) ? "paperless.token" : null,
+    shouldRequireSecrets() && isMissingSecret(resolved.mistral.apiKey) ? "mistral.apiKey" : null,
+    shouldRequireApiAuthToken() && isMissingSecret(getConfiguredApiAuthToken())
+      ? "PAPERLESS_LLM_API_TOKEN"
+      : null,
+  ].filter((field): field is string => field !== null);
+
+  if (missing.length === 0) return Effect.succeed(resolved);
+
+  return Effect.fail({
+    _tag: "ConfigLoadError" as const,
+    message: `Missing required secret configuration: ${missing.join(", ")}`,
+  });
 };
 
 /**
  * Create the configuration service.
  */
 export const makeConfigService = (
-  configPath = "config.yaml",
+  configPath?: string,
 ): Effect.Effect<ConfigService, ConfigLoadError> =>
   pipe(
     Effect.all({
       yamlConfig: loadYamlConfig(configPath),
       envConfig: loadEnvConfig(),
     }),
-    Effect.map(({ yamlConfig, envConfig }) => {
+    Effect.flatMap(({ yamlConfig, envConfig }) => {
       const merged = mergeConfigs(yamlConfig, envConfig);
-      const resolved = applyDefaults(merged as Record<string, unknown>);
-
-      return {
-        config: resolved,
-        get: <K extends keyof ResolvedConfig>(key: K) => resolved[key],
-      };
+      return pipe(
+        validateAppConfig(merged),
+        Effect.map(applyDefaults),
+        Effect.flatMap(validateRequiredSecrets),
+        Effect.map((resolved) => ({
+          config: resolved,
+          get: <K extends keyof ResolvedConfig>(key: K) => resolved[key],
+        })),
+      );
     }),
   );
 
 /**
  * Live layer for configuration service.
  */
-export const ConfigServiceLive = (configPath = "config.yaml") =>
+export const ConfigServiceLive = (configPath?: string) =>
   Layer.effect(ConfigService, makeConfigService(configPath));
 
 // Re-export types

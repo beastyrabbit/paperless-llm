@@ -172,7 +172,7 @@ describe("Pending Handlers", () => {
       );
 
       expect(result).toHaveProperty("error");
-      expect((result as any).error._tag).toBe("NotFoundError");
+      expect((result as { error: { _tag: string } }).error._tag).toBe("NotFoundError");
     });
   });
 
@@ -342,7 +342,7 @@ describe("Pending Handlers", () => {
         ),
       );
 
-      expect((result as any).error._tag).toBe("NotFoundError");
+      expect((result as { error: { _tag: string } }).error._tag).toBe("NotFoundError");
     });
   });
 
@@ -393,7 +393,7 @@ describe("Pending Handlers", () => {
         ),
       );
 
-      expect((result as any).error._tag).toBe("NotFoundError");
+      expect((result as { error: { _tag: string } }).error._tag).toBe("NotFoundError");
     });
   });
 
@@ -578,13 +578,13 @@ describe("Pending Handlers", () => {
         ),
       );
 
-      expect((missingIds as any).error._tag).toBe("ValidationError");
-      expect((blankName as any).error._tag).toBe("ValidationError");
+      expect((missingIds as { error: { _tag: string } }).error._tag).toBe("ValidationError");
+      expect((blankName as { error: { _tag: string } }).error._tag).toBe("ValidationError");
     });
   });
 
   describe("bulkAction", () => {
-    it("should process multiple approvals", async () => {
+    it("should process multiple approvals with an explicit target value", async () => {
       const reviews = [
         {
           id: "1",
@@ -617,12 +617,35 @@ describe("Pending Handlers", () => {
           .bulkAction({
             ids: ["1", "2"],
             action: "approve",
+            targetValue: "Corp A",
           })
           .pipe(Effect.provide(TestLayer)),
       );
 
       expect(result.processed).toBe(2);
       expect(tinyMocks.removePendingReview).toHaveBeenCalledTimes(2);
+    });
+
+    it("should reject bulk approve without an explicit target value", async () => {
+      const { layer: mockTinyBase } = createMockTinyBase();
+      const { layer: mockPaperless } = createMockPaperless();
+      const mockConfig = createMockConfig();
+
+      const TestLayer = Layer.mergeAll(mockTinyBase, mockPaperless, mockConfig);
+
+      const result = await Effect.runPromise(
+        pendingHandlers
+          .bulkAction({
+            ids: ["1", "2"],
+            action: "approve",
+          })
+          .pipe(
+            Effect.provide(TestLayer),
+            Effect.catchAll((e) => Effect.succeed({ error: e })),
+          ),
+      );
+
+      expect((result as { error: { _tag: string } }).error._tag).toBe("ValidationError");
     });
 
     it("should process multiple rejections", async () => {
@@ -668,6 +691,7 @@ describe("Pending Handlers", () => {
           .bulkAction({
             ids: ["unknown-1", "unknown-2"],
             action: "approve",
+            targetValue: "Explicit Target",
           })
           .pipe(Effect.provide(TestLayer)),
       );

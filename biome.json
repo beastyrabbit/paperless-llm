@@ -34,11 +34,22 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": false,
+      "recommended": true,
       "correctness": {
-        "noUnusedImports": "warn",
-        "noUnusedFunctionParameters": "off",
-        "noUnusedVariables": "warn"
+        "noUnusedImports": "error",
+        "noUnusedFunctionParameters": "error",
+        "noUnusedVariables": "error"
+      },
+      "style": {
+        "noNonNullAssertion": "error",
+        "useConst": "error",
+        "useImportType": "error"
+      },
+      "suspicious": {
+        "noDocumentCookie": "error",
+        "noExplicitAny": "error",
+        "noGlobalIsNan": "error",
+        "noPrototypeBuiltins": "error"
       }
     }
   },

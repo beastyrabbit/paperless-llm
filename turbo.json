@@ -3,6 +3,19 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "src/**",
+        "app/**",
+        "components/**",
+        "lib/**",
+        "messages/**",
+        "public/**",
+        "package.json",
+        "tsconfig.json",
+        "next.config.*",
+        "biome.json"
+      ],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
     },
     "dev": {
@@ -12,22 +25,71 @@
     },
     "lint": {
       "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "src/**",
+        "app/**",
+        "components/**",
+        "lib/**",
+        "package.json",
+        "biome.json"
+      ],
       "outputs": []
     },
     "typecheck": {
       "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "src/**",
+        "app/**",
+        "components/**",
+        "lib/**",
+        "package.json",
+        "tsconfig.json"
+      ],
       "outputs": []
     },
     "test": {
       "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "src/**",
+        "app/**",
+        "components/**",
+        "lib/**",
+        "tests/**",
+        "package.json",
+        "tsconfig.json",
+        "vitest.config.*"
+      ],
       "outputs": ["coverage/**"]
     },
     "test:unit": {
       "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "src/**",
+        "app/**",
+        "components/**",
+        "lib/**",
+        "tests/**",
+        "package.json",
+        "tsconfig.json",
+        "vitest.config.*"
+      ],
       "outputs": ["coverage/**"]
     },
     "test:e2e": {
       "dependsOn": ["build"],
+      "passThroughEnv": ["PLAYWRIGHT_BASE_URL"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "app/**",
+        "components/**",
+        "lib/**",
+        "e2e/**",
+        "playwright.config.*"
+      ],
       "outputs": []
     },
     "format": {

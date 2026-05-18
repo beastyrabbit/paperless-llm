@@ -13,8 +13,7 @@ import {
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useState } from "react";
-import { AutoProcessingStatus, documentsApi, processingApi, QueueStats } from "@/lib/api";
+import { useGlobalStatus } from "@/lib/global-status";
 
 const navigation = [
   { key: "dashboard", href: "/", icon: LayoutDashboard },
@@ -31,30 +30,18 @@ export function Sidebar() {
   const t = useTranslations("navigation");
   const tCommon = useTranslations("common");
 
-  // Auto-processing status state
-  const [autoStatus, setAutoStatus] = useState<AutoProcessingStatus | null>(null);
-  const [queueStats, setQueueStats] = useState<QueueStats | null>(null);
-
-  const fetchStatus = useCallback(async () => {
-    const [autoRes, queueRes] = await Promise.all([
-      processingApi.getAutoStatus(),
-      documentsApi.getQueue(),
-    ]);
-    if (autoRes.data) setAutoStatus(autoRes.data);
-    if (queueRes.data) setQueueStats(queueRes.data);
-  }, []);
-
-  useEffect(() => {
-    fetchStatus();
-    // Refresh every 5 seconds
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
-  }, [fetchStatus]);
+  const { autoStatus, queueStats } = useGlobalStatus();
 
   // Determine status display (check for both null and undefined)
   const isProcessing = autoStatus?.currently_processing_doc_id != null;
   const isEnabled = autoStatus?.enabled ?? false;
   const queueCount = queueStats?.total_in_pipeline ?? 0;
+  const statusText = isProcessing
+    ? tCommon("processing")
+    : isEnabled
+      ? tCommon("idle")
+      : tCommon("disabled");
+  const queueText = tCommon("inQueue", { count: queueCount });
 
   // Build current full path with query params
   const currentPath = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
@@ -103,9 +90,16 @@ export function Sidebar() {
 
       {/* Status Footer */}
       <div className="border-t border-zinc-200 p-4 dark:border-zinc-800">
-        <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-900">
+        <div
+          className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-900"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          aria-label={`${t("autoProcessing")}: ${statusText} - ${queueText}`}
+        >
           <div className="flex items-center gap-2">
             <div
+              aria-hidden="true"
               className={cn(
                 "h-2 w-2 rounded-full",
                 isProcessing
@@ -120,12 +114,7 @@ export function Sidebar() {
             </span>
           </div>
           <p className="mt-1 text-xs text-zinc-500">
-            {isProcessing
-              ? tCommon("processing")
-              : isEnabled
-                ? tCommon("idle")
-                : tCommon("disabled")}{" "}
-            - {tCommon("inQueue", { count: queueCount })}
+            {statusText} - {queueText}
           </p>
         </div>
         {/* Version */}

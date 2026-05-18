@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_PAGE_BACKGROUND } from "@/lib/styles";
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from "@repo/ui";
 import {
   Bug,
@@ -16,7 +17,7 @@ import {
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { Suspense, useActionState, useState } from "react";
 import { useTinyBase } from "@/lib/tinybase";
 import {
   AdvancedTab,
@@ -46,12 +47,12 @@ const VALID_TABS = [
 
 type SettingsTab = (typeof VALID_TABS)[number];
 
-export default function SettingsPage() {
+function SettingsPageContent() {
   const t = useTranslations("settings");
   const tCommon = useTranslations("common");
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { saveSettings, isSyncing } = useTinyBase();
+  const { saveSettings, isSyncing, lastSyncError } = useTinyBase();
 
   // Get initial tab from URL or default to "connections"
   const tabParam = searchParams.get("tab");
@@ -60,9 +61,17 @@ export default function SettingsPage() {
     : "connections";
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
 
-  // Save status state
-  const [saving, setSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
+  const [saveState, saveAction, isSaving] = useActionState<
+    { status: "idle" | "success" | "error"; message: string | null },
+    FormData
+  >(async () => {
+    try {
+      await saveSettings();
+      return { status: "success", message: t("saved") };
+    } catch {
+      return { status: "error", message: t("saveError") };
+    }
+  }, { status: "idle", message: null });
 
   // Update URL when tab changes
   const handleTabChange = (tab: string) => {
@@ -72,23 +81,8 @@ export default function SettingsPage() {
     router.replace(`/settings?${params.toString()}`, { scroll: false });
   };
 
-  // Save all settings
-  const handleSave = async () => {
-    setSaving(true);
-    setSaveStatus("idle");
-    try {
-      await saveSettings();
-      setSaveStatus("success");
-      setTimeout(() => setSaveStatus("idle"), 3000);
-    } catch {
-      setSaveStatus("error");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-white to-emerald-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-emerald-950/20">
+    <div className={APP_PAGE_BACKGROUND}>
       {/* Header */}
       <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/80">
         <div className="flex items-center justify-between px-8 py-6">
@@ -98,25 +92,40 @@ export default function SettingsPage() {
             </h1>
             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{t("subtitle")}</p>
           </div>
-          <Button
-            onClick={handleSave}
-            disabled={saving || isSyncing}
-            className="bg-emerald-600 hover:bg-emerald-700"
-          >
-            {saving || isSyncing ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : saveStatus === "success" ? (
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-            ) : (
-              <Save className="mr-2 h-4 w-4" />
+          <form action={saveAction} className="flex items-center gap-3">
+            {saveState.status === "error" && (
+              <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+                {saveState.message}
+              </p>
             )}
-            {saveStatus === "success" ? tCommon("saved") : t("saveSettings")}
-          </Button>
+            <Button
+              type="submit"
+              disabled={isSaving || isSyncing}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {isSaving || isSyncing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : saveState.status === "success" ? (
+                <CheckCircle2 className="mr-2 h-4 w-4" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              {saveState.status === "success" ? tCommon("saved") : t("saveSettings")}
+            </Button>
+          </form>
         </div>
       </header>
 
       {/* Content */}
       <main className="p-8">
+        {lastSyncError && (
+          <div
+            className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300"
+            role="alert"
+          >
+            {lastSyncError}
+          </div>
+        )}
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="bg-zinc-100 dark:bg-zinc-800">
             <TabsTrigger value="connections" className="gap-2">
@@ -203,5 +212,19 @@ export default function SettingsPage() {
         </Tabs>
       </main>
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-zinc-950">
+          <Loader2 className="size-7 animate-spin text-emerald-500" />
+        </div>
+      }
+    >
+      <SettingsPageContent />
+    </Suspense>
   );
 }

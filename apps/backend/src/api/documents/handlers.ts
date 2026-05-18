@@ -5,7 +5,11 @@
  */
 import { Effect, pipe } from "effect";
 import { ConfigService } from "../../config/index.js";
-import { PaperlessService } from "../../services/index.js";
+import { DocumentAuthorizationService, PaperlessService } from "../../services/index.js";
+import { logger } from "../../utils/logger.js";
+import { getCachedQueueStats, getCachedTotalDocumentCount } from "../paperlessStatusCache.js";
+
+const documentsLogger = logger.child({ component: "api_documents" });
 
 // ===========================================================================
 // Queue Stats
@@ -13,40 +17,55 @@ import { PaperlessService } from "../../services/index.js";
 
 export const getQueueStats = Effect.gen(function* () {
   const paperless = yield* PaperlessService;
+  const emptyStats = {
+    todo: 0,
+    ocr: 0,
+    metadata: 0,
+    review: 0,
+    index: 0,
+    done: 0,
+    pending: 0,
+    ocrDone: 0,
+    titleDone: 0,
+    correspondentDone: 0,
+    documentTypeDone: 0,
+    tagsDone: 0,
+    processed: 0,
+    failed: 0,
+    manualReview: 0,
+    total: 0,
+  };
 
   // Fetch queue stats and total document count in parallel
-  const [stats, totalDocuments] = yield* Effect.all(
+  const [statsResult, totalDocumentsResult] = yield* Effect.all(
     [
-      pipe(
-        paperless.getQueueStats(),
-        Effect.catchAll(() =>
-          Effect.succeed({
-            todo: 0,
-            ocr: 0,
-            metadata: 0,
-            review: 0,
-            index: 0,
-            done: 0,
-            pending: 0,
-            ocrDone: 0,
-            titleDone: 0,
-            correspondentDone: 0,
-            documentTypeDone: 0,
-            tagsDone: 0,
-            processed: 0,
-            failed: 0,
-            manualReview: 0,
-            total: 0,
-          }),
-        ),
-      ),
-      pipe(
-        paperless.getTotalDocumentCount(),
-        Effect.catchAll(() => Effect.succeed(0)),
-      ),
+      Effect.either(getCachedQueueStats(paperless)),
+      Effect.either(getCachedTotalDocumentCount(paperless)),
     ],
     { concurrency: "unbounded" },
   );
+
+  const paperlessErrors: string[] = [];
+  const stats =
+    statsResult._tag === "Right"
+      ? statsResult.right
+      : (() => {
+          paperlessErrors.push(`queue_stats: ${String(statsResult.left)}`);
+          return emptyStats;
+        })();
+  const totalDocuments =
+    totalDocumentsResult._tag === "Right"
+      ? totalDocumentsResult.right
+      : (() => {
+          paperlessErrors.push(`total_documents: ${String(totalDocumentsResult.left)}`);
+          return 0;
+        })();
+
+  if (paperlessErrors.length > 0) {
+    yield* Effect.sync(() => {
+      documentsLogger.warn("paperless_queue_stats_unavailable", { errors: paperlessErrors });
+    });
+  }
 
   const todo = stats.todo ?? stats.pending;
   const ocr = stats.ocr ?? stats.ocrDone;
@@ -77,6 +96,9 @@ export const getQueueStats = Effect.gen(function* () {
     processed: stats.processed,
     total_in_pipeline: totalInPipeline,
     total_documents: totalDocuments, // Actual total from Paperless
+    paperless_reachable: paperlessErrors.length === 0,
+    status: paperlessErrors.length === 0 ? "ok" : "paperless_unreachable",
+    errors: paperlessErrors,
     // Additional fields for compatibility
     failed: stats.failed,
     manual_review: stats.manualReview,
@@ -213,11 +235,19 @@ const getProcessingStatus = (
   if (tagNames.includes(tagConfig.failed)) return "failed";
   if (tagNames.includes(tagConfig.review)) return "review";
   if (tagNames.includes(tagConfig.manualReview)) return "manual_review";
+  const activeProcessingTags = new Set([
+    tagConfig.ocr,
+    tagConfig.metadata,
+    tagConfig.summaryDone,
+    tagConfig.index,
+  ]);
+  if (activeProcessingTags.size === 1 && tagNames.includes(tagConfig.ocr)) return "processing";
+  if (tagNames.includes(tagConfig.todo)) return "queued";
+  if (tagNames.includes(tagConfig.pending)) return "queued";
   // Check pipeline states in reverse order (most advanced first)
   if (tagNames.includes(tagConfig.index)) return "index";
   if (tagNames.includes(tagConfig.metadata)) return "metadata";
   if (tagNames.includes(tagConfig.ocr)) return "ocr";
-  if (tagNames.includes(tagConfig.todo)) return "todo";
   if (tagNames.includes(tagConfig.tagsDone)) return "tags_done";
   if (tagNames.includes(tagConfig.documentTypeDone)) return "document_type_done";
   if (tagNames.includes(tagConfig.correspondentDone)) return "correspondent_done";
@@ -235,43 +265,51 @@ const getProcessingStatus = (
 
 export const getDocument = (id: number) =>
   Effect.gen(function* () {
+    const auth = yield* DocumentAuthorizationService;
+    yield* auth.authorizeDocument(id, "view");
     const paperless = yield* PaperlessService;
+    const config = yield* ConfigService;
+    const tagConfig = config.config.tags;
 
-    // Fetch document and metadata in parallel
-    const [doc, allTags, allCorrespondents, allDocTypes] = yield* Effect.all(
+    const doc = yield* paperless.getDocument(id);
+
+    const [tagObjects, correspondent, documentType] = yield* Effect.all(
       [
-        paperless.getDocument(id),
-        pipe(
-          paperless.getTags(),
-          Effect.catchAll(() => Effect.succeed([])),
+        Effect.forEach(
+          doc.tags,
+          (tagId) =>
+            pipe(
+              paperless.getTag(tagId),
+              Effect.map((tag) => ({ id: tag.id, name: tag.name, color: tag.color ?? null })),
+              Effect.catchAll(() => Effect.succeed(null)),
+            ),
+          { concurrency: "unbounded" },
+        ).pipe(
+          Effect.map((tags) =>
+            tags.filter(
+              (tag): tag is { id: number; name: string; color: string | null } => tag !== null,
+            ),
+          ),
         ),
-        pipe(
-          paperless.getCorrespondents(),
-          Effect.catchAll(() => Effect.succeed([])),
-        ),
-        pipe(
-          paperless.getDocumentTypes(),
-          Effect.catchAll(() => Effect.succeed([])),
-        ),
+        doc.correspondent
+          ? pipe(
+              paperless.getCorrespondent(doc.correspondent),
+              Effect.catchAll(() => Effect.succeed(null)),
+            )
+          : Effect.succeed(null),
+        doc.document_type
+          ? pipe(
+              paperless.getDocumentType(doc.document_type),
+              Effect.catchAll(() => Effect.succeed(null)),
+            )
+          : Effect.succeed(null),
       ],
       { concurrency: "unbounded" },
     );
 
-    // Map tag IDs to tag objects with id and name
-    const tagObjects = doc.tags
-      .map((tagId) => {
-        const tag = allTags.find((t) => t.id === tagId);
-        return tag ? { id: tag.id, name: tag.name, color: tag.color ?? null } : null;
-      })
-      .filter((t): t is { id: number; name: string; color: string | null } => t !== null);
-
     // Get correspondent and document type names
-    const correspondentName = doc.correspondent
-      ? (allCorrespondents.find((c) => c.id === doc.correspondent)?.name ?? null)
-      : null;
-    const documentTypeName = doc.document_type
-      ? (allDocTypes.find((t) => t.id === doc.document_type)?.name ?? null)
-      : null;
+    const correspondentName = correspondent?.name ?? null;
+    const documentTypeName = documentType?.name ?? null;
 
     return {
       id: doc.id,
@@ -282,6 +320,10 @@ export const getDocument = (id: number) =>
       document_type: documentTypeName,
       document_type_id: doc.document_type ?? null,
       tags: tagObjects,
+      processing_status: getProcessingStatus(
+        tagObjects.map((tag) => tag.name),
+        tagConfig,
+      ),
       custom_fields: doc.custom_fields ?? [],
       created: doc.created,
       modified: doc.modified,
@@ -293,6 +335,8 @@ export const getDocument = (id: number) =>
 
 export const getDocumentContent = (id: number) =>
   Effect.gen(function* () {
+    const auth = yield* DocumentAuthorizationService;
+    yield* auth.authorizeDocument(id, "view");
     const paperless = yield* PaperlessService;
 
     const content = yield* paperless.getDocumentContent(id);
@@ -309,6 +353,8 @@ export const getDocumentContent = (id: number) =>
 
 export const getDocumentPdf = (id: number) =>
   Effect.gen(function* () {
+    const auth = yield* DocumentAuthorizationService;
+    yield* auth.authorizeDocument(id, "view");
     const paperless = yield* PaperlessService;
     return yield* paperless.downloadPdf(id);
   });
@@ -319,6 +365,8 @@ export const getDocumentPdf = (id: number) =>
 
 export const cleanupDocumentTags = (id: number, keepLlmTag?: string) =>
   Effect.gen(function* () {
+    const auth = yield* DocumentAuthorizationService;
+    yield* auth.authorizeDocument(id, "change");
     const paperless = yield* PaperlessService;
     const config = yield* ConfigService;
     const tagConfig = config.config.tags;

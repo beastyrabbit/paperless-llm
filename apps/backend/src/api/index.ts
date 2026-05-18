@@ -3,9 +3,57 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { Effect } from "effect";
+import {
+  ApprovePendingBodySchema,
+  BlockSuggestionBodySchema,
+  BootstrapSkipBodySchema,
+  BootstrapStartBodySchema,
+  BulkIngestBodySchema,
+  BulkOcrStartBodySchema,
+  BulkPendingBodySchema,
+  CaseAnswerBodySchema,
+  CaseRunBodySchema,
+  CatalogDecisionBodySchema,
+  CatalogRunBodySchema,
+  ChatBodySchema,
+  CleanupApproveBodySchema,
+  CleanupTagsBodySchema,
+  CustomFieldBulkUpdateBodySchema,
+  CustomFieldUpdateBodySchema,
+  MergePendingBodySchema,
+  PendingBlockedSuggestionBodySchema,
+  LockReleaseBodySchema,
+  BlockedSuggestionIdFromStringSchema,
+  CustomFieldIdFromStringSchema,
+  DocumentIdFromStringSchema,
+  TagIdFromStringSchema,
+  ProcessingCancelBodySchema,
+  ProcessingStartBodySchema,
+  RejectPendingBodySchema,
+  RejectWithFeedbackBodySchema,
+  ScheduleUpdateBodySchema,
+  SearchQuerySchema,
+  SelectedFieldIdsBodySchema,
+  SelectedTagIdsBodySchema,
+  SelectedTypeIdsBodySchema,
+  SettingsUpdateBodySchema,
+  TagBulkUpdateBodySchema,
+  TagOptimizeBodySchema,
+  TagTranslateBodySchema,
+  TagTranslationBodySchema,
+  TagUpdateBodySchema,
+  TranslateBodySchema,
+  TranslationClearBodySchema,
+  WorkflowTagsBodySchema,
+  generateOpenApiDocument,
+} from "@repo/api-contracts";
+import { Effect, Either, type ParseResult, Schema } from "effect";
+import { ValidationError } from "../errors/index.js";
+import * as casesHandlers from "./cases/handlers.js";
+import * as catalogHandlers from "./catalog/handlers.js";
 import * as chatHandlers from "./chat/handlers.js";
 import * as documentsHandlers from "./documents/handlers.js";
+import * as healthHandlers from "./health/handlers.js";
 import * as jobsHandlers from "./jobs/handlers.js";
 import * as metadataHandlers from "./metadata/handlers.js";
 import * as pendingHandlers from "./pending/handlers.js";
@@ -31,6 +79,7 @@ interface RouteMatch {
 
 interface Route {
   method: HttpMethod;
+  path: string;
   pattern: RegExp;
   paramNames: string[];
   handler: (
@@ -44,6 +93,112 @@ interface Route {
 // ===========================================================================
 
 const routes: Route[] = [];
+
+const routeParam = (params: Record<string, string>, name: string): string => params[name] ?? "";
+
+const toPathArray = (path: ParseResult.Path): Array<string | number> =>
+  (Array.isArray(path) ? path : [path]).map((segment) =>
+    typeof segment === "symbol" ? segment.toString() : segment,
+  );
+
+const issueMessage = (issue: ParseResult.ParseIssue): string => {
+  if ("message" in issue && typeof issue.message === "string" && issue.message.length > 0) {
+    return issue.message;
+  }
+  return issue._tag;
+};
+
+const flattenParseIssues = (
+  issue: ParseResult.ParseIssue,
+  path: Array<string | number> = [],
+): Array<{ path: Array<string | number>; message: string; code: string }> => {
+  switch (issue._tag) {
+    case "Pointer":
+      return flattenParseIssues(issue.issue, [...path, ...toPathArray(issue.path)]);
+    case "Composite": {
+      const issues = Array.isArray(issue.issues) ? issue.issues : [issue.issues];
+      return issues.flatMap((nested) => flattenParseIssues(nested, path));
+    }
+    case "Refinement":
+    case "Transformation":
+      return flattenParseIssues(issue.issue, path);
+    default:
+      return [{ path, message: issueMessage(issue), code: issue._tag }];
+  }
+};
+
+const validationIssues = (error: ParseResult.ParseError) => {
+  const issues = flattenParseIssues(error.issue);
+  return issues.length > 0 ? issues : [{ path: [], message: error.message, code: "invalid_type" }];
+};
+
+const parseWithSchema = <A, I>(
+  schema: Schema.Schema<A, I, never>,
+  value: unknown,
+  label: string,
+): Effect.Effect<A, ValidationError> => {
+  const result = Schema.decodeUnknownEither(schema)(value);
+  if (Either.isRight(result)) return Effect.succeed(result.right);
+  return Effect.fail(
+    new ValidationError({
+      message: `Invalid ${label}`,
+      field: label,
+      issues: validationIssues(result.left),
+    }),
+  );
+};
+
+const bodySchema = <A, I>(
+  schema: Schema.Schema<A, I, never>,
+  body: unknown,
+): Effect.Effect<A, ValidationError> => parseWithSchema(schema, body, "request body");
+
+const paramSchema = <A, I>(schema: Schema.Schema<A, I, never>, value: unknown, name: string) =>
+  parseWithSchema(schema, value, `path parameter '${name}'`);
+
+const documentIdParam = (params: Record<string, string>, name: string) =>
+  paramSchema(DocumentIdFromStringSchema, routeParam(params, name), name);
+
+const tagIdParam = (params: Record<string, string>, name: string) =>
+  paramSchema(TagIdFromStringSchema, routeParam(params, name), name);
+
+const customFieldIdParam = (params: Record<string, string>, name: string) =>
+  paramSchema(CustomFieldIdFromStringSchema, routeParam(params, name), name);
+
+const blockedSuggestionIdParam = (params: Record<string, string>, name: string) =>
+  paramSchema(BlockedSuggestionIdFromStringSchema, routeParam(params, name), name);
+
+const mutableStringArray = (values?: readonly string[]): string[] => (values ? [...values] : []);
+const mutableNumberArray = (values?: readonly number[]): number[] => (values ? [...values] : []);
+
+const toCaseAnswerHandlerBody = (request: {
+  answer?: string;
+  guidance?: string | null;
+  selectedEntityId?: number | null;
+  selectedEntityName?: string | null;
+  metadataPatch?: {
+    title?: string;
+    correspondentId?: number | null;
+    correspondentName?: string | null;
+    documentTypeId?: number | null;
+    documentTypeName?: string | null;
+    tagIds?: readonly number[];
+    tagNames?: readonly string[];
+  } | null;
+}) => ({
+  ...request,
+  metadataPatch: request.metadataPatch
+    ? {
+        ...request.metadataPatch,
+        tagIds: request.metadataPatch.tagIds
+          ? mutableNumberArray(request.metadataPatch.tagIds)
+          : undefined,
+        tagNames: request.metadataPatch.tagNames
+          ? mutableStringArray(request.metadataPatch.tagNames)
+          : undefined,
+      }
+    : request.metadataPatch,
+});
 
 const addRoute = (
   method: HttpMethod,
@@ -64,8 +219,10 @@ const addRoute = (
       "$",
   );
 
-  routes.push({ method, pattern, paramNames, handler });
+  routes.push({ method, path, pattern, paramNames, handler });
 };
+
+export const getRegisteredRoutes = () => routes.map(({ method, path }) => ({ method, path }));
 
 // ===========================================================================
 // Health & Root
@@ -79,7 +236,9 @@ addRoute("GET", "/", () =>
   }),
 );
 
-addRoute("GET", "/health", () => Effect.succeed({ status: "healthy" }));
+addRoute("GET", "/health", () => healthHandlers.getHealth);
+
+addRoute("GET", "/openapi.json", () => Effect.succeed(generateOpenApiDocument()));
 
 // ===========================================================================
 // Settings API - /api/settings
@@ -87,7 +246,9 @@ addRoute("GET", "/health", () => Effect.succeed({ status: "healthy" }));
 
 addRoute("GET", "/api/settings", () => settingsHandlers.getSettings);
 
-addRoute("PATCH", "/api/settings", (_, body) => settingsHandlers.updateSettings(body as any));
+addRoute("PATCH", "/api/settings", (_, body) =>
+  bodySchema(SettingsUpdateBodySchema, body).pipe(Effect.flatMap(settingsHandlers.updateSettings)),
+);
 
 addRoute("POST", "/api/settings/test-connection/:service", (params) => {
   switch (params.service) {
@@ -114,11 +275,16 @@ addRoute("GET", "/api/settings/ollama/status", () => settingsHandlers.getOllamaS
 
 addRoute("GET", "/api/settings/mistral/models", () => settingsHandlers.getMistralModels);
 
+addRoute("GET", "/api/settings/openai-codex/models", () => settingsHandlers.getOpenAICodexModels);
+
 addRoute("GET", "/api/settings/tags/status", () => settingsHandlers.getTagsStatus);
 
 addRoute("POST", "/api/settings/tags/create", (_, body) => {
-  const { tag_names } = body as { tag_names?: string[] };
-  return settingsHandlers.createWorkflowTags(tag_names ?? []);
+  return bodySchema(WorkflowTagsBodySchema, body).pipe(
+    Effect.flatMap(({ tag_names }) =>
+      settingsHandlers.createWorkflowTags(mutableStringArray(tag_names)),
+    ),
+  );
 });
 
 addRoute("POST", "/api/settings/tags/fix-colors", () => settingsHandlers.fixWorkflowTagColors);
@@ -152,36 +318,59 @@ addRoute("GET", "/api/pending/search-entities", () => pendingHandlers.getSearchE
 
 addRoute("GET", "/api/pending/blocked", () => pendingHandlers.getBlocked);
 
-addRoute("POST", "/api/pending/merge", (_, body) => pendingHandlers.mergeSimilarItems(body as any));
+addRoute("POST", "/api/pending/merge", (_, body) =>
+  bodySchema(MergePendingBodySchema, body).pipe(Effect.flatMap(pendingHandlers.mergeSimilarItems)),
+);
 
-addRoute("POST", "/api/pending/bulk", (_, body) => pendingHandlers.bulkAction(body as any));
+addRoute("POST", "/api/pending/bulk", (_, body) =>
+  bodySchema(BulkPendingBodySchema, body).pipe(Effect.flatMap(pendingHandlers.bulkAction)),
+);
 
 // Parameterized routes MUST come after specific routes
-addRoute("GET", "/api/pending/:id", (params) => pendingHandlers.getPendingItem(params.id!));
+addRoute("GET", "/api/pending/:id", (params) =>
+  pendingHandlers.getPendingItem(routeParam(params, "id")),
+);
 
 addRoute("POST", "/api/pending/:id/approve", (params, body) =>
-  pendingHandlers.approvePendingItem(params.id!, body as any),
+  bodySchema(ApprovePendingBodySchema, body).pipe(
+    Effect.flatMap((request) =>
+      pendingHandlers.approvePendingItem(routeParam(params, "id"), request),
+    ),
+  ),
 );
 
 addRoute("POST", "/api/pending/:id/reject", (params, body) =>
-  pendingHandlers.rejectPendingItem(params.id!, body as any),
+  bodySchema(RejectPendingBodySchema, body).pipe(
+    Effect.flatMap((request) =>
+      pendingHandlers.rejectPendingItem(routeParam(params, "id"), request),
+    ),
+  ),
 );
 
 addRoute("POST", "/api/pending/:id/reject-with-feedback", (params, body) =>
-  pendingHandlers.rejectWithFeedback(params.id!, body as any),
+  bodySchema(RejectWithFeedbackBodySchema, body).pipe(
+    Effect.flatMap((request) =>
+      pendingHandlers.rejectWithFeedback(routeParam(params, "id"), request),
+    ),
+  ),
 );
 
 addRoute("POST", "/api/pending/:id/approve-cleanup", (params, body) => {
-  const { final_name } = body as { final_name?: string };
-  return pendingHandlers.approveCleanup(params.id!, final_name);
+  return bodySchema(CleanupApproveBodySchema, body).pipe(
+    Effect.flatMap(({ final_name }) =>
+      pendingHandlers.approveCleanup(routeParam(params, "id"), final_name),
+    ),
+  );
 });
 
 addRoute("DELETE", "/api/pending/blocked/:blockId", (params) =>
-  pendingHandlers.unblockItem(parseInt(params.blockId!, 10)),
+  blockedSuggestionIdParam(params, "blockId").pipe(Effect.flatMap(pendingHandlers.unblockItem)),
 );
 
 addRoute("POST", "/api/pending/blocked", (_, body) =>
-  pendingHandlers.addBlockedSuggestion(body as any),
+  bodySchema(PendingBlockedSuggestionBodySchema, body).pipe(
+    Effect.flatMap(pendingHandlers.addBlockedSuggestion),
+  ),
 );
 
 // ===========================================================================
@@ -191,13 +380,14 @@ addRoute("POST", "/api/pending/blocked", (_, body) =>
 addRoute("GET", "/api/jobs/status", () => jobsHandlers.getAllJobStatus);
 
 addRoute("GET", "/api/jobs/status/:jobName", (params) =>
-  jobsHandlers.getJobStatus(params.jobName!),
+  jobsHandlers.getJobStatus(routeParam(params, "jobName")),
 );
 
 // Bootstrap
 addRoute("POST", "/api/jobs/bootstrap/start", (_, body) => {
-  const { analysis_type } = body as { analysis_type?: string };
-  return jobsHandlers.startBootstrap(analysis_type ?? "all");
+  return bodySchema(BootstrapStartBodySchema, body).pipe(
+    Effect.flatMap(({ analysis_type }) => jobsHandlers.startBootstrap(analysis_type ?? "all")),
+  );
 });
 
 addRoute("GET", "/api/jobs/bootstrap/status", () => jobsHandlers.getBootstrapStatus);
@@ -205,8 +395,9 @@ addRoute("GET", "/api/jobs/bootstrap/status", () => jobsHandlers.getBootstrapSta
 addRoute("POST", "/api/jobs/bootstrap/cancel", () => jobsHandlers.cancelBootstrap);
 
 addRoute("POST", "/api/jobs/bootstrap/skip", (_, body) => {
-  const { count } = body as { count?: number };
-  return jobsHandlers.skipBootstrap(count ?? 1);
+  return bodySchema(BootstrapSkipBodySchema, body).pipe(
+    Effect.flatMap(({ count }) => jobsHandlers.skipBootstrap(count ?? 1)),
+  );
 });
 
 // Schema Cleanup
@@ -216,11 +407,11 @@ addRoute("GET", "/api/jobs/schema-cleanup/status", () => jobsHandlers.getSchemaC
 
 // Bulk OCR
 addRoute("POST", "/api/jobs/bulk-ocr/start", (_, body) => {
-  const { docs_per_second, skip_existing } = body as {
-    docs_per_second?: number;
-    skip_existing?: boolean;
-  };
-  return jobsHandlers.startBulkOcr(docs_per_second ?? 1, skip_existing ?? true);
+  return bodySchema(BulkOcrStartBodySchema, body).pipe(
+    Effect.flatMap(({ docs_per_second, skip_existing }) =>
+      jobsHandlers.startBulkOcr(docs_per_second ?? 1, skip_existing ?? true),
+    ),
+  );
 });
 
 addRoute("GET", "/api/jobs/bulk-ocr/status", () => jobsHandlers.getBulkOcrStatus);
@@ -229,7 +420,7 @@ addRoute("POST", "/api/jobs/bulk-ocr/cancel", () => jobsHandlers.cancelBulkOcr);
 
 // Bulk Ingest (OCR + Vector DB)
 addRoute("POST", "/api/jobs/bulk-ingest/start", (_, body) => {
-  return jobsHandlers.startBulkIngest(body as any);
+  return bodySchema(BulkIngestBodySchema, body).pipe(Effect.flatMap(jobsHandlers.startBulkIngest));
 });
 
 addRoute("GET", "/api/jobs/bulk-ingest/status", () => jobsHandlers.getBulkIngestStatus);
@@ -253,7 +444,9 @@ addRoute("GET", "/api/jobs/schedule", () =>
 );
 
 addRoute("PATCH", "/api/jobs/schedule", (_, body) =>
-  Effect.succeed({ success: true, ...(body as Record<string, unknown>) }),
+  bodySchema(ScheduleUpdateBodySchema, body).pipe(
+    Effect.map((request) => ({ success: true, ...request })),
+  ),
 );
 
 // ===========================================================================
@@ -263,24 +456,33 @@ addRoute("PATCH", "/api/jobs/schedule", (_, body) =>
 addRoute("GET", "/api/settings/ai-document-types", () => settingsHandlers.getAiDocumentTypes);
 
 addRoute("PATCH", "/api/settings/ai-document-types", (_, body) => {
-  const { selected_type_ids } = body as { selected_type_ids?: number[] };
-  return settingsHandlers.updateAiDocumentTypes(selected_type_ids ?? []);
+  return bodySchema(SelectedTypeIdsBodySchema, body).pipe(
+    Effect.flatMap(({ selected_type_ids }) =>
+      settingsHandlers.updateAiDocumentTypes(mutableNumberArray(selected_type_ids)),
+    ),
+  );
 });
 
 // Custom fields settings
 addRoute("GET", "/api/settings/custom-fields", () => settingsHandlers.getCustomFields);
 
 addRoute("PATCH", "/api/settings/custom-fields", (_, body) => {
-  const { selected_field_ids } = body as { selected_field_ids?: number[] };
-  return settingsHandlers.updateCustomFields(selected_field_ids ?? []);
+  return bodySchema(SelectedFieldIdsBodySchema, body).pipe(
+    Effect.flatMap(({ selected_field_ids }) =>
+      settingsHandlers.updateCustomFields(mutableNumberArray(selected_field_ids)),
+    ),
+  );
 });
 
 // AI Tags settings
 addRoute("GET", "/api/settings/ai-tags", () => settingsHandlers.getAiTags);
 
 addRoute("PATCH", "/api/settings/ai-tags", (_, body) => {
-  const { selected_tag_ids } = body as { selected_tag_ids?: number[] };
-  return settingsHandlers.updateAiTags(selected_tag_ids ?? []);
+  return bodySchema(SelectedTagIdsBodySchema, body).pipe(
+    Effect.flatMap(({ selected_tag_ids }) =>
+      settingsHandlers.updateAiTags(mutableNumberArray(selected_tag_ids)),
+    ),
+  );
 });
 
 // ===========================================================================
@@ -293,20 +495,26 @@ addRoute("GET", "/api/documents/queue", () => documentsHandlers.getQueueStats);
 addRoute("GET", "/api/documents/pending", () => documentsHandlers.getPendingDocuments());
 
 addRoute("GET", "/api/documents/:id", (params) =>
-  documentsHandlers.getDocument(parseInt(params.id!, 10)),
+  documentIdParam(params, "id").pipe(Effect.flatMap(documentsHandlers.getDocument)),
 );
 
 addRoute("GET", "/api/documents/:id/content", (params) =>
-  documentsHandlers.getDocumentContent(parseInt(params.id!, 10)),
+  documentIdParam(params, "id").pipe(Effect.flatMap(documentsHandlers.getDocumentContent)),
 );
 
 addRoute("GET", "/api/documents/:id/pdf", (params) =>
-  documentsHandlers.getDocumentPdf(parseInt(params.id!, 10)),
+  documentIdParam(params, "id").pipe(Effect.flatMap(documentsHandlers.getDocumentPdf)),
 );
 
 addRoute("POST", "/api/documents/:id/cleanup-tags", (params, body) => {
-  const safeBody = (body ?? {}) as { keep_llm_tag?: string };
-  return documentsHandlers.cleanupDocumentTags(parseInt(params.id!, 10), safeBody.keep_llm_tag);
+  return Effect.all({
+    docId: documentIdParam(params, "id"),
+    request: bodySchema(CleanupTagsBodySchema, body),
+  }).pipe(
+    Effect.flatMap(({ docId, request }) =>
+      documentsHandlers.cleanupDocumentTags(docId, request.keep_llm_tag),
+    ),
+  );
 });
 
 // ===========================================================================
@@ -314,30 +522,128 @@ addRoute("POST", "/api/documents/:id/cleanup-tags", (params, body) => {
 // ===========================================================================
 
 addRoute("POST", "/api/processing/:docId/start", (params, body) => {
-  const { step, dryRun } = body as { step?: string; dryRun?: boolean };
-  return processingHandlers.startProcessing(parseInt(params.docId!, 10), step, dryRun);
+  return Effect.all({
+    docId: documentIdParam(params, "docId"),
+    request: bodySchema(ProcessingStartBodySchema, body),
+  }).pipe(
+    Effect.flatMap(({ docId, request }) =>
+      processingHandlers.startProcessing(docId, request.step, request.dryRun),
+    ),
+  );
 });
 
 addRoute("POST", "/api/processing/:docId/confirm", (params) => {
   const confirmed = true; // Default to true for confirmation endpoint
-  return processingHandlers.confirmProcessing(parseInt(params.docId!, 10), confirmed);
+  return documentIdParam(params, "docId").pipe(
+    Effect.flatMap((docId) => processingHandlers.confirmProcessing(docId, confirmed)),
+  );
 });
+
+addRoute("POST", "/api/processing/:docId/cancel", (params, body) => {
+  return Effect.all({
+    docId: documentIdParam(params, "docId"),
+    request: bodySchema(ProcessingCancelBodySchema, body),
+  }).pipe(
+    Effect.flatMap(({ docId, request }) => processingHandlers.cancelProcessing(docId, request)),
+  );
+});
+
+addRoute("POST", "/api/processing/:docId/release-lock", (params, body) => {
+  return Effect.all({
+    docId: documentIdParam(params, "docId"),
+    request: bodySchema(LockReleaseBodySchema, body),
+  }).pipe(
+    Effect.flatMap(({ docId, request }) =>
+      processingHandlers.releaseDocumentLock(docId, request),
+    ),
+  );
+});
+
+addRoute("GET", "/api/processing/locks", () => processingHandlers.listLocks);
+
+addRoute("POST", "/api/processing/locks/prune", () => processingHandlers.pruneStaleLocks);
 
 addRoute("GET", "/api/processing/status", () => processingHandlers.getProcessingStatus);
 
 // Processing Logs
 addRoute("GET", "/api/processing/:docId/logs", (params) =>
-  processingHandlers.getProcessingLogs(parseInt(params.docId!, 10)),
+  documentIdParam(params, "docId").pipe(Effect.flatMap(processingHandlers.getProcessingLogs)),
 );
 
 addRoute("DELETE", "/api/processing/:docId/logs", (params) =>
-  processingHandlers.clearProcessingLogs(parseInt(params.docId!, 10)),
+  documentIdParam(params, "docId").pipe(Effect.flatMap(processingHandlers.clearProcessingLogs)),
 );
 
 // Auto Processing
 addRoute("GET", "/api/processing/auto/status", () => processingHandlers.getAutoProcessingStatus);
 
 addRoute("POST", "/api/processing/auto/trigger", () => processingHandlers.triggerAutoProcessing);
+
+// ===========================================================================
+// Document Cases API - /api/cases
+// ===========================================================================
+
+addRoute("GET", "/api/cases", () => casesHandlers.listCases());
+
+addRoute("GET", "/api/cases/document/:docId", (params) =>
+  documentIdParam(params, "docId").pipe(Effect.flatMap(casesHandlers.getOrCreateDocumentCase)),
+);
+
+addRoute("POST", "/api/cases/document/:docId/run", (params, body) =>
+  Effect.all({
+    docId: documentIdParam(params, "docId"),
+    request: bodySchema(CaseRunBodySchema, body),
+  }).pipe(Effect.flatMap(({ docId, request }) => casesHandlers.runCase(docId, request))),
+);
+
+addRoute("GET", "/api/cases/document/:docId/logs", (params) =>
+  documentIdParam(params, "docId").pipe(Effect.flatMap(casesHandlers.getCaseLogs)),
+);
+
+addRoute("POST", "/api/cases/questions/:questionId/answer", (params, body) =>
+  bodySchema(CaseAnswerBodySchema, body).pipe(
+    Effect.flatMap((request) =>
+      casesHandlers.answerQuestion(
+        routeParam(params, "questionId"),
+        toCaseAnswerHandlerBody(request),
+      ),
+    ),
+  ),
+);
+
+addRoute("GET", "/api/cases/:caseId", (params) =>
+  casesHandlers.getCase(routeParam(params, "caseId")),
+);
+
+// ===========================================================================
+// Catalog Agent API - /api/catalog
+// ===========================================================================
+
+addRoute("POST", "/api/catalog/runs", (_, body) =>
+  bodySchema(CatalogRunBodySchema, body).pipe(Effect.flatMap(catalogHandlers.startCatalogRun)),
+);
+
+addRoute("GET", "/api/catalog/runs", () => catalogHandlers.listCatalogRuns);
+
+addRoute("GET", "/api/catalog/runs/:runId", (params) =>
+  catalogHandlers.getCatalogRun(routeParam(params, "runId")),
+);
+
+addRoute("GET", "/api/catalog/proposals", () => catalogHandlers.listCatalogProposals());
+
+addRoute("POST", "/api/catalog/proposals/:proposalId/decision", (params, body) =>
+  bodySchema(CatalogDecisionBodySchema, body).pipe(
+    Effect.flatMap((request) =>
+      catalogHandlers.decideCatalogProposal(routeParam(params, "proposalId"), request),
+    ),
+  ),
+);
+
+addRoute("POST", "/api/catalog/proposals/:proposalId/apply", (params) =>
+  catalogHandlers.applyCatalogProposal(routeParam(params, "proposalId")),
+);
+
+addRoute("GET", "/api/catalog/logs", () => catalogHandlers.getCatalogLogs());
 
 // ===========================================================================
 // Metadata API - /api/metadata
@@ -347,56 +653,87 @@ addRoute("POST", "/api/processing/auto/trigger", () => processingHandlers.trigge
 addRoute("GET", "/api/metadata/tags", () => metadataHandlers.listTags);
 
 addRoute("GET", "/api/metadata/tags/:tagId", (params) =>
-  metadataHandlers.getTag(parseInt(params.tagId!, 10)),
+  tagIdParam(params, "tagId").pipe(Effect.flatMap(metadataHandlers.getTag)),
 );
 
 addRoute("PUT", "/api/metadata/tags/:tagId", (params, body) =>
-  metadataHandlers.updateTag(parseInt(params.tagId!, 10), body as any),
+  Effect.all({
+    tagId: tagIdParam(params, "tagId"),
+    request: bodySchema(TagUpdateBodySchema, body),
+  }).pipe(Effect.flatMap(({ tagId, request }) => metadataHandlers.updateTag(tagId, request))),
 );
 
 addRoute("DELETE", "/api/metadata/tags/:tagId", (params) =>
-  metadataHandlers.deleteTag(parseInt(params.tagId!, 10)),
+  tagIdParam(params, "tagId").pipe(Effect.flatMap(metadataHandlers.deleteTag)),
 );
 
 addRoute("POST", "/api/metadata/tags/bulk", (_, body) =>
-  metadataHandlers.bulkUpdateTags(body as any),
+  bodySchema(TagBulkUpdateBodySchema, body).pipe(
+    Effect.flatMap((request) => metadataHandlers.bulkUpdateTags([...request])),
+  ),
 );
 
 // Tag Translations
 addRoute("GET", "/api/metadata/tags/:tagId/translations", (params) =>
-  metadataHandlers.getTagTranslations(parseInt(params.tagId!, 10)),
+  tagIdParam(params, "tagId").pipe(Effect.flatMap(metadataHandlers.getTagTranslations)),
 );
 
 addRoute("PUT", "/api/metadata/tags/:tagId/translations/:lang", (params, body) =>
-  metadataHandlers.updateTagTranslation(parseInt(params.tagId!, 10), params.lang!, body as any),
+  Effect.all({
+    tagId: tagIdParam(params, "tagId"),
+    request: bodySchema(TagTranslationBodySchema, body),
+  }).pipe(
+    Effect.flatMap(({ tagId, request }) =>
+      metadataHandlers.updateTagTranslation(tagId, routeParam(params, "lang"), request),
+    ),
+  ),
 );
 
 // Tag AI Operations
 addRoute("POST", "/api/metadata/tags/:tagId/optimize-description", (params, body) =>
-  metadataHandlers.optimizeTagDescription(parseInt(params.tagId!, 10), body as any),
+  Effect.all({
+    tagId: tagIdParam(params, "tagId"),
+    request: bodySchema(TagOptimizeBodySchema, body),
+  }).pipe(
+    Effect.flatMap(({ tagId, request }) => metadataHandlers.optimizeTagDescription(tagId, request)),
+  ),
 );
 
 addRoute("POST", "/api/metadata/tags/:tagId/translate-description", (params, body) =>
-  metadataHandlers.translateTagDescription(parseInt(params.tagId!, 10), body as any),
+  Effect.all({
+    tagId: tagIdParam(params, "tagId"),
+    request: bodySchema(TagTranslateBodySchema, body),
+  }).pipe(
+    Effect.flatMap(({ tagId, request }) =>
+      metadataHandlers.translateTagDescription(tagId, request),
+    ),
+  ),
 );
 
 // Custom Fields
 addRoute("GET", "/api/metadata/custom-fields", () => metadataHandlers.listCustomFields);
 
 addRoute("GET", "/api/metadata/custom-fields/:fieldId", (params) =>
-  metadataHandlers.getCustomField(parseInt(params.fieldId!, 10)),
+  customFieldIdParam(params, "fieldId").pipe(Effect.flatMap(metadataHandlers.getCustomField)),
 );
 
 addRoute("PUT", "/api/metadata/custom-fields/:fieldId", (params, body) =>
-  metadataHandlers.updateCustomField(parseInt(params.fieldId!, 10), body as any),
+  Effect.all({
+    fieldId: customFieldIdParam(params, "fieldId"),
+    request: bodySchema(CustomFieldUpdateBodySchema, body),
+  }).pipe(
+    Effect.flatMap(({ fieldId, request }) => metadataHandlers.updateCustomField(fieldId, request)),
+  ),
 );
 
 addRoute("DELETE", "/api/metadata/custom-fields/:fieldId", (params) =>
-  metadataHandlers.deleteCustomField(parseInt(params.fieldId!, 10)),
+  customFieldIdParam(params, "fieldId").pipe(Effect.flatMap(metadataHandlers.deleteCustomField)),
 );
 
 addRoute("POST", "/api/metadata/custom-fields/bulk", (_, body) =>
-  metadataHandlers.bulkUpdateCustomFields(body as any),
+  bodySchema(CustomFieldBulkUpdateBodySchema, body).pipe(
+    Effect.flatMap((request) => metadataHandlers.bulkUpdateCustomFields([...request])),
+  ),
 );
 
 // ===========================================================================
@@ -405,10 +742,12 @@ addRoute("POST", "/api/metadata/custom-fields/bulk", (_, body) =>
 
 addRoute("GET", "/api/schema/blocked", () => schemaHandlers.getBlocked());
 
-addRoute("POST", "/api/schema/blocked", (_, body) => schemaHandlers.blockSuggestion(body as any));
+addRoute("POST", "/api/schema/blocked", (_, body) =>
+  bodySchema(BlockSuggestionBodySchema, body).pipe(Effect.flatMap(schemaHandlers.blockSuggestion)),
+);
 
 addRoute("DELETE", "/api/schema/blocked/:id", (params) =>
-  schemaHandlers.unblock(parseInt(params.id!, 10)),
+  blockedSuggestionIdParam(params, "id").pipe(Effect.flatMap(schemaHandlers.unblock)),
 );
 
 addRoute("GET", "/api/schema/blocked/check", () => {
@@ -421,16 +760,19 @@ addRoute("GET", "/api/schema/blocked/check", () => {
 // ===========================================================================
 
 addRoute("POST", "/api/translation/translate", (_, body) =>
-  translationHandlers.translate(body as any),
+  bodySchema(TranslateBodySchema, body).pipe(Effect.flatMap(translationHandlers.translate)),
 );
 
 addRoute("GET", "/api/translation/translations/:targetLang", (params) =>
-  translationHandlers.getTranslations(params.targetLang!),
+  translationHandlers.getTranslations(routeParam(params, "targetLang")),
 );
 
 addRoute("POST", "/api/translation/cache/clear", (_, body) => {
-  const { target_lang, content_type } = body as { target_lang?: string; content_type?: string };
-  return translationHandlers.clearCache(target_lang, content_type);
+  return bodySchema(TranslationClearBodySchema, body).pipe(
+    Effect.flatMap(({ target_lang, content_type }) =>
+      translationHandlers.clearCache(target_lang, content_type),
+    ),
+  );
 });
 
 addRoute("GET", "/api/translation/languages", () => translationHandlers.getLanguages);
@@ -442,7 +784,7 @@ addRoute("GET", "/api/translation/languages", () => translationHandlers.getLangu
 // NOTE: query params (q, limit) are handled in handleRequest() below
 addRoute("GET", "/api/search", () => searchHandlers.searchDocuments(""));
 addRoute("POST", "/api/search/index/:docId", (params) =>
-  searchHandlers.indexDocument(parseInt(params.docId!, 10)),
+  documentIdParam(params, "docId").pipe(Effect.flatMap(searchHandlers.indexDocument)),
 );
 
 // ===========================================================================
@@ -450,8 +792,9 @@ addRoute("POST", "/api/search/index/:docId", (params) =>
 // ===========================================================================
 
 addRoute("POST", "/api/chat", (_, body) => {
-  const { messages } = body as { messages?: chatHandlers.ChatMessage[] };
-  return chatHandlers.chatWithDocuments(messages ?? []);
+  return bodySchema(ChatBodySchema, body).pipe(
+    Effect.flatMap(({ messages }) => chatHandlers.chatWithDocuments(messages ? [...messages] : [])),
+  );
 });
 
 // ===========================================================================
@@ -480,7 +823,7 @@ const matchRoute = (method: string, path: string): RouteMatch | null => {
 
 export const handleRequest = (
   req: IncomingMessage,
-  res: ServerResponse,
+  _res: ServerResponse,
   body: unknown,
 ): Effect.Effect<unknown, unknown, unknown> => {
   const method = req.method as HttpMethod;
@@ -513,10 +856,23 @@ export const handleRequest = (
 
   // Handle search query params
   if (path === "/api/search") {
-    const q = url.searchParams.get("q") ?? "";
-    const parsedLimit = parseInt(url.searchParams.get("limit") ?? "10", 10);
+    const parsedLimit = Number.parseInt(url.searchParams.get("limit") ?? "10", 10);
     const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 100) : 10;
-    return searchHandlers.searchDocuments(q, limit);
+    return parseWithSchema(SearchQuerySchema, url.searchParams.get("q") ?? "", "query parameter 'q'").pipe(
+      Effect.flatMap((q) => searchHandlers.searchDocuments(q, limit)),
+    );
+  }
+
+  if (path === "/api/cases" && method === "GET") {
+    return casesHandlers.listCases(url.searchParams.get("status") ?? undefined);
+  }
+
+  if (path === "/api/catalog/proposals" && method === "GET") {
+    return catalogHandlers.listCatalogProposals(url.searchParams.get("run_id") ?? undefined);
+  }
+
+  if (path === "/api/catalog/logs" && method === "GET") {
+    return catalogHandlers.getCatalogLogs(url.searchParams.get("run_id") ?? undefined);
   }
 
   if (path === "/api/schema/blocked" && method === "GET") {

@@ -10,7 +10,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Effect, Layer } from "effect";
+import { Effect, type Layer } from "effect";
 import { afterEach, beforeEach, vi } from "vitest";
 
 // ===========================================================================
@@ -22,11 +22,13 @@ export const originalFetch = globalThis.fetch;
 
 // Mock fetch globally for tests
 global.fetch = vi.fn();
+process.env["PAPERLESS_LLM_LOG_LEVEL"] = "silent";
 let testDataDir: string | null = null;
 
 // Reset mocks before each test
 beforeEach(() => {
   vi.clearAllMocks();
+  process.env["PAPERLESS_LLM_LOG_LEVEL"] = "silent";
   testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "paperless-llm-backend-test-"));
   process.env["PAPERLESS_LLM_TINYBASE_DATA_DIR"] = testDataDir;
   process.env["PAPERLESS_LLM_TINYBASE_DISABLE_CONFIG_IMPORT"] = "true";
@@ -282,8 +284,8 @@ export const testConfig = {
   },
   ollama: {
     url: "http://ollama.test:11434",
-    modelLarge: "llama3:latest",
-    modelSmall: "llama3:8b",
+    model: "llama3:latest",
+    embeddingModel: "nomic-embed-text",
   },
   mistral: {
     apiKey: "test-mistral-key",

@@ -5,6 +5,7 @@
 import { QdrantClient } from "@qdrant/js-client-rest";
 import { Context, Effect, Layer, pipe } from "effect";
 import { ConfigService } from "../config/index.js";
+import { withClientSpan } from "../observability/tracing.js";
 import { OllamaService } from "./OllamaService.js";
 import { TinyBaseService } from "./TinyBaseService.js";
 
@@ -137,109 +138,130 @@ export const QdrantServiceLive = Layer.effect(
 
     return {
       searchSimilar: (query, options = {}) =>
-        Effect.gen(function* () {
-          const {
-            limit = 5,
-            filterProcessed = true,
-            filterByTag,
-            filterByCorrespondent,
-            filterByDocumentType,
-          } = options;
-          const { collectionName } = yield* getConfig();
-          const client = yield* getClient();
+        pipe(
+          Effect.gen(function* () {
+            const {
+              limit = 5,
+              filterProcessed = true,
+              filterByTag,
+              filterByCorrespondent,
+              filterByDocumentType,
+            } = options;
+            const { collectionName } = yield* getConfig();
+            const client = yield* getClient();
 
-          // Generate embedding for query
-          const queryVector = yield* embed(query).pipe(
-            Effect.mapError((e) => QdrantError(`Embedding failed: ${e.message}`, e)),
-          );
+            // Generate embedding for query
+            const queryVector = yield* embed(query).pipe(
+              Effect.mapError((e) => QdrantError(`Embedding failed: ${e.message}`, e)),
+            );
 
-          // Build filter conditions
-          const mustConditions: Array<{ key: string; match: { value: string | boolean } }> = [];
+            // Build filter conditions
+            const mustConditions: Array<{ key: string; match: { value: string | boolean } }> = [];
 
-          if (filterProcessed) {
-            mustConditions.push({ key: "is_processed", match: { value: true } });
-          }
-          if (filterByTag) {
-            mustConditions.push({ key: "tags", match: { value: filterByTag } });
-          }
-          if (filterByCorrespondent) {
-            mustConditions.push({ key: "correspondent", match: { value: filterByCorrespondent } });
-          }
-          if (filterByDocumentType) {
-            mustConditions.push({ key: "document_type", match: { value: filterByDocumentType } });
-          }
-
-          return yield* Effect.tryPromise({
-            try: async () => {
-              const results = await client.search(collectionName, {
-                vector: queryVector,
-                limit,
-                filter: mustConditions.length > 0 ? { must: mustConditions } : undefined,
-                with_payload: true,
+            if (filterProcessed) {
+              mustConditions.push({ key: "is_processed", match: { value: true } });
+            }
+            if (filterByTag) {
+              mustConditions.push({ key: "tags", match: { value: filterByTag } });
+            }
+            if (filterByCorrespondent) {
+              mustConditions.push({
+                key: "correspondent",
+                match: { value: filterByCorrespondent },
               });
+            }
+            if (filterByDocumentType) {
+              mustConditions.push({ key: "document_type", match: { value: filterByDocumentType } });
+            }
 
-              return results.map((r) => ({
-                docId: r.payload?.docId as number,
-                score: r.score,
-                title: (r.payload?.title as string) ?? "",
-                tags: (r.payload?.tags as string[]) ?? [],
-                correspondent: r.payload?.correspondent as string | undefined,
-                documentType: r.payload?.document_type as string | undefined,
-              }));
-            },
-            catch: (error) => QdrantError(`Search failed: ${String(error)}`, error),
-          });
-        }),
+            return yield* Effect.tryPromise({
+              try: async () => {
+                const results = await client.search(collectionName, {
+                  vector: queryVector,
+                  limit,
+                  filter: mustConditions.length > 0 ? { must: mustConditions } : undefined,
+                  with_payload: true,
+                });
+
+                return results.map((r) => ({
+                  docId: r.payload?.docId as number,
+                  score: r.score,
+                  title: (r.payload?.title as string) ?? "",
+                  tags: (r.payload?.tags as string[]) ?? [],
+                  correspondent: r.payload?.correspondent as string | undefined,
+                  documentType: r.payload?.document_type as string | undefined,
+                }));
+              },
+              catch: (error) => QdrantError(`Search failed: ${String(error)}`, error),
+            });
+          }),
+          withClientSpan("qdrant.search", {
+            "peer.service": "qdrant",
+            limit: options.limit ?? 5,
+            has_filters: Boolean(
+              options.filterByTag || options.filterByCorrespondent || options.filterByDocumentType,
+            ),
+          }),
+        ),
 
       upsertDocument: (doc) =>
-        Effect.gen(function* () {
-          const { collectionName } = yield* getConfig();
-          const client = yield* getClient();
+        pipe(
+          Effect.gen(function* () {
+            const { collectionName } = yield* getConfig();
+            const client = yield* getClient();
 
-          // Generate embedding for document content
-          const vector = yield* embed(doc.content.slice(0, 8000)).pipe(
-            Effect.mapError((e) => QdrantError(`Embedding failed: ${e.message}`, e)),
-          );
+            // Generate embedding for document content
+            const vector = yield* embed(doc.content.slice(0, 8000)).pipe(
+              Effect.mapError((e) => QdrantError(`Embedding failed: ${e.message}`, e)),
+            );
 
-          yield* Effect.tryPromise({
-            try: async () => {
-              await client.upsert(collectionName, {
-                wait: true,
-                points: [
-                  {
-                    id: doc.docId,
-                    vector,
-                    payload: {
-                      docId: doc.docId,
-                      title: doc.title,
-                      tags: doc.tags,
-                      correspondent: doc.correspondent,
-                      document_type: doc.documentType,
-                      is_processed: doc.tags.some((t) => t.toLowerCase().includes("processed")),
+            yield* Effect.tryPromise({
+              try: async () => {
+                await client.upsert(collectionName, {
+                  wait: true,
+                  points: [
+                    {
+                      id: doc.docId,
+                      vector,
+                      payload: {
+                        docId: doc.docId,
+                        title: doc.title,
+                        tags: doc.tags,
+                        correspondent: doc.correspondent,
+                        document_type: doc.documentType,
+                        is_processed: doc.tags.some((t) => t.toLowerCase().includes("processed")),
+                      },
                     },
-                  },
-                ],
-              });
-            },
-            catch: (error) => QdrantError(`Upsert failed: ${String(error)}`, error),
-          });
-        }),
+                  ],
+                });
+              },
+              catch: (error) => QdrantError(`Upsert failed: ${String(error)}`, error),
+            });
+          }),
+          withClientSpan("qdrant.upsert", {
+            "peer.service": "qdrant",
+            "doc.id": doc.docId,
+          }),
+        ),
 
       deleteDocument: (docId) =>
-        Effect.gen(function* () {
-          const { collectionName } = yield* getConfig();
-          const client = yield* getClient();
+        pipe(
+          Effect.gen(function* () {
+            const { collectionName } = yield* getConfig();
+            const client = yield* getClient();
 
-          yield* Effect.tryPromise({
-            try: async () => {
-              await client.delete(collectionName, {
-                wait: true,
-                points: [docId],
-              });
-            },
-            catch: (error) => QdrantError(`Delete failed: ${String(error)}`, error),
-          });
-        }),
+            yield* Effect.tryPromise({
+              try: async () => {
+                await client.delete(collectionName, {
+                  wait: true,
+                  points: [docId],
+                });
+              },
+              catch: (error) => QdrantError(`Delete failed: ${String(error)}`, error),
+            });
+          }),
+          withClientSpan("qdrant.delete", { "peer.service": "qdrant", "doc.id": docId }),
+        ),
 
       testConnection: () =>
         Effect.gen(function* () {
@@ -255,46 +277,49 @@ export const QdrantServiceLive = Layer.effect(
         }),
 
       ensureCollection: () =>
-        Effect.gen(function* () {
-          const { collectionName, embeddingDimension } = yield* getConfig();
-          const client = yield* getClient();
+        pipe(
+          Effect.gen(function* () {
+            const { collectionName, embeddingDimension } = yield* getConfig();
+            const client = yield* getClient();
 
-          yield* Effect.tryPromise({
-            try: async () => {
-              const collections = await client.getCollections();
-              const exists = collections.collections.some((c) => c.name === collectionName);
+            yield* Effect.tryPromise({
+              try: async () => {
+                const collections = await client.getCollections();
+                const exists = collections.collections.some((c) => c.name === collectionName);
 
-              if (!exists) {
-                // Create collection with vector size matching configured embedding model
-                await client.createCollection(collectionName, {
-                  vectors: {
-                    size: embeddingDimension,
-                    distance: "Cosine",
-                  },
-                });
+                if (!exists) {
+                  // Create collection with vector size matching configured embedding model
+                  await client.createCollection(collectionName, {
+                    vectors: {
+                      size: embeddingDimension,
+                      distance: "Cosine",
+                    },
+                  });
 
-                // Create payload indexes for filtering
-                await client.createPayloadIndex(collectionName, {
-                  field_name: "is_processed",
-                  field_schema: "bool",
-                });
-                await client.createPayloadIndex(collectionName, {
-                  field_name: "tags",
-                  field_schema: "keyword",
-                });
-                await client.createPayloadIndex(collectionName, {
-                  field_name: "correspondent",
-                  field_schema: "keyword",
-                });
-                await client.createPayloadIndex(collectionName, {
-                  field_name: "document_type",
-                  field_schema: "keyword",
-                });
-              }
-            },
-            catch: (error) => QdrantError(`Collection setup failed: ${String(error)}`, error),
-          });
-        }),
+                  // Create payload indexes for filtering
+                  await client.createPayloadIndex(collectionName, {
+                    field_name: "is_processed",
+                    field_schema: "bool",
+                  });
+                  await client.createPayloadIndex(collectionName, {
+                    field_name: "tags",
+                    field_schema: "keyword",
+                  });
+                  await client.createPayloadIndex(collectionName, {
+                    field_name: "correspondent",
+                    field_schema: "keyword",
+                  });
+                  await client.createPayloadIndex(collectionName, {
+                    field_name: "document_type",
+                    field_schema: "keyword",
+                  });
+                }
+              },
+              catch: (error) => QdrantError(`Collection setup failed: ${String(error)}`, error),
+            });
+          }),
+          withClientSpan("qdrant.ensure_collection", { "peer.service": "qdrant" }),
+        ),
     };
   }),
 );

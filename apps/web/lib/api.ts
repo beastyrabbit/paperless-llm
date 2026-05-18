@@ -2,12 +2,226 @@
  * API client for the Paperless Local LLM backend
  */
 
-const API_BASE = "";
+import type {
+  ApiValidationIssue,
+  ApiResponse,
+  Settings,
+  ConnectionTest,
+  OllamaModelsResponse,
+  MistralModelsResponse,
+  OpenAICodexModelsResponse,
+  WorkflowTagsStatusResponse,
+  WorkflowTagsCreateResponse,
+  WorkflowTagColorFixResponse,
+  AiTagsResponse,
+  AiTagsUpdateResponse,
+  QueueStats,
+  DocumentSummary,
+  DocumentDetail,
+  ProcessingStatus,
+  AutoProcessingStatus,
+  AutoProcessingTriggerResponse,
+  LockListResponse,
+  LockPruneResponse,
+  LockReleaseRequest,
+  LockReleaseResponse,
+  OllamaStatus,
+  PendingItemType,
+  PendingItem,
+  SchemaCleanupApproveResponse,
+  PendingCounts,
+  SearchableEntities,
+  SimilarGroupsResponse,
+  MergePendingResponse,
+  BlockedItemsResponse,
+  PendingApproveResponse,
+  TagMetadata,
+  TagMetadataListItem,
+  TagMetadataUpdate,
+  TagMetadataBulkRequest,
+  TagMetadataBulkResponse,
+  TagTranslationsResponse,
+  TagOptimizeRequest,
+  TagOptimizeResponse,
+  TagTranslateRequest,
+  TagTranslateResponse,
+  CustomFieldMetadata,
+  CustomFieldMetadataUpdate,
+  CustomFieldMetadataBulk,
+  AiDocumentTypesResponse,
+  AiDocumentTypesUpdateResponse,
+  CustomFieldsSettingsResponse,
+  CustomFieldsUpdateResponse,
+  TranslateRequest,
+  TranslateResponse,
+  TranslationEntry,
+  BlockedSuggestion,
+  BlockSuggestionRequest,
+  JobStatus,
+  RejectWithFeedbackRequest,
+  RejectWithFeedbackResponse,
+  BootstrapAnalysisType,
+  BootstrapProgress,
+  BootstrapStartResponse,
+  JobScheduleStatus,
+  ScheduleUpdateRequest,
+  ScheduleUpdateResponse,
+  BulkOCRProgress,
+  BulkOCRStartResponse,
+  BulkIngestProgress,
+  BulkIngestStartRequest,
+  BulkIngestStartResponse,
+  ProcessingLogEntry,
+  ProcessingLogStats,
+  CaseQuestionAnswerRequest,
+  DocumentCase,
+  CatalogRun,
+  CatalogProposal,
+  SearchResponse,
+  ChatMessage,
+  ChatResponse,
+} from "@repo/api-contracts";
 
-interface ApiResponse<T> {
-  data?: T;
-  error?: string;
-}
+export type {
+  ApiValidationIssue,
+  ApiResponse,
+  Settings,
+  ConnectionTest,
+  OllamaModel,
+  OllamaModelsResponse,
+  MistralModel,
+  MistralModelsResponse,
+  OpenAICodexModel,
+  OpenAICodexModelsResponse,
+  WorkflowTagStatus,
+  WorkflowTagsStatusResponse,
+  WorkflowTagsCreateResponse,
+  WorkflowTagColorFixResponse,
+  AiTag,
+  AiTagsResponse,
+  AiTagsUpdateResponse,
+  QueueStats,
+  DocumentSummary,
+  DocumentDetail,
+  ProcessingStatus,
+  AutoProcessingStatus,
+  AutoProcessingTriggerResponse,
+  DurableLock,
+  LockListResponse,
+  LockPruneResponse,
+  LockReleaseRequest,
+  LockReleaseResponse,
+  LockScope,
+  OllamaRunningModel,
+  OllamaStatus,
+  PendingItemType,
+  SchemaItemType,
+  AllPendingItemType,
+  PendingItem,
+  EntityOption,
+  SchemaCleanupType,
+  SchemaEntityType,
+  SchemaCleanupMetadata,
+  SchemaCleanupApproveResponse,
+  PendingCounts,
+  SearchableEntities,
+  SimilarGroup,
+  SimilarGroupsResponse,
+  MergePendingResponse,
+  BlockedItem,
+  BlockedItemsResponse,
+  PendingApproveResponse,
+  TagMetadata,
+  TagMetadataListItem,
+  TagMetadataUpdate,
+  TagMetadataBulkRequest,
+  TagMetadataBulkResponse,
+  TagMetadataBulk,
+  TagTranslationsResponse,
+  TagOptimizeRequest,
+  TagOptimizeResponse,
+  TagTranslateRequest,
+  TagTranslateResponse,
+  CustomFieldMetadata,
+  CustomFieldMetadataUpdate,
+  CustomFieldMetadataBulk,
+  DocumentTypeInfo,
+  AiDocumentTypesResponse,
+  AiDocumentTypesUpdateResponse,
+  CustomFieldSetting,
+  CustomFieldsSettingsResponse,
+  CustomFieldsUpdateResponse,
+  TranslateRequest,
+  TranslateResponse,
+  TranslationEntry,
+  BlockType,
+  RejectionCategory,
+  BlockedSuggestion,
+  BlockSuggestionRequest,
+  JobStatusType,
+  JobStatus,
+  RejectBlockType,
+  RejectWithFeedbackRequest,
+  RejectWithFeedbackResponse,
+  BootstrapAnalysisType,
+  BootstrapStatusType,
+  SuggestionsByType,
+  BootstrapProgress,
+  BootstrapStartResponse,
+  ScheduleType,
+  JobScheduleInfo,
+  JobScheduleStatus,
+  ScheduleUpdateRequest,
+  ScheduleUpdateResponse,
+  BulkOCRStatusType,
+  BulkOCRProgress,
+  BulkOCRStartResponse,
+  BulkIngestStatusType,
+  BulkIngestProgress,
+  BulkIngestStartRequest,
+  BulkIngestStartResponse,
+  ProcessingLogEventType,
+  ProcessingLogEntry,
+  ProcessingLogStats,
+  CaseMetadataEntityKind,
+  CaseRequestedAction,
+  CaseQuestionAnswerAction,
+  CaseProposalCandidate,
+  CaseMetadataPatch,
+  CaseQuestionAnswerRequest,
+  CaseQuestion,
+  CaseAnswer,
+  CaseFailureDetail,
+  DocumentCase,
+  CatalogRun,
+  CatalogProposal,
+  SearchResult,
+  SearchResponse,
+  ChatMessage,
+  ChatResponse,
+} from "@repo/api-contracts";
+
+export const API_BASE = "";
+
+const readErrorResponse = async (
+  response: Response,
+): Promise<{ error: string; issues?: ApiValidationIssue[] }> => {
+  const text = await response.text().catch(() => "");
+  if (!text) return { error: `HTTP ${response.status}` };
+  try {
+    const payload = JSON.parse(text) as {
+      error?: string;
+      message?: string;
+      issues?: ApiValidationIssue[];
+    };
+    return {
+      error: payload.message ?? payload.error ?? text,
+      issues: Array.isArray(payload.issues) ? payload.issues : undefined,
+    };
+  } catch {
+    return { error: text };
+  }
+};
 
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
   try {
@@ -20,14 +234,14 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<Api
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      return { error: error || `HTTP ${response.status}` };
+      const { error, issues } = await readErrorResponse(response);
+      return { ok: false, error, status: response.status, issues };
     }
 
     const data = await response.json();
-    return { data };
+    return { ok: true, data, status: response.status };
   } catch (error) {
-    return { error: String(error) };
+    return { ok: false, error: String(error), status: 0 };
   }
 }
 
@@ -35,6 +249,10 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<Api
 export const settingsApi = {
   get: () => fetchApi<Settings>("/api/settings"),
   getOllamaStatus: () => fetchApi<OllamaStatus>("/api/settings/ollama/status"),
+  getOllamaModels: () => fetchApi<OllamaModelsResponse>("/api/settings/ollama/models"),
+  getMistralModels: () => fetchApi<MistralModelsResponse>("/api/settings/mistral/models"),
+  getOpenAICodexModels: () =>
+    fetchApi<OpenAICodexModelsResponse>("/api/settings/openai-codex/models"),
   update: (data: Partial<Settings>) =>
     fetchApi("/api/settings", {
       method: "PATCH",
@@ -44,12 +262,36 @@ export const settingsApi = {
     fetchApi<ConnectionTest>(`/api/settings/test-connection/${service}`, {
       method: "POST",
     }),
+  getWorkflowTagsStatus: () => fetchApi<WorkflowTagsStatusResponse>("/api/settings/tags/status"),
+  createWorkflowTags: (tagNames: string[]) =>
+    fetchApi<WorkflowTagsCreateResponse>("/api/settings/tags/create", {
+      method: "POST",
+      body: JSON.stringify({ tag_names: tagNames }),
+    }),
+  fixWorkflowTagColors: () =>
+    fetchApi<WorkflowTagColorFixResponse>("/api/settings/tags/fix-colors", {
+      method: "POST",
+    }),
   // AI Document Types
   getAiDocumentTypes: () => fetchApi<AiDocumentTypesResponse>("/api/settings/ai-document-types"),
   updateAiDocumentTypes: (selectedTypeIds: number[]) =>
-    fetchApi("/api/settings/ai-document-types", {
+    fetchApi<AiDocumentTypesUpdateResponse>("/api/settings/ai-document-types", {
       method: "PATCH",
       body: JSON.stringify({ selected_type_ids: selectedTypeIds }),
+    }),
+  // Custom fields used by the processing pipeline
+  getCustomFields: () => fetchApi<CustomFieldsSettingsResponse>("/api/settings/custom-fields"),
+  updateCustomFields: (selectedFieldIds: number[]) =>
+    fetchApi<CustomFieldsUpdateResponse>("/api/settings/custom-fields", {
+      method: "PATCH",
+      body: JSON.stringify({ selected_field_ids: selectedFieldIds }),
+    }),
+  // AI Tags
+  getAiTags: () => fetchApi<AiTagsResponse>("/api/settings/ai-tags"),
+  updateAiTags: (selectedTagIds: number[]) =>
+    fetchApi<AiTagsUpdateResponse>("/api/settings/ai-tags", {
+      method: "PATCH",
+      body: JSON.stringify({ selected_tag_ids: selectedTagIds }),
     }),
   // Processing Logs
   getProcessingLogStats: () => fetchApi<ProcessingLogStats>("/api/settings/processing-logs/stats"),
@@ -62,14 +304,16 @@ export const settingsApi = {
 // Documents API
 export const documentsApi = {
   getQueue: () => fetchApi<QueueStats>("/api/documents/queue"),
-  getPending: (tag?: string, limit = 50) =>
+  getPending: (tag?: string, limit = 50, options?: RequestInit) =>
     fetchApi<DocumentSummary[]>(
       `/api/documents/pending?${new URLSearchParams({
         ...(tag && { tag }),
         limit: String(limit),
       })}`,
+      options,
     ),
-  get: (id: number) => fetchApi<DocumentDetail>(`/api/documents/${id}`),
+  get: (id: number, options?: RequestInit) =>
+    fetchApi<DocumentDetail>(`/api/documents/${id}`, options),
   getContent: (id: number) =>
     fetchApi<{ id: number; content: string }>(`/api/documents/${id}/content`),
   getPdfUrl: (id: number) => `${API_BASE}/api/documents/${id}/pdf`,
@@ -95,6 +339,19 @@ export const processingApi = {
     fetchApi(`/api/processing/${docId}/confirm?confirmed=${confirmed}`, {
       method: "POST",
     }),
+  cancel: (docId: number, options: { runId?: string | null; reason?: string } = {}) =>
+    fetchApi<{
+      status: "cancelling" | "cancelled_orphaned_run" | "no_active_run" | "run_mismatch";
+      doc_id: number;
+      run_id?: string;
+      lock_released?: boolean;
+      lock_run_id?: string | null;
+      active_run_id?: string;
+      requested_run_id?: string;
+    }>(`/api/processing/${docId}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ runId: options.runId ?? undefined, reason: options.reason }),
+    }),
   getStatus: () => fetchApi<ProcessingStatus>("/api/processing/status"),
   getLogs: (docId: number) =>
     fetchApi<{ logs: ProcessingLogEntry[] }>(`/api/processing/${docId}/logs`),
@@ -108,6 +365,63 @@ export const processingApi = {
     fetchApi<AutoProcessingTriggerResponse>("/api/processing/auto/trigger", {
       method: "POST",
     }),
+  listLocks: () => fetchApi<LockListResponse>("/api/processing/locks"),
+  pruneLocks: () =>
+    fetchApi<LockPruneResponse>("/api/processing/locks/prune", {
+      method: "POST",
+    }),
+  releaseLock: (docId: number, body: LockReleaseRequest = { force: true }) =>
+    fetchApi<LockReleaseResponse>(`/api/processing/${docId}/release-lock`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+};
+
+// Document Cases API
+export const casesApi = {
+  list: (status?: "queued" | "needs_input" | "running" | "failed" | "done" | "open") =>
+    fetchApi<{ cases: DocumentCase[] }>(`/api/cases${status ? `?status=${status}` : ""}`),
+  getForDocument: (docId: number) => fetchApi<DocumentCase>(`/api/cases/document/${docId}`),
+  run: (docId: number, options?: { resume?: boolean; rerun?: boolean; dryRun?: boolean }) =>
+    fetchApi<{ case: DocumentCase | null; result: unknown }>(`/api/cases/document/${docId}/run`, {
+      method: "POST",
+      body: JSON.stringify(options ?? {}),
+    }),
+  answerQuestion: (questionId: string, body: CaseQuestionAnswerRequest) =>
+    fetchApi<DocumentCase>(`/api/cases/questions/${questionId}/answer`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getLogs: (docId: number) =>
+    fetchApi<{ logs: ProcessingLogEntry[] }>(`/api/cases/document/${docId}/logs`),
+  stream: (docId: number) => new EventSource(`${API_BASE}/api/cases/document/${docId}/stream`),
+};
+
+// Catalog Agent API
+export const catalogApi = {
+  startRun: (runtime: "pi_agent" | "local" | "openai_cli" = "pi_agent") =>
+    fetchApi<CatalogRun>("/api/catalog/runs", {
+      method: "POST",
+      body: JSON.stringify({ runtime }),
+    }),
+  listRuns: () => fetchApi<{ runs: CatalogRun[] }>("/api/catalog/runs"),
+  listProposals: (runId?: string) =>
+    fetchApi<{ proposals: CatalogProposal[] }>(
+      `/api/catalog/proposals${runId ? `?run_id=${encodeURIComponent(runId)}` : ""}`,
+    ),
+  decideProposal: (proposalId: string, decision: "approved" | "rejected") =>
+    fetchApi<CatalogProposal>(`/api/catalog/proposals/${proposalId}/decision`, {
+      method: "POST",
+      body: JSON.stringify({ decision }),
+    }),
+  applyProposal: (proposalId: string) =>
+    fetchApi<CatalogProposal>(`/api/catalog/proposals/${proposalId}/apply`, {
+      method: "POST",
+    }),
+  getLogs: (runId?: string) =>
+    fetchApi<{ logs: ProcessingLogEntry[] }>(
+      `/api/catalog/logs${runId ? `?run_id=${encodeURIComponent(runId)}` : ""}`,
+    ),
 };
 
 // Pending Reviews API
@@ -155,7 +469,7 @@ export const pendingApi = {
 // Metadata API
 export const metadataApi = {
   // Tags
-  listTags: () => fetchApi<TagMetadata[]>("/api/metadata/tags"),
+  listTags: () => fetchApi<TagMetadataListItem[]>("/api/metadata/tags"),
   getTag: (tagId: number) => fetchApi<TagMetadata>(`/api/metadata/tags/${tagId}`),
   updateTag: (tagId: number, data: TagMetadataUpdate) =>
     fetchApi<TagMetadata>(`/api/metadata/tags/${tagId}`, {
@@ -166,10 +480,22 @@ export const metadataApi = {
     fetchApi<{ deleted: boolean }>(`/api/metadata/tags/${tagId}`, {
       method: "DELETE",
     }),
-  bulkUpdateTags: (items: TagMetadataBulk[]) =>
-    fetchApi<TagMetadata[]>("/api/metadata/tags/bulk", {
+  bulkUpdateTags: (items: TagMetadataBulkRequest[]) =>
+    fetchApi<TagMetadataBulkResponse[]>("/api/metadata/tags/bulk", {
       method: "POST",
       body: JSON.stringify(items),
+    }),
+  getTagTranslations: (tagId: number) =>
+    fetchApi<TagTranslationsResponse>(`/api/metadata/tags/${tagId}/translations`),
+  optimizeTagDescription: (tagId: number, data: TagOptimizeRequest) =>
+    fetchApi<TagOptimizeResponse>(`/api/metadata/tags/${tagId}/optimize-description`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  translateTagDescription: (tagId: number, data: TagTranslateRequest) =>
+    fetchApi<TagTranslateResponse>(`/api/metadata/tags/${tagId}/translate-description`, {
+      method: "POST",
+      body: JSON.stringify(data),
     }),
 
   // Custom Fields
@@ -310,612 +636,3 @@ export const translationApi = {
 };
 
 // Types
-export interface Settings {
-  paperless_url: string;
-  paperless_external_url: string;
-  paperless_connected: boolean;
-  ollama_url: string;
-  ollama_model_large: string;
-  ollama_model_small: string;
-  ollama_model_translation: string;
-  qdrant_url: string;
-  qdrant_collection: string;
-  auto_processing_enabled: boolean;
-  auto_processing_interval_minutes: number;
-  language: string;
-  debug_log_level: string;
-  debug_log_prompts: boolean;
-  debug_log_responses: boolean;
-  debug_save_processing_history: boolean;
-  pipeline_custom_fields: boolean;
-  pipeline_document_type: boolean;
-  pipeline_document_links: boolean;
-  tags: {
-    todo: string;
-    ocr: string;
-    metadata: string;
-    review: string;
-    index: string;
-    done: string;
-    failed: string;
-    pending: string;
-    ocr_done: string;
-    summary_done: string;
-    schema_review: string;
-    correspondent_done: string;
-    document_type_done: string;
-    title_done: string;
-    tags_done: string;
-    processed: string;
-    manual_review: string;
-  };
-}
-
-export interface ConnectionTest {
-  status: "connected" | "error";
-  service: string;
-  detail?: string;
-  models?: number;
-}
-
-export interface QueueStats {
-  todo?: number;
-  ocr?: number;
-  metadata?: number;
-  review?: number;
-  index?: number;
-  done?: number;
-  pending: number;
-  ocr_done: number;
-  correspondent_done: number;
-  document_type_done: number;
-  title_done: number;
-  tags_done: number;
-  processed: number;
-  total_in_pipeline: number;
-}
-
-export interface DocumentSummary {
-  id: number;
-  title: string;
-  correspondent: string | null;
-  created: string;
-  tags: string[];
-  processing_status: string | null;
-}
-
-export interface DocumentDetail {
-  id: number;
-  title: string;
-  correspondent: string | null;
-  correspondent_id: number | null;
-  document_type: string | null;
-  document_type_id: number | null;
-  created: string;
-  modified: string;
-  added: string;
-  tags: Array<{ id: number; name: string }>;
-  custom_fields: Array<{ field: number; value: unknown }>;
-  content: string | null;
-  original_file_name: string | null;
-  archive_serial_number: number | null;
-}
-
-export interface ProcessingStatus {
-  auto_processing: boolean;
-  interval_minutes: number;
-  currently_processing: number | null;
-  queue_position: number;
-}
-
-export interface AutoProcessingStatus {
-  running: boolean;
-  enabled: boolean;
-  interval_minutes: number;
-  last_check_at: string | null;
-  currently_processing_doc_id: number | null;
-  currently_processing_doc_title: string | null;
-  current_step: string | null;
-  processed_since_start: number;
-  errors_since_start: number;
-}
-
-export interface AutoProcessingTriggerResponse {
-  message: string;
-  running: boolean;
-  enabled: boolean;
-  currently_processing_doc_id: number | null;
-}
-
-export interface OllamaRunningModel {
-  name: string;
-  model: string;
-  size: number;
-  size_vram: number;
-  expires_at: string;
-  parameter_size: string | null;
-  quantization: string | null;
-}
-
-export interface OllamaStatus {
-  running: boolean;
-  models: OllamaRunningModel[];
-}
-
-// Pending Reviews Types
-export type PendingItemType =
-  | "correspondent"
-  | "document_type"
-  | "tag"
-  | "human_decision"
-  | "consolidation";
-export type SchemaItemType =
-  | "schema_correspondent"
-  | "schema_document_type"
-  | "schema_tag"
-  | "schema_custom_field"
-  | "schema_merge"
-  | "schema_delete"
-  | "schema_cleanup";
-export type AllPendingItemType = PendingItemType | SchemaItemType;
-
-export interface PendingItem {
-  id: string;
-  docId: number;
-  docTitle: string;
-  type: AllPendingItemType;
-  suggestion: string;
-  reasoning: string;
-  alternatives: string[];
-  attempts: number;
-  last_feedback?: string | null;
-  lastFeedback?: string | null;
-  createdAt?: string;
-  created_at?: string;
-  metadata: Record<string, unknown>;
-  nextTag?: string | null;
-  next_tag?: string;
-}
-
-export interface EntityOption {
-  id: number;
-  name: string;
-}
-
-// Schema cleanup specific types
-export type SchemaCleanupType = "merge" | "delete";
-export type SchemaEntityType = "correspondent" | "document_type" | "tag";
-
-export interface SchemaCleanupMetadata {
-  cleanup_type: SchemaCleanupType;
-  entity_type: SchemaEntityType;
-  // For merges
-  source_id?: number;
-  target_id?: number;
-  source_name?: string;
-  target_name?: string;
-  doc_count_source?: number;
-  doc_count_target?: number;
-  // For deletes
-  entity_id?: number;
-  entity_name?: string;
-}
-
-export interface SchemaCleanupApproveResponse {
-  id: string;
-  type: "schema_cleanup";
-  cleanup_type: SchemaCleanupType;
-  entity_type: SchemaEntityType;
-  success: boolean;
-  removed: boolean;
-  merge_result?: {
-    entity_type: string;
-    source_id: number;
-    target_id: number;
-    documents_transferred: number;
-    source_deleted: boolean;
-    target_renamed: boolean;
-  };
-  delete_result?: {
-    entity_type: string;
-    entity_id: number;
-    deleted: boolean;
-    document_count: number;
-    error?: string;
-  };
-}
-
-export interface PendingCounts {
-  correspondent: number;
-  document_type: number;
-  tag: number;
-  title?: number;
-  human_decision?: number;
-  consolidation?: number;
-  schema?: number;
-  total: number;
-  // Schema suggestion counts (from bootstrap analysis)
-  schema_correspondent: number;
-  schema_document_type: number;
-  schema_tag: number;
-  schema_custom_field: number;
-  schema_merge?: number;
-  schema_delete?: number;
-  schema_cleanup: number;
-  metadata_description: number;
-}
-
-export interface SearchableEntities {
-  correspondents: EntityOption[];
-  document_types: EntityOption[];
-  tags: EntityOption[];
-}
-
-// Pending cleanup (similar suggestions) types
-export interface SimilarGroup {
-  suggestions: string[];
-  item_ids: string[];
-  item_type: string;
-  doc_ids: number[];
-  recommended_name: string;
-}
-
-export interface SimilarGroupsResponse {
-  groups: SimilarGroup[];
-  total_mergeable: number;
-}
-
-export interface MergePendingResponse {
-  merged_count: number;
-  final_name: string;
-  updated_item_ids: string[];
-}
-
-export interface BlockedItem {
-  id: number;
-  suggestion_name: string;
-  normalized_name: string;
-  block_type: "global" | "correspondent" | "document_type" | "tag";
-  rejection_reason: string | null;
-  rejection_category: string | null;
-  doc_id: number | null;
-  created_at: string | null;
-}
-
-export interface BlockedItemsResponse {
-  global_blocks: BlockedItem[];
-  correspondent_blocks: BlockedItem[];
-  document_type_blocks: BlockedItem[];
-  tag_blocks: BlockedItem[];
-  total: number;
-}
-
-export interface PendingApproveResponse {
-  success: boolean;
-  created_entity?: string;
-  entity_id?: number;
-}
-
-// Metadata Types
-export interface TagMetadata {
-  id: number | null;
-  paperless_tag_id: number;
-  tag_name: string;
-  description: string | null;
-  category: string | null;
-  exclude_from_ai: boolean;
-}
-
-export interface TagMetadataUpdate {
-  tag_name: string;
-  description?: string | null;
-  category?: string | null;
-  exclude_from_ai?: boolean;
-}
-
-export interface TagMetadataBulk extends TagMetadataUpdate {
-  paperless_tag_id: number;
-}
-
-export interface CustomFieldMetadata {
-  id: number | null;
-  paperless_field_id: number;
-  field_name: string;
-  description: string | null;
-  extraction_hints: string | null;
-  value_format: string | null;
-  example_values: string[];
-}
-
-export interface CustomFieldMetadataUpdate {
-  field_name: string;
-  description?: string | null;
-  extraction_hints?: string | null;
-  value_format?: string | null;
-  example_values?: string[] | null;
-}
-
-export interface CustomFieldMetadataBulk extends CustomFieldMetadataUpdate {
-  paperless_field_id: number;
-}
-
-// Document Types Types
-export interface DocumentTypeInfo {
-  id: number;
-  name: string;
-  document_count: number;
-}
-
-export interface AiDocumentTypesResponse {
-  document_types: DocumentTypeInfo[];
-  selected_type_ids: number[];
-}
-
-// Translation Types
-export interface TranslateRequest {
-  text: string;
-  source_lang: string;
-  target_lang: string;
-  content_type?: string;
-  content_key?: string;
-  use_cache?: boolean;
-}
-
-export interface TranslateResponse {
-  translated_text: string;
-  cached: boolean;
-  model: string | null;
-}
-
-export interface TranslationEntry {
-  source_lang: string;
-  target_lang: string;
-  content_type: string;
-  content_key: string;
-  source_text: string;
-  translated_text: string;
-  model_used: string | null;
-  created_at: string;
-}
-
-// Blocked Suggestions Types
-export type BlockType = "global" | "correspondent" | "document_type" | "tag";
-export type RejectionCategory =
-  | "duplicate"
-  | "too_generic"
-  | "irrelevant"
-  | "wrong_format"
-  | "other";
-
-export interface BlockedSuggestion {
-  id: number;
-  suggestion_name: string;
-  normalized_name: string;
-  block_type: BlockType;
-  rejection_reason: string | null;
-  rejection_category: RejectionCategory | null;
-  doc_id: number | null;
-  created_at: string;
-}
-
-export interface BlockSuggestionRequest {
-  suggestion_name: string;
-  block_type: BlockType;
-  rejection_reason?: string | null;
-  rejection_category?: RejectionCategory | null;
-  doc_id?: number | null;
-}
-
-// Jobs Types
-export type JobStatusType = "idle" | "running" | "completed" | "failed";
-
-export interface JobStatus {
-  job_name: string;
-  status: JobStatusType;
-  last_run: string | null;
-  last_result: Record<string, unknown> | null;
-}
-
-// Reject with Feedback Types
-export type RejectBlockType = "none" | "global" | "per_type";
-
-export interface RejectWithFeedbackRequest {
-  block_type: RejectBlockType;
-  rejection_reason?: string | null;
-  rejection_category?: RejectionCategory | null;
-}
-
-export interface RejectWithFeedbackResponse {
-  success: boolean;
-  blocked: boolean;
-  block_type: string | null;
-}
-
-// Bootstrap Analysis Types
-export type BootstrapAnalysisType = "all" | "correspondents" | "document_types" | "tags";
-export type BootstrapStatusType = "idle" | "running" | "completed" | "cancelled" | "failed";
-
-export interface SuggestionsByType {
-  correspondents: number;
-  document_types: number;
-  tags: number;
-}
-
-export interface BootstrapProgress {
-  status: BootstrapStatusType;
-  total: number;
-  processed: number;
-  skipped: number;
-  current_doc_id: number | null;
-  current_doc_title: string | null;
-  suggestions_found: number;
-  suggestions_by_type: SuggestionsByType;
-  errors: number;
-  started_at: string | null;
-  completed_at: string | null;
-  error_message: string | null;
-  // Enhanced progress tracking
-  total_documents: number | null; // Total docs in Paperless (for "covering X documents")
-  current_entity_count: number | null; // Count of entities in current phase (e.g., 47 correspondents)
-  avg_seconds_per_category: number | null; // For time estimation
-  estimated_remaining_seconds: number | null; // ETA calculation
-}
-
-export interface BootstrapStartResponse {
-  message: string;
-  analysis_type: BootstrapAnalysisType;
-  status: string;
-}
-
-// Job Schedule Types
-export type ScheduleType = "daily" | "weekly" | "monthly" | "cron";
-
-export interface JobScheduleInfo {
-  enabled: boolean;
-  schedule: ScheduleType;
-  cron: string;
-  next_run: string | null;
-  last_run: string | null;
-  last_result: Record<string, unknown> | null;
-}
-
-export interface JobScheduleStatus {
-  running: boolean;
-  jobs: {
-    schema_cleanup: JobScheduleInfo;
-    metadata_enhancement: JobScheduleInfo;
-  };
-}
-
-export interface ScheduleUpdateRequest {
-  job_name: "schema_cleanup" | "metadata_enhancement";
-  enabled: boolean;
-  schedule: ScheduleType;
-  cron?: string | null;
-}
-
-export interface ScheduleUpdateResponse {
-  message: string;
-  job_name: string;
-  enabled: boolean;
-  schedule: string;
-  cron: string;
-  next_run: string | null;
-}
-
-// Bulk OCR Types
-export type BulkOCRStatusType = "idle" | "running" | "completed" | "cancelled" | "failed";
-
-export interface BulkOCRProgress {
-  status: BulkOCRStatusType;
-  total: number;
-  processed: number;
-  skipped: number;
-  errors: number;
-  current_doc_id: number | null;
-  current_doc_title: string | null;
-  docs_per_second: number;
-  started_at: string | null;
-  completed_at: string | null;
-  error_message: string | null;
-}
-
-export interface BulkOCRStartResponse {
-  message: string;
-  docs_per_second: number;
-  skip_existing: boolean;
-  status: string;
-}
-
-// Bulk Ingest Types (OCR + Vector DB)
-export type BulkIngestStatusType = "idle" | "running" | "completed" | "cancelled" | "error";
-
-export interface BulkIngestProgress {
-  status: BulkIngestStatusType;
-  total: number;
-  processed: number;
-  skipped: number;
-  errors: number;
-  ocr_processed: number;
-  vector_indexed: number;
-  current_doc_id: number | null;
-  current_doc_title: string | null;
-  current_phase: "ocr" | "embedding" | "indexing" | null;
-  docs_per_second: number;
-  started_at: string | null;
-  completed_at: string | null;
-  error_message: string | null;
-}
-
-export interface BulkIngestStartRequest {
-  docs_per_second?: number;
-  skip_existing_ocr?: boolean;
-  run_ocr?: boolean;
-  transition_tag?: boolean;
-  source_tag?: string;
-  target_tag?: string;
-}
-
-export interface BulkIngestStartResponse {
-  message: string;
-  docs_per_second: number;
-  run_ocr: boolean;
-  status: string;
-}
-
-// Processing Logs Types
-export type ProcessingLogEventType =
-  | "context"
-  | "prompt"
-  | "response"
-  | "thinking"
-  | "tool_call"
-  | "tool_result"
-  | "confirming"
-  | "retry"
-  | "result"
-  | "error"
-  | "state_transition";
-
-export interface ProcessingLogEntry {
-  id: string;
-  docId: number;
-  timestamp: string;
-  step: string;
-  eventType: ProcessingLogEventType;
-  data: Record<string, unknown>;
-  parentId?: string;
-}
-
-export interface ProcessingLogStats {
-  totalLogs: number;
-  oldestLog: string | null;
-  newestLog: string | null;
-}
-
-// Search Types
-export interface SearchResult {
-  docId: number;
-  score: number;
-  title: string;
-  tags: string[];
-  correspondent?: string;
-  documentType?: string;
-}
-
-export interface SearchResponse {
-  results: SearchResult[];
-  query: string;
-  total: number;
-}
-
-// Chat Types
-export interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
-export interface ChatResponse {
-  message: string;
-  sources: SearchResult[];
-}

@@ -3,12 +3,10 @@
  */
 import { Context, Effect, Fiber, Layer, Ref } from "effect";
 import { JobError } from "../errors/index.js";
-import {
-  ConfigService,
-  MistralService,
-  PaperlessService,
-  TinyBaseService,
-} from "../services/index.js";
+import { ConfigService, MistralService, OcrUsageService, PaperlessService } from "../services/index.js";
+import { logger } from "../utils/logger.js";
+
+const bulkOcrLogger = logger.child({ component: "bulk_ocr_job" });
 
 // ===========================================================================
 // Types
@@ -25,6 +23,18 @@ export interface BulkOcrProgress {
   docsPerSecond: number;
   startedAt: string | null;
   completedAt: string | null;
+  runId: string | null;
+  budgetStopReason: string | null;
+  budget: {
+    dailyPagesUsed: number;
+    dailyPageLimit: number | null;
+    runPagesUsed: number;
+    runPageLimit: number | null;
+    dailyTokensUsed: number;
+    dailyTokenLimit: number | null;
+    runTokensUsed: number;
+    runTokenLimit: number | null;
+  } | null;
 }
 
 export interface BulkOcrOptions {
@@ -54,7 +64,7 @@ export const BulkOcrJobServiceLive = Layer.effect(
     const config = yield* ConfigService;
     const paperless = yield* PaperlessService;
     const mistral = yield* MistralService;
-    const tinybase = yield* TinyBaseService;
+    const ocrUsage = yield* OcrUsageService;
 
     const { tags: tagConfig } = config.config;
 
@@ -69,6 +79,9 @@ export const BulkOcrJobServiceLive = Layer.effect(
       docsPerSecond: 1,
       startedAt: null,
       completedAt: null,
+      runId: null,
+      budgetStopReason: null,
+      budget: null,
     });
 
     const fiberRef = yield* Ref.make<Fiber.RuntimeFiber<void, JobError> | null>(null);
@@ -90,6 +103,7 @@ export const BulkOcrJobServiceLive = Layer.effect(
           const docsPerSecond = options?.docsPerSecond ?? 1;
           const skipExisting = options?.skipExisting ?? true;
           const delayMs = Math.floor(1000 / docsPerSecond);
+          const runId = `bulk-ocr-${Date.now()}`;
 
           yield* Ref.set(cancelledRef, false);
           yield* Ref.set(progressRef, {
@@ -103,6 +117,9 @@ export const BulkOcrJobServiceLive = Layer.effect(
             docsPerSecond,
             startedAt: new Date().toISOString(),
             completedAt: null,
+            runId,
+            budgetStopReason: null,
+            budget: null,
           });
 
           const runOcr = Effect.gen(function* () {
@@ -142,21 +159,41 @@ export const BulkOcrJobServiceLive = Layer.effect(
                 }
 
                 try {
-                  // Download PDF
+                  // Download PDF and reserve budget before calling Mistral
                   const pdfBytes = yield* paperless.downloadPdf(doc.id);
+                  const estimatedPages = ocrUsage.estimatePdfPages(pdfBytes);
+                  const ocrPrompt = `Extract all text from this document. Preserve the structure and formatting as much as possible. Return only the extracted text, no explanations.`;
+                  const estimatedTokens = ocrUsage.estimateOcrTokens(pdfBytes, ocrPrompt);
+                  const reservation = yield* ocrUsage.reserve({
+                    runId,
+                    docId: doc.id,
+                    source: "bulk_ocr",
+                    estimatedPages,
+                    estimatedTokens,
+                  });
                   const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
 
                   // Run OCR with Mistral
-                  const ocrPrompt = `Extract all text from this document. Preserve the structure and formatting as much as possible. Return only the extracted text, no explanations.`;
-                  const ocrResult = yield* mistral.processDocument(pdfBase64, ocrPrompt);
+                  const ocrResponse = yield* mistral.processDocumentWithUsage(pdfBase64, ocrPrompt).pipe(
+                    Effect.tapError(() => ocrUsage.release(reservation, "mistral_error")),
+                  );
+                  yield* ocrUsage.commit(reservation, {
+                    pages: estimatedPages,
+                    tokens: ocrResponse.usage?.total_tokens,
+                    promptTokens: ocrResponse.usage?.prompt_tokens,
+                    completionTokens: ocrResponse.usage?.completion_tokens,
+                    model: ocrResponse.model,
+                  });
+                  const ocrResult = ocrResponse.text;
 
                   // Write Mistral OCR content back to Paperless-ngx (overwrites existing content)
                   if (ocrResult.length > 0) {
                     yield* paperless.updateDocument(doc.id, { content: ocrResult });
                   } else {
-                    console.warn(
-                      `[BulkOCR] Mistral returned empty text for document ${doc.id} (${doc.title}), keeping existing content`,
-                    );
+                    bulkOcrLogger.warn("mistral_returned_empty_text", {
+                      docId: doc.id,
+                      title: doc.title,
+                    });
                   }
 
                   // Move to next stage - atomic tag transition
@@ -166,14 +203,37 @@ export const BulkOcrJobServiceLive = Layer.effect(
                     tagConfig.ocrDone,
                   );
 
+                  const budget = yield* ocrUsage.getSnapshot(runId);
                   yield* Ref.update(progressRef, (p) => ({
                     ...p,
                     processed: p.processed + 1,
+                    budget,
                   }));
                 } catch (error) {
-                  console.error(
-                    `[BulkOCR] Failed to process document ${doc.id} (${doc.title}): ${String(error)}`,
-                  );
+                  if (
+                    error &&
+                    typeof error === "object" &&
+                    "_tag" in error &&
+                    error._tag === "OcrBudgetExceededError"
+                  ) {
+                    const message = String((error as { message?: unknown }).message ?? error);
+                    const budget = yield* ocrUsage.getSnapshot(runId);
+                    yield* Ref.update(progressRef, (p) => ({
+                      ...p,
+                      status: "completed" as const,
+                      budgetStopReason: message,
+                      budget,
+                      completedAt: new Date().toISOString(),
+                      currentDocId: null,
+                      currentDocTitle: null,
+                    }));
+                    break;
+                  }
+                  bulkOcrLogger.error("document_processing_failed", {
+                    docId: doc.id,
+                    title: doc.title,
+                    error,
+                  });
 
                   yield* Ref.update(progressRef, (p) => ({
                     ...p,
@@ -181,17 +241,18 @@ export const BulkOcrJobServiceLive = Layer.effect(
                   }));
 
                   // Best-effort: mark as failed, but don't let this abort the batch
-                  yield* paperless
-                    .addTagToDocument(doc.id, tagConfig.failed)
-                    .pipe(
-                      Effect.catchAll((tagError) =>
-                        Effect.sync(() =>
-                          console.error(
-                            `[BulkOCR] Additionally failed to tag document ${doc.id} as failed: ${String(tagError)}`,
-                          ),
-                        ),
-                      ),
-                    );
+                  yield* paperless.addTagToDocument(doc.id, tagConfig.failed).pipe(
+                    Effect.catchAll((tagError) =>
+                      Effect.sync(() => {
+                        bulkOcrLogger.error("failed_tag_addition_failed", {
+                          docId: doc.id,
+                          title: doc.title,
+                          failedTag: tagConfig.failed,
+                          error: tagError,
+                        });
+                      }),
+                    ),
+                  );
                 }
 
                 // Rate limiting
@@ -207,7 +268,7 @@ export const BulkOcrJobServiceLive = Layer.effect(
                 currentDocTitle: null,
               }));
             } catch (error) {
-              console.error(`[BulkOCR] Job failed: ${String(error)}`);
+              bulkOcrLogger.error("job_failed", { error });
               yield* Ref.update(progressRef, (p) => ({
                 ...p,
                 status: "error" as const,

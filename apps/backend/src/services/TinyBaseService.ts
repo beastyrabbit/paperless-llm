@@ -7,6 +7,7 @@ import * as path from "node:path";
 import { Context, Effect, Layer } from "effect";
 import { createStore, type Store } from "tinybase";
 import { parse as parseYaml } from "yaml";
+import { resolveConfigPath } from "../config/yaml-loader.js";
 import { DatabaseError } from "../errors/index.js";
 import type {
   BlockedSuggestion,
@@ -18,6 +19,20 @@ import type {
   TagMetadata,
   Translation,
 } from "../models/index.js";
+import { tinybaseLogger } from "./tinybase/logging.js";
+import {
+  CURRENT_TINYBASE_SCHEMA_VERSION,
+  migrateTinyBaseStoreToCurrentSchema,
+  verifyTinyBaseStoreSchema,
+} from "./tinybase/schema.js";
+
+export {
+  CURRENT_TINYBASE_SCHEMA_VERSION,
+  getTinyBaseSchemaVersion,
+  migrateTinyBaseStoreToCurrentSchema,
+  storeSchema,
+  verifyTinyBaseStoreSchema,
+} from "./tinybase/schema.js";
 
 // ===========================================================================
 // Persistence Configuration
@@ -37,7 +52,7 @@ const ensureDataDir = (): void => {
   const dataDir = getDataDir();
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
-    console.log(`[TinyBase] Created data directory: ${dataDir}`);
+    tinybaseLogger.info("data_directory_created", { dataDir });
   } else {
     fs.chmodSync(dataDir, 0o700);
   }
@@ -49,24 +64,29 @@ const ensureDataDir = (): void => {
 const loadPersistedData = (store: Store): boolean => {
   const persistenceFile = getPersistenceFile();
   if (!fs.existsSync(persistenceFile)) {
-    console.log("[TinyBase] No persisted data found, starting fresh");
+    tinybaseLogger.info("persisted_data_not_found", { persistenceFile });
     return false;
   }
 
   try {
     const json = fs.readFileSync(persistenceFile, "utf-8");
+    JSON.parse(json);
     store.setJson(json);
-    console.log(`[TinyBase] Loaded persisted data from ${persistenceFile}`);
+    tinybaseLogger.info("persisted_data_loaded", { persistenceFile });
     return true;
   } catch (error) {
-    console.error("[TinyBase] Failed to load persisted data:", error);
+    tinybaseLogger.error("persisted_data_load_failed", { persistenceFile, error });
     const backupPath = `${persistenceFile}.corrupt-${Date.now()}`;
     try {
       fs.copyFileSync(persistenceFile, backupPath);
       fs.chmodSync(backupPath, 0o600);
-      console.error(`[TinyBase] Backed up corrupt persisted data to ${backupPath}`);
+      tinybaseLogger.error("corrupt_persisted_data_backed_up", { persistenceFile, backupPath });
     } catch (backupError) {
-      console.error("[TinyBase] Failed to back up corrupt persisted data:", backupError);
+      tinybaseLogger.error("corrupt_persisted_data_backup_failed", {
+        persistenceFile,
+        backupPath,
+        error: backupError,
+      });
     }
     return false;
   }
@@ -83,7 +103,7 @@ const persistStore = (store: Store): void => {
     fs.writeFileSync(persistenceFile, json, { encoding: "utf-8", mode: 0o600 });
     fs.chmodSync(persistenceFile, 0o600);
   } catch (error) {
-    console.error("[TinyBase] Failed to persist store:", error);
+    tinybaseLogger.error("persist_store_failed", { error });
   }
 };
 
@@ -102,117 +122,6 @@ const debouncedPersist = (store: Store): void => {
 };
 
 // ===========================================================================
-// Store Schema Definition
-// ===========================================================================
-
-export const storeSchema = {
-  pendingReviews: {
-    id: { type: "string" as const },
-    docId: { type: "number" as const },
-    docTitle: { type: "string" as const },
-    type: { type: "string" as const },
-    suggestion: { type: "string" as const },
-    reasoning: { type: "string" as const },
-    alternatives: { type: "string" as const }, // JSON array
-    attempts: { type: "number" as const },
-    lastFeedback: { type: "string" as const },
-    nextTag: { type: "string" as const },
-    metadata: { type: "string" as const }, // JSON object
-    createdAt: { type: "string" as const },
-  },
-  tagMetadata: {
-    id: { type: "number" as const },
-    paperlessTagId: { type: "number" as const },
-    tagName: { type: "string" as const },
-    description: { type: "string" as const },
-    category: { type: "string" as const },
-    excludeFromAi: { type: "boolean" as const },
-  },
-  customFieldMetadata: {
-    id: { type: "number" as const },
-    paperlessFieldId: { type: "number" as const },
-    fieldName: { type: "string" as const },
-    description: { type: "string" as const },
-    extractionHints: { type: "string" as const },
-    valueFormat: { type: "string" as const },
-    exampleValues: { type: "string" as const }, // JSON array
-  },
-  blockedSuggestions: {
-    id: { type: "number" as const },
-    suggestionName: { type: "string" as const },
-    normalizedName: { type: "string" as const },
-    blockType: { type: "string" as const },
-    rejectionReason: { type: "string" as const },
-    rejectionCategory: { type: "string" as const },
-    docId: { type: "number" as const },
-    createdAt: { type: "string" as const },
-  },
-  translations: {
-    key: { type: "string" as const },
-    sourceLang: { type: "string" as const },
-    targetLang: { type: "string" as const },
-    sourceText: { type: "string" as const },
-    translatedText: { type: "string" as const },
-    modelUsed: { type: "string" as const },
-    createdAt: { type: "string" as const },
-  },
-  jobStatus: {
-    name: { type: "string" as const },
-    status: { type: "string" as const },
-    lastRun: { type: "string" as const },
-    lastResult: { type: "string" as const }, // JSON
-    nextRun: { type: "string" as const },
-    enabled: { type: "boolean" as const },
-    schedule: { type: "string" as const },
-    cron: { type: "string" as const },
-  },
-  settings: {
-    key: { type: "string" as const },
-    value: { type: "string" as const },
-    updatedAt: { type: "string" as const },
-  },
-  processingLogs: {
-    id: { type: "string" as const },
-    docId: { type: "number" as const },
-    timestamp: { type: "string" as const },
-    step: { type: "string" as const },
-    eventType: { type: "string" as const },
-    data: { type: "string" as const }, // JSON stringified
-    parentId: { type: "string" as const },
-  },
-  documentOcrContent: {
-    docId: { type: "number" as const },
-    content: { type: "string" as const },
-    pages: { type: "number" as const },
-    source: { type: "string" as const }, // 'mistral' | 'paperless' | 'manual'
-    createdAt: { type: "string" as const },
-    updatedAt: { type: "string" as const },
-  },
-  documentMemory: {
-    docId: { type: "number" as const },
-    sessionId: { type: "string" as const },
-    ocrVersionIds: { type: "string" as const }, // JSON number[]
-    extractedFacts: { type: "string" as const }, // JSON
-    candidateEntities: { type: "string" as const }, // JSON
-    finalDecisions: { type: "string" as const }, // JSON
-    humanDecisions: { type: "string" as const }, // JSON array
-    reviewFeedback: { type: "string" as const }, // JSON array
-    runSummaries: { type: "string" as const }, // JSON array
-    transcript: { type: "string" as const }, // JSON AgentMessage[]
-    createdAt: { type: "string" as const },
-    updatedAt: { type: "string" as const },
-  },
-  consolidationReports: {
-    id: { type: "string" as const },
-    status: { type: "string" as const },
-    proposals: { type: "string" as const }, // JSON
-    summary: { type: "string" as const },
-    createdAt: { type: "string" as const },
-    updatedAt: { type: "string" as const },
-  },
-};
-
-// ===========================================================================
 // Processing Log Types
 // ===========================================================================
 
@@ -221,8 +130,24 @@ export type ProcessingLogEventType =
   | "prompt"
   | "response"
   | "thinking"
+  | "run_started"
+  | "run_completed"
+  | "run_cancelled"
+  | "run_failed"
+  | "lock_acquired"
+  | "lock_released"
+  | "lock_stale"
+  | "agent_message"
   | "tool_call"
   | "tool_result"
+  | "question_requested"
+  | "question_answered"
+  | "stage_started"
+  | "stage_completed"
+  | "stage_failed"
+  | "catalog_proposal_created"
+  | "catalog_proposal_applied"
+  | "catalog_proposal_rejected"
   | "confirming"
   | "retry"
   | "result"
@@ -474,13 +399,72 @@ const sanitizeForStorage = <T extends Record<string, unknown>>(
   return result;
 };
 
-const parseJsonValue = <T>(value: unknown, fallback: T): T => {
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === "string");
+
+const isNumberArray = (value: unknown): value is number[] =>
+  Array.isArray(value) && value.every((item) => typeof item === "number" && Number.isFinite(item));
+
+const isUnknownArray = (value: unknown): value is unknown[] => Array.isArray(value);
+
+const isHumanDecisionRecordArray = (value: unknown): value is HumanDecisionRecord[] =>
+  Array.isArray(value) &&
+  value.every(
+    (item) =>
+      isRecord(item) &&
+      typeof item["id"] === "string" &&
+      typeof item["type"] === "string" &&
+      typeof item["question"] === "string" &&
+      typeof item["suggestion"] === "string" &&
+      typeof item["answer"] === "string" &&
+      (item["value"] === null || typeof item["value"] === "string") &&
+      typeof item["decidedAt"] === "string",
+  );
+
+const isReviewFeedbackRecordArray = (value: unknown): value is ReviewFeedbackRecord[] =>
+  Array.isArray(value) &&
+  value.every(
+    (item) =>
+      isRecord(item) &&
+      typeof item["id"] === "string" &&
+      typeof item["feedback"] === "string" &&
+      typeof item["createdAt"] === "string",
+  );
+
+const isRunSummaryRecordArray = (value: unknown): value is RunSummaryRecord[] =>
+  Array.isArray(value) &&
+  value.every(
+    (item) =>
+      isRecord(item) &&
+      typeof item["id"] === "string" &&
+      typeof item["agent"] === "string" &&
+      typeof item["status"] === "string" &&
+      typeof item["summary"] === "string" &&
+      typeof item["createdAt"] === "string",
+  );
+
+const parseStoredJson = <T>(
+  value: unknown,
+  fallback: T,
+  validate: (parsed: unknown) => parsed is T,
+  context: { table: string; rowId: string; field: string },
+): T => {
   if (typeof value !== "string" || value.length === 0) return fallback;
+  let parsed: unknown;
   try {
-    return JSON.parse(value) as T;
-  } catch {
+    parsed = JSON.parse(value);
+  } catch (error) {
+    tinybaseLogger.warn("stored_json_parse_failed", { ...context, error });
     return fallback;
   }
+  if (!validate(parsed)) {
+    tinybaseLogger.warn("stored_json_validation_failed", { ...context });
+    return fallback;
+  }
+  return parsed;
 };
 
 /**
@@ -493,7 +477,6 @@ const flattenObject = (obj: Record<string, unknown>, prefix = ""): Record<string
     const newKey = prefix ? `${prefix}.${key}` : key;
 
     if (value === null || value === undefined) {
-      continue;
     } else if (Array.isArray(value)) {
       result[newKey] = JSON.stringify(value);
     } else if (typeof value === "object") {
@@ -531,7 +514,7 @@ const autoImportConfigYaml = (store: Store): void => {
   }
 
   if (!configPath) {
-    console.log("[TinyBase] No config.yaml found for auto-import");
+    tinybaseLogger.info("config_auto_import_not_found");
     return;
   }
 
@@ -540,7 +523,7 @@ const autoImportConfigYaml = (store: Store): void => {
     const yamlConfig = parseYaml(content) as Record<string, unknown>;
 
     if (!yamlConfig || Object.keys(yamlConfig).length === 0) {
-      console.log("[TinyBase] config.yaml is empty");
+      tinybaseLogger.info("config_auto_import_empty", { configPath });
       return;
     }
 
@@ -557,10 +540,174 @@ const autoImportConfigYaml = (store: Store): void => {
       count++;
     }
 
-    console.log(`[TinyBase] Auto-imported ${count} settings from ${configPath}`);
+    tinybaseLogger.info("config_auto_import_completed", { configPath, count });
   } catch (error) {
-    console.error("[TinyBase] Failed to auto-import config.yaml:", error);
+    tinybaseLogger.error("config_auto_import_failed", { configPath, error });
   }
+};
+
+const readConfigYamlSettings = (): Record<string, string> => {
+  if (process.env["PAPERLESS_LLM_TINYBASE_DISABLE_CONFIG_IMPORT"] === "true") {
+    return {};
+  }
+
+  const configPath = resolveConfigPath();
+  if (!configPath) return {};
+
+  try {
+    const content = fs.readFileSync(configPath, "utf-8");
+    const yamlConfig = parseYaml(content) as Record<string, unknown>;
+    return yamlConfig && Object.keys(yamlConfig).length > 0 ? flattenObject(yamlConfig) : {};
+  } catch (error) {
+    tinybaseLogger.error("settings_migration_config_read_failed", { configPath, error });
+    return {};
+  }
+};
+
+const migrateCanonicalSettings = (store: Store): boolean => {
+  const configSettings = readConfigYamlSettings();
+  const table = store.getTable("settings") ?? {};
+  const now = new Date().toISOString();
+  const readSetting = (key: string): string | undefined => {
+    const value = table[key]?.["value"];
+    return typeof value === "string" ? value : undefined;
+  };
+  const readSettingRow = (key: string): { value: string; updatedAt: string } | null => {
+    const row = table[key];
+    const value = row?.["value"];
+    if (typeof value !== "string") return null;
+    return {
+      value,
+      updatedAt: typeof row?.["updatedAt"] === "string" ? row["updatedAt"] : "",
+    };
+  };
+  const firstNonEmpty = (keys: string[]): string | undefined => {
+    for (const key of keys) {
+      const persisted = readSetting(key);
+      if (persisted?.trim()) return persisted;
+      const configured = configSettings[key];
+      if (configured?.trim()) return configured;
+    }
+    return undefined;
+  };
+  const writeIfEmpty = (canonicalKey: string, sourceKeys: string[]): boolean => {
+    const current = readSetting(canonicalKey);
+    if (current?.trim()) return false;
+    const value = firstNonEmpty(sourceKeys);
+    if (!value) return false;
+    store.setRow("settings", canonicalKey, { key: canonicalKey, value, updatedAt: now });
+    return true;
+  };
+  const syncCanonicalFromLatest = (canonicalKey: string, sourceKeys: string[]): boolean => {
+    const candidates = [canonicalKey, ...sourceKeys]
+      .map((key) => ({ key, row: readSettingRow(key) }))
+      .filter(
+        (candidate): candidate is { key: string; row: { value: string; updatedAt: string } } =>
+          !!candidate.row && candidate.row.value.trim().length > 0,
+      )
+      .sort((a, b) => b.row.updatedAt.localeCompare(a.row.updatedAt));
+    const latest = candidates[0];
+    if (!latest) return false;
+    if (readSetting(canonicalKey) === latest.row.value) return false;
+    store.setRow("settings", canonicalKey, {
+      key: canonicalKey,
+      value: latest.row.value,
+      updatedAt: now,
+    });
+    return true;
+  };
+
+  const migrations: Array<[string, string[]]> = [
+    ["paperless.url", ["paperless.url", "paperless_url"]],
+    ["paperless.token", ["paperless.token", "paperless_token"]],
+    ["paperless.external_url", ["paperless.external_url", "paperless_external_url"]],
+    ["ollama.url", ["ollama.url", "ollama_url"]],
+    ["ollama.model", ["ollama.model", "ollama_model"]],
+    [
+      "ollama.embedding_model",
+      ["ollama.embedding_model", "ollama.embeddingModel", "ollama_embedding_model"],
+    ],
+    ["mistral.api_key", ["mistral.api_key", "mistral.apiKey", "mistral_api_key"]],
+    ["mistral.model", ["mistral.model", "mistral_model"]],
+    ["qdrant.url", ["qdrant.url", "qdrant_url"]],
+    ["qdrant.collectionName", ["qdrant.collectionName", "qdrant.collection", "qdrant_collection"]],
+    [
+      "auto_processing.enabled",
+      ["auto_processing.enabled", "autoProcessing.enabled", "auto_processing_enabled"],
+    ],
+    [
+      "auto_processing.interval_minutes",
+      [
+        "auto_processing.interval_minutes",
+        "autoProcessing.intervalMinutes",
+        "auto_processing_interval_minutes",
+      ],
+    ],
+    [
+      "auto_processing.include_untagged",
+      [
+        "auto_processing.include_untagged",
+        "autoProcessing.includeUntagged",
+        "auto_processing_include_untagged",
+      ],
+    ],
+    ["pipeline.ocr", ["pipeline.ocr", "pipeline.enableOcr", "pipeline_ocr"]],
+    ["pipeline.summary", ["pipeline.summary", "pipeline.enableSummary", "pipeline_summary"]],
+    ["pipeline.title", ["pipeline.title", "pipeline.enableTitle", "pipeline_title"]],
+    [
+      "pipeline.correspondent",
+      ["pipeline.correspondent", "pipeline.enableCorrespondent", "pipeline_correspondent"],
+    ],
+    [
+      "pipeline.document_type",
+      ["pipeline.document_type", "pipeline.enableDocumentType", "pipeline_document_type"],
+    ],
+    ["pipeline.tags", ["pipeline.tags", "pipeline.enableTags", "pipeline_tags"]],
+    [
+      "pipeline.custom_fields",
+      ["pipeline.custom_fields", "pipeline.enableCustomFields", "pipeline_custom_fields"],
+    ],
+    [
+      "pipeline.document_links",
+      ["pipeline.document_links", "pipeline.enableDocumentLinks", "pipeline_document_links"],
+    ],
+    ["vector_search.enabled", ["vector_search.enabled", "vector_search_enabled"]],
+    ["vector_search.top_k", ["vector_search.top_k", "vector_search_top_k"]],
+    ["vector_search.min_score", ["vector_search.min_score", "vector_search_min_score"]],
+    ["language.prompt", ["language.prompt", "prompt_language", "language"]],
+    ["debug.log_level", ["debug.log_level", "debug_log_level"]],
+    ["debug.log_prompts", ["debug.log_prompts", "debug_log_prompts"]],
+    ["debug.log_responses", ["debug.log_responses", "debug_log_responses"]],
+    [
+      "debug.save_processing_history",
+      ["debug.save_processing_history", "debug_save_processing_history"],
+    ],
+  ];
+
+  const migrated = migrations.filter(([canonicalKey, sourceKeys]) =>
+    writeIfEmpty(canonicalKey, sourceKeys),
+  ).length;
+
+  if (migrated > 0) {
+    tinybaseLogger.info("settings_migrated_to_canonical_keys", { migrated });
+  }
+
+  const synchronized = [
+    ["vector_search.enabled", ["vector_search_enabled"]],
+    ["vector_search.top_k", ["vector_search_top_k"]],
+    ["vector_search.min_score", ["vector_search_min_score"]],
+    ["auto_processing.enabled", ["auto_processing_enabled"]],
+    ["auto_processing.interval_minutes", ["auto_processing_interval_minutes"]],
+    ["auto_processing.include_untagged", ["auto_processing_include_untagged"]],
+  ].filter(([canonicalKey, sourceKeys]) =>
+    syncCanonicalFromLatest(canonicalKey as string, sourceKeys as string[]),
+  ).length;
+
+  if (synchronized > 0) {
+    tinybaseLogger.info("canonical_settings_synchronized_from_aliases", { synchronized });
+  }
+
+  return migrated > 0 || synchronized > 0;
 };
 
 // ===========================================================================
@@ -584,14 +731,23 @@ export const TinyBaseServiceLive = Layer.effect(
       return maxId + 1;
     };
 
-    // Try to load persisted data first, fall back to config.yaml
+    // Try to load persisted data first, fall back to config.yaml.
     const hadPersistedData = loadPersistedData(store);
+    const schemaMigrated = migrateTinyBaseStoreToCurrentSchema(store);
+    if (schemaMigrated) {
+      tinybaseLogger.info("schema_migration_completed", {
+        version: CURRENT_TINYBASE_SCHEMA_VERSION,
+      });
+    }
     if (!hadPersistedData) {
       // Only import from config.yaml if we don't have persisted data
       autoImportConfigYaml(store);
-      // Persist the initial config
+    }
+    const settingsMigrated = migrateCanonicalSettings(store);
+    if (!hadPersistedData || schemaMigrated || settingsMigrated) {
       persistStore(store);
     }
+    verifyTinyBaseStoreSchema(store);
 
     nextBlockedId = getNextNumericRowId("blockedSuggestions");
     nextTagMetaId = getNextNumericRowId("tagMetadata");
@@ -601,7 +757,7 @@ export const TinyBaseServiceLive = Layer.effect(
     store.addTablesListener(() => {
       debouncedPersist(store);
     });
-    console.log("[TinyBase] Auto-persistence enabled");
+    tinybaseLogger.info("auto_persistence_enabled");
 
     const createEmptyMemory = (docId: number): DocumentMemory => {
       const now = new Date().toISOString();
@@ -627,14 +783,46 @@ export const TinyBaseServiceLive = Layer.effect(
       return {
         docId: row["docId"] as number,
         sessionId: row["sessionId"] as string,
-        ocrVersionIds: parseJsonValue<number[]>(row["ocrVersionIds"], []),
-        extractedFacts: parseJsonValue<Record<string, unknown>>(row["extractedFacts"], {}),
-        candidateEntities: parseJsonValue<Record<string, unknown>>(row["candidateEntities"], {}),
-        finalDecisions: parseJsonValue<Record<string, unknown>>(row["finalDecisions"], {}),
-        humanDecisions: parseJsonValue<HumanDecisionRecord[]>(row["humanDecisions"], []),
-        reviewFeedback: parseJsonValue<ReviewFeedbackRecord[]>(row["reviewFeedback"], []),
-        runSummaries: parseJsonValue<RunSummaryRecord[]>(row["runSummaries"], []),
-        transcript: parseJsonValue<unknown[]>(row["transcript"], []),
+        ocrVersionIds: parseStoredJson(row["ocrVersionIds"], [], isNumberArray, {
+          table: "documentMemory",
+          rowId,
+          field: "ocrVersionIds",
+        }),
+        extractedFacts: parseStoredJson(row["extractedFacts"], {}, isRecord, {
+          table: "documentMemory",
+          rowId,
+          field: "extractedFacts",
+        }),
+        candidateEntities: parseStoredJson(row["candidateEntities"], {}, isRecord, {
+          table: "documentMemory",
+          rowId,
+          field: "candidateEntities",
+        }),
+        finalDecisions: parseStoredJson(row["finalDecisions"], {}, isRecord, {
+          table: "documentMemory",
+          rowId,
+          field: "finalDecisions",
+        }),
+        humanDecisions: parseStoredJson(row["humanDecisions"], [], isHumanDecisionRecordArray, {
+          table: "documentMemory",
+          rowId,
+          field: "humanDecisions",
+        }),
+        reviewFeedback: parseStoredJson(row["reviewFeedback"], [], isReviewFeedbackRecordArray, {
+          table: "documentMemory",
+          rowId,
+          field: "reviewFeedback",
+        }),
+        runSummaries: parseStoredJson(row["runSummaries"], [], isRunSummaryRecordArray, {
+          table: "documentMemory",
+          rowId,
+          field: "runSummaries",
+        }),
+        transcript: parseStoredJson(row["transcript"], [], isUnknownArray, {
+          table: "documentMemory",
+          rowId,
+          field: "transcript",
+        }),
         createdAt: row["createdAt"] as string,
         updatedAt: row["updatedAt"] as string,
       };
@@ -666,7 +854,11 @@ export const TinyBaseServiceLive = Layer.effect(
       return {
         id: row["id"] as string,
         status: row["status"] as ConsolidationReportRecord["status"],
-        proposals: parseJsonValue<unknown[]>(row["proposals"], []),
+        proposals: parseStoredJson(row["proposals"], [], isUnknownArray, {
+          table: "consolidationReports",
+          rowId,
+          field: "proposals",
+        }),
         summary: row["summary"] as string,
         createdAt: row["createdAt"] as string,
         updatedAt: row["updatedAt"] as string,
@@ -691,7 +883,11 @@ export const TinyBaseServiceLive = Layer.effect(
               type: row?.["type"] as PendingReview["type"],
               suggestion: row?.["suggestion"] as string,
               reasoning: row?.["reasoning"] as string,
-              alternatives: JSON.parse((row?.["alternatives"] as string) || "[]") as string[],
+              alternatives: parseStoredJson(row?.["alternatives"], [], isStringArray, {
+                table: "pendingReviews",
+                rowId: id,
+                field: "alternatives",
+              }),
               attempts: row?.["attempts"] as number,
               lastFeedback: row?.["lastFeedback"] as string | null,
               nextTag: row?.["nextTag"] as string | null,
@@ -725,7 +921,11 @@ export const TinyBaseServiceLive = Layer.effect(
               type: row["type"] as PendingReview["type"],
               suggestion: row["suggestion"] as string,
               reasoning: row["reasoning"] as string,
-              alternatives: JSON.parse((row["alternatives"] as string) || "[]") as string[],
+              alternatives: parseStoredJson(row["alternatives"], [], isStringArray, {
+                table: "pendingReviews",
+                rowId: id,
+                field: "alternatives",
+              }),
               attempts: row["attempts"] as number,
               lastFeedback: row["lastFeedback"] as string | null,
               nextTag: row["nextTag"] as string | null,
@@ -747,9 +947,10 @@ export const TinyBaseServiceLive = Layer.effect(
             // Skip empty suggestions - don't add items with no actual suggestion
             const trimmedSuggestion = item.suggestion?.trim() ?? "";
             if (!trimmedSuggestion) {
-              console.log(
-                `[TinyBase] Skipping pending review for doc ${item.docId} (${item.type}) - empty suggestion`,
-              );
+              tinybaseLogger.info("pending_review_skipped_empty_suggestion", {
+                docId: item.docId,
+                reviewType: item.type,
+              });
               return null;
             }
 
@@ -1408,6 +1609,8 @@ export const TinyBaseServiceLive = Layer.effect(
         Effect.try({
           try: () => {
             store.setJson(json);
+            migrateTinyBaseStoreToCurrentSchema(store);
+            verifyTinyBaseStoreSchema(store);
           },
           catch: (e) =>
             new DatabaseError({
@@ -1457,7 +1660,11 @@ export const TinyBaseServiceLive = Layer.effect(
                 timestamp: row?.["timestamp"] as string,
                 step: row?.["step"] as string,
                 eventType: row?.["eventType"] as ProcessingLogEventType,
-                data: JSON.parse((row?.["data"] as string) || "{}") as Record<string, unknown>,
+                data: parseStoredJson(row?.["data"], {}, isRecord, {
+                  table: "processingLogs",
+                  rowId: id,
+                  field: "data",
+                }),
                 parentId: (row?.["parentId"] as string) || undefined,
               }))
               .sort((a, b) => a.timestamp.localeCompare(b.timestamp));

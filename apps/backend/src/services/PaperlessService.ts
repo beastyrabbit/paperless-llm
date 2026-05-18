@@ -4,6 +4,17 @@
 import { Context, Effect, Layer, Option, pipe } from "effect";
 import { ConfigService } from "../config/index.js";
 import { NotFoundError, PaperlessError } from "../errors/index.js";
+import { normalizeConfiguredPaperlessUrl } from "./paperless/url.js";
+import { normalizeVersion, versionSortKey } from "./paperless/versions.js";
+import type {
+  PaginatedResponse,
+  PaperlessApiVersionInfo,
+  PaperlessDocumentVersion,
+  PaperlessDocumentWithVersions,
+  PaperlessErrorType,
+  PaperlessVersionUploadResult,
+} from "./paperless/types.js";
+import { withClientSpan } from "../observability/tracing.js";
 import type {
   Correspondent,
   CustomField,
@@ -13,46 +24,12 @@ import type {
   QueueStats,
   Tag,
 } from "../models/index.js";
+import { fetchWithTimeout } from "../utils/http.js";
 import { TinyBaseService } from "./TinyBaseService.js";
 
 // ===========================================================================
 // Service Interface
 // ===========================================================================
-
-// Common error type for all Paperless operations
-type PaperlessErrorType = PaperlessError | NotFoundError;
-
-export interface PaperlessApiVersionInfo {
-  api_version?: number;
-  version?: string;
-  paperless_version?: string;
-  [key: string]: unknown;
-}
-
-export interface PaperlessDocumentVersion {
-  id: number;
-  document?: number;
-  version?: number;
-  label?: string | null;
-  version_label?: string | null;
-  content?: string | null;
-  added?: string;
-  created?: string;
-  modified?: string;
-  checksum?: string;
-  is_root?: boolean;
-  [key: string]: unknown;
-}
-
-export interface PaperlessVersionUploadResult {
-  id?: number;
-  version_id?: number;
-  task_id?: string;
-  document?: number;
-  label?: string | null;
-  version_label?: string | null;
-  [key: string]: unknown;
-}
 
 export interface PaperlessService {
   // Document operations
@@ -200,62 +177,11 @@ export interface PaperlessService {
 
 export const PaperlessService = Context.GenericTag<PaperlessService>("PaperlessService");
 
-// ===========================================================================
-// Paginated Response Type
-// ===========================================================================
-
-interface PaginatedResponse<T> {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: T[];
-}
-
-type PaperlessDocumentWithVersions = Document & {
-  versions?: PaperlessDocumentVersion[];
-};
-
-const normalizeVersion = (
-  version: PaperlessDocumentVersion,
-  content?: string | null,
-): PaperlessDocumentVersion => ({
-  ...version,
-  label: version.label ?? version.version_label ?? null,
-  version_label: version.version_label ?? version.label ?? null,
-  content: content ?? version.content ?? null,
-  created: version.created ?? version.added,
-});
-
-const versionSortKey = (version: PaperlessDocumentVersion): string =>
-  version.created ?? version.added ?? "";
-
-const ALLOWED_PAPERLESS_HOSTS = (process.env["PAPERLESS_ALLOWED_HOSTS"] ?? "")
-  .split(",")
-  .map((host) => host.trim().toLowerCase())
-  .filter(Boolean);
-
-const normalizePaperlessUrl = (value: string): string => {
-  const parsed = new URL(value);
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Paperless URL must use http or https");
-  }
-  if (parsed.username || parsed.password) {
-    throw new Error("Paperless URL must not include credentials");
-  }
-  if (
-    ALLOWED_PAPERLESS_HOSTS.length > 0 &&
-    !ALLOWED_PAPERLESS_HOSTS.includes(parsed.hostname.toLowerCase())
-  ) {
-    throw new Error(`Paperless host '${parsed.hostname}' is not in PAPERLESS_ALLOWED_HOSTS`);
-  }
-  const pathname = parsed.pathname.replace(/\/+$/, "");
-  return `${parsed.origin}${pathname}`;
-};
-
-const normalizeConfiguredPaperlessUrl = (configuredUrl?: string | null): string => {
-  if (!configuredUrl) return "";
-  return normalizePaperlessUrl(configuredUrl);
-};
+export type {
+  PaperlessApiVersionInfo,
+  PaperlessDocumentVersion,
+  PaperlessVersionUploadResult,
+} from "./paperless/types.js";
 
 // ===========================================================================
 // Live Implementation
@@ -267,6 +193,7 @@ export const PaperlessServiceLive = Layer.effect(
     const configService = yield* ConfigService;
     const tinybaseService = yield* TinyBaseService;
     const { paperless: configPaperless, tags: tagConfig } = configService.config;
+    const requestTimeoutMs = configService.config.http?.requestTimeoutMs ?? 120_000;
 
     // Helper to get current config from TinyBase with fallback to ConfigService
     const getConfig = (): Effect.Effect<{ url: string; token: string }, PaperlessError> =>
@@ -302,183 +229,218 @@ export const PaperlessServiceLive = Layer.effect(
       body?: unknown,
       params?: Record<string, string | number>,
     ): Effect.Effect<T, PaperlessError | NotFoundError> =>
-      Effect.gen(function* () {
-        const { url: baseUrl, token } = yield* getConfig();
+      pipe(
+        Effect.gen(function* () {
+          const { url: baseUrl, token } = yield* getConfig();
 
-        if (!baseUrl || !token) {
-          return yield* Effect.fail(
-            new PaperlessError({
-              message: "Paperless-ngx not configured",
-            }),
-          );
-        }
+          if (!baseUrl || !token) {
+            return yield* Effect.fail(
+              new PaperlessError({
+                message: "Paperless-ngx not configured",
+              }),
+            );
+          }
 
-        return yield* Effect.tryPromise({
-          try: async () => {
-            const url = new URL(`${baseUrl}/api${path}`);
-            if (params) {
-              for (const [key, value] of Object.entries(params)) {
-                url.searchParams.set(key, String(value));
+          return yield* Effect.tryPromise({
+            try: async () => {
+              const url = new URL(`${baseUrl}/api${path}`);
+              if (params) {
+                for (const [key, value] of Object.entries(params)) {
+                  url.searchParams.set(key, String(value));
+                }
               }
-            }
 
-            const response = await fetch(url.toString(), {
-              method,
-              headers: {
-                Authorization: `Token ${token}`,
-                Accept: "application/json; version=10",
-                "Content-Type": "application/json",
-              },
-              body: body === undefined ? undefined : JSON.stringify(body),
-            });
+              const response = await fetchWithTimeout(
+                url,
+                {
+                  method,
+                  headers: {
+                    Authorization: `Token ${token}`,
+                    Accept: "application/json; version=10",
+                    "Content-Type": "application/json",
+                  },
+                  body: body === undefined ? undefined : JSON.stringify(body),
+                },
+                requestTimeoutMs,
+              );
 
-            if (!response.ok) {
-              if (response.status === 404) {
-                throw new NotFoundError({
-                  message: `Resource not found at ${path}`,
+              if (!response.ok) {
+                if (response.status === 404) {
+                  throw new NotFoundError({
+                    message: `Resource not found at ${path}`,
+                  });
+                }
+                throw new PaperlessError({
+                  message: `Paperless API error: ${response.status} ${response.statusText}`,
+                  statusCode: response.status,
                 });
               }
-              throw new PaperlessError({
-                message: `Paperless API error: ${response.status} ${response.statusText}`,
-                statusCode: response.status,
+
+              // Handle 204 No Content
+              if (response.status === 204) {
+                return undefined as T;
+              }
+
+              return (await response.json()) as T;
+            },
+            catch: (error) => {
+              if (error instanceof PaperlessError || error instanceof NotFoundError) {
+                return error;
+              }
+              return new PaperlessError({
+                message: `Request failed: ${String(error)}`,
+                cause: error,
               });
-            }
-
-            // Handle 204 No Content
-            if (response.status === 204) {
-              return undefined as T;
-            }
-
-            return (await response.json()) as T;
-          },
-          catch: (error) => {
-            if (error instanceof PaperlessError || error instanceof NotFoundError) {
-              return error;
-            }
-            return new PaperlessError({
-              message: `Request failed: ${String(error)}`,
-              cause: error,
-            });
-          },
-        });
-      });
+            },
+          });
+        }),
+        withClientSpan("paperless.request", {
+          "peer.service": "paperless",
+          "http.request.method": method,
+          "url.path": path,
+          "paperless.api.version": 10,
+        }),
+      );
 
     const binaryRequest = (
       method: string,
       path: string,
       params?: Record<string, string | number>,
     ): Effect.Effect<Uint8Array, PaperlessError | NotFoundError> =>
-      Effect.gen(function* () {
-        const { url: baseUrl, token } = yield* getConfig();
+      pipe(
+        Effect.gen(function* () {
+          const { url: baseUrl, token } = yield* getConfig();
 
-        if (!baseUrl || !token) {
-          return yield* Effect.fail(
-            new PaperlessError({
-              message: "Paperless-ngx not configured",
-            }),
-          );
-        }
+          if (!baseUrl || !token) {
+            return yield* Effect.fail(
+              new PaperlessError({
+                message: "Paperless-ngx not configured",
+              }),
+            );
+          }
 
-        return yield* Effect.tryPromise({
-          try: async () => {
-            const url = new URL(`${baseUrl}/api${path}`);
-            if (params) {
-              for (const [key, value] of Object.entries(params)) {
-                url.searchParams.set(key, String(value));
+          return yield* Effect.tryPromise({
+            try: async () => {
+              const url = new URL(`${baseUrl}/api${path}`);
+              if (params) {
+                for (const [key, value] of Object.entries(params)) {
+                  url.searchParams.set(key, String(value));
+                }
               }
-            }
 
-            const response = await fetch(url.toString(), {
-              method,
-              headers: {
-                Authorization: `Token ${token}`,
-                Accept: "*/*",
-              },
-            });
+              const response = await fetchWithTimeout(
+                url,
+                {
+                  method,
+                  headers: {
+                    Authorization: `Token ${token}`,
+                    Accept: "*/*",
+                  },
+                },
+                requestTimeoutMs,
+              );
 
-            if (!response.ok) {
-              if (response.status === 404) {
-                throw new NotFoundError({
-                  message: `Resource not found at ${path}`,
+              if (!response.ok) {
+                if (response.status === 404) {
+                  throw new NotFoundError({
+                    message: `Resource not found at ${path}`,
+                  });
+                }
+                throw new PaperlessError({
+                  message: `Paperless API error: ${response.status} ${response.statusText}`,
+                  statusCode: response.status,
                 });
               }
-              throw new PaperlessError({
-                message: `Paperless API error: ${response.status} ${response.statusText}`,
-                statusCode: response.status,
-              });
-            }
 
-            return new Uint8Array(await response.arrayBuffer());
-          },
-          catch: (error) => {
-            if (error instanceof PaperlessError || error instanceof NotFoundError) {
-              return error;
-            }
-            return new PaperlessError({
-              message: `Binary request failed: ${String(error)}`,
-              cause: error,
-            });
-          },
-        });
-      });
+              return new Uint8Array(await response.arrayBuffer());
+            },
+            catch: (error) => {
+              if (error instanceof PaperlessError || error instanceof NotFoundError) {
+                return error;
+              }
+              return new PaperlessError({
+                message: `Binary request failed: ${String(error)}`,
+                cause: error,
+              });
+            },
+          });
+        }),
+        withClientSpan("paperless.binary_request", {
+          "peer.service": "paperless",
+          "http.request.method": method,
+          "url.path": path,
+        }),
+      );
 
     const multipartRequest = <T>(
       method: string,
       path: string,
       formData: FormData,
     ): Effect.Effect<T, PaperlessError | NotFoundError> =>
-      Effect.gen(function* () {
-        const { url: baseUrl, token } = yield* getConfig();
+      pipe(
+        Effect.gen(function* () {
+          const { url: baseUrl, token } = yield* getConfig();
 
-        if (!baseUrl || !token) {
-          return yield* Effect.fail(
-            new PaperlessError({
-              message: "Paperless-ngx not configured",
-            }),
-          );
-        }
+          if (!baseUrl || !token) {
+            return yield* Effect.fail(
+              new PaperlessError({
+                message: "Paperless-ngx not configured",
+              }),
+            );
+          }
 
-        return yield* Effect.tryPromise({
-          try: async () => {
-            const url = new URL(`${baseUrl}/api${path}`);
-            const response = await fetch(url.toString(), {
-              method,
-              headers: {
-                Authorization: `Token ${token}`,
-                Accept: "application/json; version=10",
-              },
-              body: formData,
-            });
+          return yield* Effect.tryPromise({
+            try: async () => {
+              const url = new URL(`${baseUrl}/api${path}`);
+              const response = await fetchWithTimeout(
+                url,
+                {
+                  method,
+                  headers: {
+                    Authorization: `Token ${token}`,
+                    Accept: "application/json; version=10",
+                  },
+                  body: formData,
+                },
+                requestTimeoutMs,
+              );
 
-            if (!response.ok) {
-              if (response.status === 404) {
-                throw new NotFoundError({
-                  message: `Resource not found at ${path}`,
+              if (!response.ok) {
+                if (response.status === 404) {
+                  throw new NotFoundError({
+                    message: `Resource not found at ${path}`,
+                  });
+                }
+                throw new PaperlessError({
+                  message: `Paperless API error: ${response.status} ${response.statusText}`,
+                  statusCode: response.status,
                 });
               }
-              throw new PaperlessError({
-                message: `Paperless API error: ${response.status} ${response.statusText}`,
-                statusCode: response.status,
+
+              if (response.status === 204) {
+                return undefined as T;
+              }
+
+              return (await response.json()) as T;
+            },
+            catch: (error) => {
+              if (error instanceof PaperlessError || error instanceof NotFoundError) {
+                return error;
+              }
+              return new PaperlessError({
+                message: `Multipart request failed: ${String(error)}`,
+                cause: error,
               });
-            }
-
-            if (response.status === 204) {
-              return undefined as T;
-            }
-
-            return (await response.json()) as T;
-          },
-          catch: (error) => {
-            if (error instanceof PaperlessError || error instanceof NotFoundError) {
-              return error;
-            }
-            return new PaperlessError({
-              message: `Multipart request failed: ${String(error)}`,
-              cause: error,
-            });
-          },
-        });
-      });
+            },
+          });
+        }),
+        withClientSpan("paperless.multipart_request", {
+          "peer.service": "paperless",
+          "http.request.method": method,
+          "url.path": path,
+          "paperless.api.version": 10,
+        }),
+      );
 
     // Helper to convert NotFoundError to PaperlessError for list endpoints
     const mapNotFound = <T>(
@@ -786,7 +748,7 @@ export const PaperlessServiceLive = Layer.effect(
           }
         }),
 
-      transitionDocumentTag: (docId, fromTagName, toTagName) =>
+      transitionDocumentTag: (docId, _fromTagName, toTagName) =>
         Effect.gen(function* () {
           // Get ALL tags to build a map of llm- tags
           const allTags = yield* request<{ results: Tag[] }>("GET", "/tags/?page_size=1000").pipe(
@@ -1026,6 +988,98 @@ export const PaperlessServiceLive = Layer.effect(
 
           const countByTag = (tagName: string): Effect.Effect<number, PaperlessError> =>
             countByTags([tagName]);
+
+          const processingStageTags = [
+            tagConfig.todo,
+            tagConfig.pending,
+            tagConfig.ocr,
+            tagConfig.ocrDone,
+            tagConfig.metadata,
+            tagConfig.summaryDone,
+            tagConfig.titleDone,
+            tagConfig.correspondentDone,
+            tagConfig.documentTypeDone,
+            tagConfig.index,
+            tagConfig.tagsDone,
+          ].filter(Boolean);
+          const primaryProcessingTags = [
+            tagConfig.ocr,
+            tagConfig.metadata,
+            tagConfig.summaryDone,
+            tagConfig.index,
+          ].filter(Boolean);
+          const usesCoarseProcessingTag =
+            new Set([tagConfig.todo, ...primaryProcessingTags]).size === 1;
+          const usesQueuedAndActiveTags =
+            new Set(primaryProcessingTags).size === 1 && tagConfig.todo !== tagConfig.ocr;
+
+          if (usesQueuedAndActiveTags) {
+            const [queued, processing, review, done, processed, failed, manualReview] =
+              yield* Effect.all(
+                [
+                  countByTags([tagConfig.todo, tagConfig.pending]),
+                  countByTags(primaryProcessingTags),
+                  countByTags([tagConfig.review, tagConfig.manualReview, tagConfig.schemaReview]),
+                  countByTags([tagConfig.done, tagConfig.processed]),
+                  countByTag(tagConfig.processed),
+                  countByTag(tagConfig.failed),
+                  countByTag(tagConfig.manualReview),
+                ],
+                { concurrency: "unbounded" },
+              );
+
+            return {
+              todo: queued,
+              ocr: 0,
+              metadata: processing,
+              review,
+              index: 0,
+              done,
+              pending: queued,
+              ocrDone: 0,
+              titleDone: 0,
+              correspondentDone: 0,
+              documentTypeDone: 0,
+              tagsDone: 0,
+              processed,
+              failed,
+              manualReview,
+              total: queued + processing + review + done + failed,
+            };
+          }
+
+          if (usesCoarseProcessingTag) {
+            const [processing, review, done, processed, failed, manualReview] = yield* Effect.all(
+              [
+                countByTags(processingStageTags),
+                countByTags([tagConfig.review, tagConfig.manualReview, tagConfig.schemaReview]),
+                countByTags([tagConfig.done, tagConfig.processed]),
+                countByTag(tagConfig.processed),
+                countByTag(tagConfig.failed),
+                countByTag(tagConfig.manualReview),
+              ],
+              { concurrency: "unbounded" },
+            );
+
+            return {
+              todo: processing,
+              ocr: 0,
+              metadata: 0,
+              review,
+              index: 0,
+              done,
+              pending: processing,
+              ocrDone: 0,
+              titleDone: 0,
+              correspondentDone: 0,
+              documentTypeDone: 0,
+              tagsDone: 0,
+              processed,
+              failed,
+              manualReview,
+              total: processing + review + done + failed,
+            };
+          }
 
           // Run all tag counts in parallel
           const [

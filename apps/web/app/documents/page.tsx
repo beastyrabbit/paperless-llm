@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_PAGE_BACKGROUND } from "@/lib/styles";
 import {
   Badge,
   Button,
@@ -28,21 +29,22 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
-
-interface Document {
-  id: number;
-  title: string;
-  correspondent: string | null;
-  created: string;
-  tags: string[];
-  processing_status: string | null;
-}
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type DocumentTagMap,
+  documentDetailToSummary,
+  filterDocuments,
+  getNumericSearchId,
+} from "@/components/documents/document-list-model";
+import { type DocumentSummary, documentsApi } from "@/lib/api";
+import { useStringSetting } from "@/lib/tinybase";
 
 const statusConfig: Record<
   string,
   { labelKey: string; variant: "warning" | "info" | "secondary" | "success" | "destructive" }
 > = {
+  queued: { labelKey: "statusQueued", variant: "warning" },
+  processing: { labelKey: "statusProcessing", variant: "info" },
   todo: { labelKey: "statusTodo", variant: "warning" },
   ocr: { labelKey: "statusOcr", variant: "info" },
   metadata: { labelKey: "statusMetadata", variant: "secondary" },
@@ -65,123 +67,144 @@ const statusConfig: Record<
 export default function DocumentsPage() {
   const t = useTranslations("documents");
   const tCommon = useTranslations("common");
-  const router = useRouter();
+  const { push } = useRouter();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [allDocuments, setAllDocuments] = useState<Document[]>([]);
+  const [documents, setDocuments] = useState<DocumentSummary[]>([]);
+  const [directDocument, setDirectDocument] = useState<DocumentSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [tagMap, setTagMap] = useState<Record<string, string>>({});
+  const [errorKey, setErrorKey] = useState<"unableToConnect" | "failedToFetch" | null>(null);
+  const tagTodo = useStringSetting("tags.todo");
+  const tagOcr = useStringSetting("tags.ocr");
+  const tagMetadata = useStringSetting("tags.metadata");
+  const tagReview = useStringSetting("tags.review");
+  const tagIndex = useStringSetting("tags.index");
+  const tagDone = useStringSetting("tags.done");
+  const tagPending = useStringSetting("tags.pending");
+  const tagOcrDone = useStringSetting("tags.ocr_done");
+  const tagSummaryDone = useStringSetting("tags.summary_done");
+  const tagSchemaReview = useStringSetting("tags.schema_review");
+  const tagCorrespondentDone = useStringSetting("tags.correspondent_done");
+  const tagDocumentTypeDone = useStringSetting("tags.document_type_done");
+  const tagTitleDone = useStringSetting("tags.title_done");
+  const tagTagsDone = useStringSetting("tags.tags_done");
+  const tagProcessed = useStringSetting("tags.processed");
+  const tagFailed = useStringSetting("tags.failed");
+  const tagManualReview = useStringSetting("tags.manual_review");
+  const tagMap: DocumentTagMap = useMemo(
+    () => ({
+      queued: tagTodo,
+      processing: tagOcr,
+      todo: tagTodo,
+      ocr: tagOcr,
+      metadata: tagMetadata,
+      review: tagReview,
+      index: tagIndex,
+      done: tagDone,
+      pending: tagPending,
+      ocr_done: tagOcrDone,
+      summary_done: tagSummaryDone,
+      schema_review: tagSchemaReview,
+      correspondent_done: tagCorrespondentDone,
+      document_type_done: tagDocumentTypeDone,
+      title_done: tagTitleDone,
+      tags_done: tagTagsDone,
+      processed: tagProcessed,
+      failed: tagFailed,
+      manual_review: tagManualReview,
+    }),
+    [
+      tagCorrespondentDone,
+      tagDocumentTypeDone,
+      tagDone,
+      tagFailed,
+      tagIndex,
+      tagManualReview,
+      tagMetadata,
+      tagOcr,
+      tagOcrDone,
+      tagPending,
+      tagProcessed,
+      tagReview,
+      tagSchemaReview,
+      tagSummaryDone,
+      tagTagsDone,
+      tagTitleDone,
+      tagTodo,
+    ],
+  );
 
-  // Fetch settings once to get tag mapping
-  useEffect(() => {
-    async function fetchSettings() {
-      try {
-        const response = await fetch("/api/settings");
-        if (response.ok) {
-          const settings = await response.json();
-          setTagMap({
-            todo: settings.tags.todo,
-            ocr: settings.tags.ocr,
-            metadata: settings.tags.metadata,
-            review: settings.tags.review,
-            index: settings.tags.index,
-            done: settings.tags.done,
-            pending: settings.tags.pending,
-            ocr_done: settings.tags.ocr_done,
-            summary_done: settings.tags.summary_done,
-            schema_review: settings.tags.schema_review,
-            correspondent_done: settings.tags.correspondent_done,
-            document_type_done: settings.tags.document_type_done,
-            title_done: settings.tags.title_done,
-            tags_done: settings.tags.tags_done,
-            processed: settings.tags.processed,
-            failed: settings.tags.failed,
-            manual_review: settings.tags.manual_review,
-          });
-        }
-      } catch (err) {
-        console.error("Failed to fetch settings:", err);
-      }
-    }
-    fetchSettings();
-  }, []);
+  const numericSearchId = useMemo(() => getNumericSearchId(search), [search]);
 
   const fetchDocuments = useCallback(
-    async (tag?: string) => {
+    async (signal?: AbortSignal) => {
       setLoading(true);
-      setError(null);
-      try {
-        const params = new URLSearchParams();
-        if (tag === "all") {
-          params.set("tag", "all");
-        } else if (tag && tagMap[tag]) {
-          params.set("tag", tagMap[tag]);
-        }
+      setErrorKey(null);
+      const result = await documentsApi.getPending("all", 50, { signal });
+      if (signal?.aborted) return;
 
-        const response = await fetch(`/api/documents/pending?${params.toString()}`);
-        if (response.ok) {
-          const data = await response.json();
-          setDocuments(data);
-          // Also fetch all documents for search (if we have a filter applied)
-          if (tag && tag !== "all") {
-            const allResponse = await fetch("/api/documents/pending?tag=all");
-            if (allResponse.ok) {
-              setAllDocuments(await allResponse.json());
-            }
-          } else {
-            setAllDocuments(data);
-          }
-        } else {
-          setError(t("failedToFetch"));
-        }
-      } catch (err) {
-        setError(t("unableToConnect"));
-        console.error("Failed to fetch documents:", err);
-      } finally {
+      if (result.ok) {
+        setDocuments(result.data);
+      } else {
+        setErrorKey(result.status === 0 ? "unableToConnect" : "failedToFetch");
+      }
+
+      if (!signal?.aborted) {
         setLoading(false);
       }
     },
-    [t, tagMap],
+    [],
   );
 
   useEffect(() => {
-    if (Object.keys(tagMap).length > 0) {
-      fetchDocuments(statusFilter);
-    }
-  }, [fetchDocuments, statusFilter, tagMap]);
+    const controller = new AbortController();
+    fetchDocuments(controller.signal);
+    return () => controller.abort();
+  }, [fetchDocuments]);
 
-  // When searching, ignore filters and search all documents
-  const filteredDocs = useMemo(() => {
-    const searchLower = search.toLowerCase().trim();
-
-    if (searchLower) {
-      // Search ignores filters - search ALL documents
-      return allDocuments.filter(
-        (doc) =>
-          doc.title.toLowerCase().includes(searchLower) ||
-          doc.correspondent?.toLowerCase().includes(searchLower) ||
-          String(doc.id).includes(searchLower),
-      );
+  useEffect(() => {
+    if (!numericSearchId) {
+      setDirectDocument(null);
+      return;
     }
 
-    // No search - apply filters normally
-    return documents;
-  }, [documents, allDocuments, search]);
+    if (documents.some((doc) => doc.id === numericSearchId)) {
+      setDirectDocument(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const documentId = numericSearchId;
+    async function fetchDirectDocument() {
+      const result = await documentsApi.get(documentId, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+
+      if (result.ok) {
+        setDirectDocument(documentDetailToSummary(result.data));
+      } else {
+        setDirectDocument(null);
+      }
+    }
+
+    fetchDirectDocument();
+
+    return () => controller.abort();
+  }, [documents, numericSearchId]);
+
+  // When searching, ignore filters and search all loaded documents.
+  const filteredDocs = useMemo(
+    () =>
+      filterDocuments(documents, {
+        statusFilter,
+        search,
+        tagMap,
+        directDocument,
+      }),
+    [documents, directDocument, search, statusFilter, tagMap],
+  );
 
   const handleRefresh = () => {
-    fetchDocuments(statusFilter);
-  };
-
-  const handleRowClick = (docId: number) => {
-    router.push(`/documents/${docId}`);
-  };
-
-  const handleRowKeyDown = (event: KeyboardEvent<HTMLDivElement>, docId: number) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    handleRowClick(docId);
+    fetchDocuments();
   };
 
   const formatDate = (dateStr: string) => {
@@ -193,7 +216,7 @@ export default function DocumentsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-white to-emerald-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-emerald-950/20">
+    <div className={APP_PAGE_BACKGROUND}>
       {/* Header */}
       <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/80">
         <div className="flex h-14 items-center justify-between px-6">
@@ -206,7 +229,7 @@ export default function DocumentsPage() {
               {tCommon("refresh")}
             </Button>
             <Badge variant="secondary" className="text-xs">
-              {filteredDocs.length} / {allDocuments.length}
+              {filteredDocs.length} / {documents.length}
             </Badge>
           </div>
         </div>
@@ -214,11 +237,11 @@ export default function DocumentsPage() {
 
       <div className="p-6">
         {/* Error Message */}
-        {error && (
+        {errorKey && (
           <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
             <div className="flex items-center gap-2">
               <AlertCircle className="h-4 w-4" />
-              {error}
+              {t(errorKey)}
             </div>
           </div>
         )}
@@ -232,6 +255,11 @@ export default function DocumentsPage() {
               placeholder={search ? t("searchingAll") : t("search")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && numericSearchId) {
+                  push(`/documents/${numericSearchId}`);
+                }
+              }}
               className="pl-9 h-9 text-sm"
             />
           </div>
@@ -242,6 +270,8 @@ export default function DocumentsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t("allStatus")}</SelectItem>
+              <SelectItem value="queued">{t("statusQueued")}</SelectItem>
+              <SelectItem value="processing">{t("statusProcessing")}</SelectItem>
               <SelectItem value="todo">{t("statusTodo")}</SelectItem>
               <SelectItem value="ocr">{t("statusOcr")}</SelectItem>
               <SelectItem value="metadata">{t("statusMetadata")}</SelectItem>
@@ -297,73 +327,65 @@ export default function DocumentsPage() {
                   {filteredDocs.map((doc) => (
                     <div
                       key={doc.id}
-                      role="link"
-                      tabIndex={0}
-                      aria-label={`${doc.title}, #${doc.id}`}
-                      onClick={() => handleRowClick(doc.id)}
-                      onKeyDown={(event) => handleRowKeyDown(event, doc.id)}
-                      className="grid grid-cols-[80px_1fr_140px_140px_60px] gap-2 px-4 py-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 cursor-pointer transition-colors items-center text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+                      className="grid grid-cols-[80px_1fr_140px_140px_60px] gap-2 px-4 py-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors items-center text-sm"
                     >
-                      {/* ID */}
-                      <div className="font-mono text-xs text-zinc-400">#{doc.id}</div>
-
-                      {/* Title + Correspondent */}
-                      <div className="min-w-0">
-                        <div className="font-medium truncate" title={doc.title}>
-                          {doc.title}
-                        </div>
-                        {doc.correspondent && (
-                          <div className="text-xs text-zinc-500 truncate">{doc.correspondent}</div>
-                        )}
-                      </div>
-
-                      {/* Date */}
-                      <div className="text-xs text-zinc-500 flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {formatDate(doc.created)}
-                      </div>
-
-                      {/* Status */}
-                      <div
-                        onClick={(e) => {
-                          // Stop propagation for review states to allow click through to pending page
-                          if (
-                            doc.processing_status === "review" ||
-                            doc.processing_status === "manual_review"
-                          ) {
-                            e.stopPropagation();
-                          }
-                        }}
+                      <Link
+                        href={`/documents/${doc.id}`}
+                        aria-label={`${doc.title}, #${doc.id}`}
+                        className="col-span-4 grid grid-cols-[80px_1fr_140px_140px] gap-2 items-center rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
                       >
-                        {doc.processing_status &&
-                          statusConfig[doc.processing_status] &&
-                          (doc.processing_status === "review" ||
-                          doc.processing_status === "manual_review" ? (
-                            <Link href={`/pending?docId=${doc.id}`}>
+                        {/* ID */}
+                        <div className="font-mono text-xs text-zinc-400">#{doc.id}</div>
+
+                        {/* Title + Correspondent */}
+                        <div className="min-w-0">
+                          <div className="font-medium truncate" title={doc.title}>
+                            {doc.title}
+                          </div>
+                          {doc.correspondent && (
+                            <div className="text-xs text-zinc-500 truncate">
+                              {doc.correspondent}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Date */}
+                        <div className="text-xs text-zinc-500 flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {formatDate(doc.created)}
+                        </div>
+
+                        {/* Status */}
+                        <div>
+                          {doc.processing_status &&
+                            statusConfig[doc.processing_status] &&
+                            (doc.processing_status === "review" ||
+                            doc.processing_status === "manual_review" ? (
                               <Badge
                                 variant={statusConfig[doc.processing_status].variant}
-                                className="text-xs cursor-pointer hover:opacity-80"
-                                title={t("clickToViewPending")}
+                                className="text-xs"
+                                title={t("clickToViewCase")}
                               >
                                 {t(statusConfig[doc.processing_status].labelKey)}
                               </Badge>
-                            </Link>
-                          ) : (
-                            <Badge
-                              variant={statusConfig[doc.processing_status].variant}
-                              className="text-xs"
-                            >
-                              {t(statusConfig[doc.processing_status].labelKey)}
-                            </Badge>
-                          ))}
-                      </div>
+                            ) : (
+                              <Badge
+                                variant={statusConfig[doc.processing_status].variant}
+                                className="text-xs"
+                              >
+                                {t(statusConfig[doc.processing_status].labelKey)}
+                              </Badge>
+                            ))}
+                        </div>
+                      </Link>
 
                       {/* Logs Button */}
-                      <div className="text-center" onClick={(e) => e.stopPropagation()}>
+                      <div className="text-center">
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0" asChild>
                           <Link
-                            href={`/documents/${doc.id}/process`}
+                            href={`/documents/${doc.id}/log`}
                             aria-label={`${t("columnLogs")} ${doc.title}`}
+                            onClick={(event) => event.stopPropagation()}
                           >
                             <ScrollText className="h-3.5 w-3.5" />
                           </Link>

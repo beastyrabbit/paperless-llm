@@ -15,14 +15,7 @@ import {
 import { AlertCircle, Check, FileText, Loader2, RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
-
-interface DocumentTypeInfo {
-  id: number;
-  name: string;
-  document_count: number;
-}
-
-const API_BASE = "";
+import { type DocumentTypeInfo, settingsApi } from "@/lib/api";
 
 export function AiDocumentTypesTab() {
   const t = useTranslations("settings");
@@ -33,25 +26,18 @@ export function AiDocumentTypesTab() {
   const [selectedAiDocTypes, setSelectedAiDocTypes] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [_hasChanges, setHasChanges] = useState(false);
 
   const fetchAiDocTypes = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const response = await fetch(`${API_BASE}/api/settings/ai-document-types`);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data = await response.json();
-      setAllDocumentTypes(data.document_types || []);
-      setSelectedAiDocTypes(data.selected_type_ids || []);
-      setHasChanges(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch document types");
-    } finally {
-      setLoading(false);
+    const result = await settingsApi.getAiDocumentTypes();
+    if (result.ok) {
+      setAllDocumentTypes(result.data.document_types || []);
+      setSelectedAiDocTypes(result.data.selected_type_ids || []);
+    } else {
+      setError(result.error);
     }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -59,19 +45,9 @@ export function AiDocumentTypesTab() {
   }, [fetchAiDocTypes]);
 
   const saveDocTypeSelection = async (newSelection: number[]) => {
-    try {
-      const response = await fetch(`${API_BASE}/api/settings/ai-document-types`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selected_type_ids: newSelection }),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      setHasChanges(false);
-    } catch (err) {
-      console.error("Failed to save AI document types selection:", err);
-      setError(err instanceof Error ? err.message : "Failed to save selection");
+    const result = await settingsApi.updateAiDocumentTypes(newSelection);
+    if (!result.ok) {
+      setError(result.error);
     }
   };
 
@@ -80,18 +56,18 @@ export function AiDocumentTypesTab() {
       ? selectedAiDocTypes.filter((id) => id !== typeId)
       : [...selectedAiDocTypes, typeId];
     setSelectedAiDocTypes(newSelection);
-    saveDocTypeSelection(newSelection);
+    void saveDocTypeSelection(newSelection);
   };
 
   const selectAll = () => {
     const allIds = allDocumentTypes.map((dt) => dt.id);
     setSelectedAiDocTypes(allIds);
-    saveDocTypeSelection(allIds);
+    void saveDocTypeSelection(allIds);
   };
 
   const clearSelection = () => {
     setSelectedAiDocTypes([]);
-    saveDocTypeSelection([]);
+    void saveDocTypeSelection([]);
   };
 
   return (
@@ -176,22 +152,19 @@ export function AiDocumentTypesTab() {
           <CardContent>
             <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
               {allDocumentTypes.map((docType) => (
-                <div
+                <label
                   key={docType.id}
-                  role="checkbox"
-                  tabIndex={0}
-                  aria-checked={selectedAiDocTypes.includes(docType.id)}
-                  aria-label={docType.name}
                   className="flex items-center justify-between py-3 first:pt-0 last:pb-0 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50 -mx-4 px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
-                  onClick={() => toggleAiDocType(docType.id)}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter" && event.key !== " ") return;
-                    event.preventDefault();
-                    toggleAiDocType(docType.id);
-                  }}
                 >
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={selectedAiDocTypes.includes(docType.id)}
+                    onChange={() => toggleAiDocType(docType.id)}
+                  />
                   <div className="flex items-center gap-4">
                     <div
+                      aria-hidden="true"
                       className={`h-5 w-5 rounded border-2 flex items-center justify-center transition-colors ${
                         selectedAiDocTypes.includes(docType.id)
                           ? "bg-emerald-600 border-emerald-600"
@@ -222,7 +195,7 @@ export function AiDocumentTypesTab() {
                       ? t("aiDocumentTypes.aiEnabled")
                       : t("aiDocumentTypes.aiDisabled")}
                   </Badge>
-                </div>
+                </label>
               ))}
             </div>
           </CardContent>

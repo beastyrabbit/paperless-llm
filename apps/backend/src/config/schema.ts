@@ -12,14 +12,15 @@ export const PaperlessConfigSchema = Schema.Struct({
 // Ollama configuration
 export const OllamaConfigSchema = Schema.Struct({
   url: Schema.String.pipe(Schema.optional),
-  modelLarge: Schema.String.pipe(Schema.optional),
-  modelSmall: Schema.String.pipe(Schema.optional),
+  model: Schema.String.pipe(Schema.optional),
+  embeddingModel: Schema.String.pipe(Schema.optional),
 });
 
 // Mistral configuration
 export const MistralConfigSchema = Schema.Struct({
   apiKey: Schema.String.pipe(Schema.optional),
   model: Schema.String.pipe(Schema.optional),
+  apiBaseUrl: Schema.String.pipe(Schema.optional),
 });
 
 // Qdrant configuration
@@ -29,12 +30,23 @@ export const QdrantConfigSchema = Schema.Struct({
   embeddingDimension: Schema.Number.pipe(Schema.optional),
 });
 
+// OCR budget configuration. null/omitted means unlimited; configured limits must be positive integers.
+const OcrBudgetLimitSchema = Schema.NullOr(Schema.Number.pipe(Schema.int(), Schema.positive()));
+export const OcrBudgetConfigSchema = Schema.Struct({
+  dailyPageLimit: OcrBudgetLimitSchema.pipe(Schema.optional),
+  runPageLimit: OcrBudgetLimitSchema.pipe(Schema.optional),
+  dailyTokenLimit: OcrBudgetLimitSchema.pipe(Schema.optional),
+  runTokenLimit: OcrBudgetLimitSchema.pipe(Schema.optional),
+});
+
 // Auto processing configuration
 export const AutoProcessingConfigSchema = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.optional),
   intervalMinutes: Schema.Number.pipe(Schema.optional),
+  includeUntagged: Schema.Boolean.pipe(Schema.optional),
   confirmationEnabled: Schema.Boolean.pipe(Schema.optional),
   confirmationMaxRetries: Schema.Number.pipe(Schema.optional),
+  confirmationMinConfidence: Schema.Number.pipe(Schema.optional),
 });
 
 // Tags configuration
@@ -69,6 +81,26 @@ export const PipelineConfigSchema = Schema.Struct({
   enableTags: Schema.Boolean.pipe(Schema.optional),
   enableCustomFields: Schema.Boolean.pipe(Schema.optional),
   enableDocumentLinks: Schema.Boolean.pipe(Schema.optional),
+  maxSteps: Schema.Number.pipe(Schema.optional),
+});
+
+// Shared concurrency cap configuration
+export const ConcurrencyConfigSchema = Schema.Struct({
+  ollamaMaxConcurrent: Schema.Number.pipe(Schema.optional),
+  mistralMaxConcurrent: Schema.Number.pipe(Schema.optional),
+  ocrMaxConcurrent: Schema.Number.pipe(Schema.optional),
+});
+
+// HTTP/runtime safety configuration
+export const HttpConfigSchema = Schema.Struct({
+  requestTimeoutMs: Schema.Number.pipe(Schema.optional),
+  agentPromptTimeoutMs: Schema.Number.pipe(Schema.optional),
+  mistralRetryAttempts: Schema.Number.pipe(Schema.optional),
+  mistralRetryBaseDelayMs: Schema.Number.pipe(Schema.optional),
+  rateLimitEnabled: Schema.Boolean.pipe(Schema.optional),
+  rateLimitWindowMs: Schema.Number.pipe(Schema.optional),
+  rateLimitMaxRequests: Schema.Number.pipe(Schema.optional),
+  rateLimitTrustProxy: Schema.Boolean.pipe(Schema.optional),
 });
 
 // Full app configuration
@@ -77,9 +109,12 @@ export const AppConfigSchema = Schema.Struct({
   ollama: OllamaConfigSchema.pipe(Schema.optional),
   mistral: MistralConfigSchema.pipe(Schema.optional),
   qdrant: QdrantConfigSchema.pipe(Schema.optional),
+  ocrBudget: OcrBudgetConfigSchema.pipe(Schema.optional),
   autoProcessing: AutoProcessingConfigSchema.pipe(Schema.optional),
   tags: TagsConfigSchema.pipe(Schema.optional),
   pipeline: PipelineConfigSchema.pipe(Schema.optional),
+  http: HttpConfigSchema.pipe(Schema.optional),
+  concurrency: ConcurrencyConfigSchema.pipe(Schema.optional),
   language: Schema.String.pipe(Schema.optional),
   debug: Schema.Boolean.pipe(Schema.optional),
 });
@@ -89,9 +124,12 @@ export type PaperlessConfig = Schema.Schema.Type<typeof PaperlessConfigSchema>;
 export type OllamaConfig = Schema.Schema.Type<typeof OllamaConfigSchema>;
 export type MistralConfig = Schema.Schema.Type<typeof MistralConfigSchema>;
 export type QdrantConfig = Schema.Schema.Type<typeof QdrantConfigSchema>;
+export type OcrBudgetConfig = Schema.Schema.Type<typeof OcrBudgetConfigSchema>;
 export type AutoProcessingConfig = Schema.Schema.Type<typeof AutoProcessingConfigSchema>;
 export type TagsConfig = Schema.Schema.Type<typeof TagsConfigSchema>;
 export type PipelineConfig = Schema.Schema.Type<typeof PipelineConfigSchema>;
+export type HttpConfig = Schema.Schema.Type<typeof HttpConfigSchema>;
+export type ConcurrencyConfig = Schema.Schema.Type<typeof ConcurrencyConfigSchema>;
 export type AppConfig = Schema.Schema.Type<typeof AppConfigSchema>;
 
 // Resolved configuration with defaults applied
@@ -102,23 +140,32 @@ export interface ResolvedConfig {
   };
   ollama: {
     url: string;
-    modelLarge: string;
-    modelSmall: string;
+    model: string;
+    embeddingModel: string;
   };
   mistral: {
     apiKey: string;
     model: string;
+    apiBaseUrl: string;
   };
   qdrant: {
     url: string;
     collectionName: string;
     embeddingDimension: number;
   };
+  ocrBudget: {
+    dailyPageLimit: number | null;
+    runPageLimit: number | null;
+    dailyTokenLimit: number | null;
+    runTokenLimit: number | null;
+  };
   autoProcessing: {
     enabled: boolean;
     intervalMinutes: number;
+    includeUntagged: boolean;
     confirmationEnabled: boolean;
     confirmationMaxRetries: number;
+    confirmationMinConfidence: number;
   };
   tags: {
     todo: string;
@@ -149,6 +196,22 @@ export interface ResolvedConfig {
     enableTags: boolean;
     enableCustomFields: boolean;
     enableDocumentLinks: boolean;
+    maxSteps: number;
+  };
+  http: {
+    requestTimeoutMs: number;
+    agentPromptTimeoutMs: number;
+    mistralRetryAttempts: number;
+    mistralRetryBaseDelayMs: number;
+    rateLimitEnabled: boolean;
+    rateLimitWindowMs: number;
+    rateLimitMaxRequests: number;
+    rateLimitTrustProxy: boolean;
+  };
+  concurrency: {
+    ollamaMaxConcurrent: number;
+    mistralMaxConcurrent: number;
+    ocrMaxConcurrent: number;
   };
   language: string;
   debug: boolean;

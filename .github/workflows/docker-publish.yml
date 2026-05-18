@@ -17,7 +17,7 @@ env:
 
 jobs:
   build-backend:
-    runs-on: arc-paperless-local-llm
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'arc-paperless-local-llm' }}
     permissions:
       contents: read
       packages: write
@@ -62,7 +62,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   build-frontend:
-    runs-on: arc-paperless-local-llm
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'arc-paperless-local-llm' }}
     permissions:
       contents: read
       packages: write

@@ -1,7 +1,7 @@
 /**
  * Base agent patterns and shared utilities.
  */
-import { Effect, Stream } from "effect";
+import { Effect, type Stream } from "effect";
 import { AgentError } from "../errors/index.js";
 
 // ===========================================================================

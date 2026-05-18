@@ -15,13 +15,13 @@ paperless:
 mistral:
   api_key: "your-mistral-api-key"
   model: "mistral-ocr-latest"
+  api_base_url: "https://api.mistral.ai"
 
 # Ollama Server (Local LLM)
 ollama:
   url: "http://your-ollama-server:11434"
-  model_large: "gpt-oss:120b"      # Primary analysis model
-  model_small: "gpt-oss:20b"       # Confirmation/verification model
-  embedding_model: "qwen2.5:1.5b"      # For Qdrant embeddings (or nomic-embed-text)
+  model: "gpt-oss:120b"            # Model used for all LLM generation and verification
+  embedding_model: "nomic-embed-text"  # For Qdrant embeddings
 
 # Qdrant Vector Database
 qdrant:
@@ -36,11 +36,14 @@ qdrant:
 auto_processing:
   enabled: false
   interval_minutes: 10             # Check for new documents every X minutes
+  include_untagged: false          # If true, auto-process documents without workflow tags
   pause_on_user_activity: true     # Pause when user is in Manual Processing mode
 
 # Confirmation Loop Settings
 confirmation:
-  max_retries: 3                   # Max rounds of 120B ↔ 20B discussion
+  enabled: true
+  max_retries: 3                   # Max metadata revision attempts after verifier rejection
+  min_confidence: 0.7              # Metadata below this confidence requires review
   require_user_for_new_entities: true  # Require user approval for new tags/correspondents
 
 # =============================================================================
@@ -50,15 +53,13 @@ confirmation:
 # Tags used to track document processing state in Paperless
 # These will be created automatically if they don't exist
 tags:
-  pending: "llm-pending"                     # Documents waiting to be processed
-  ocr_done: "llm-ocr-done"                   # OCR completed
-  summary_done: "llm-summary-done"           # Summary generated
-  schema_review: "llm-schema-review"         # Parked for schema review (new entities)
-  correspondent_done: "llm-correspondent-done"  # Correspondent assigned
-  document_type_done: "llm-document-type-done"  # Document type assigned
-  title_done: "llm-title-done"               # Title assigned
-  tags_done: "llm-tags-done"                 # Tags assigned
-  processed: "llm-processed"                 # Fully processed
+  todo: "ai-queued"               # Add manually to request processing
+  ocr: "ai-processing"            # Active processing/recovery state
+  metadata: "ai-processing"       # Active processing/recovery state
+  review: "ai-needs-input"        # Waiting for human input
+  index: "ai-processing"          # Active processing/recovery state
+  done: "ai-done"                 # Fully processed
+  failed: "ai-failed"             # Failed processing
 
 # =============================================================================
 # Processing Pipeline
@@ -74,6 +75,8 @@ pipeline:
   title: true                      # Title generation
   tags: true                       # Tag assignment
   custom_fields: true              # Custom fields (optional based on document type)
+  # Safety bound against infinite workflow loops in full-pipeline SSE processing.
+  max_steps: 10
 
 # =============================================================================
 # Qdrant / Vector Search Settings
@@ -95,10 +98,9 @@ language:
 # Server Settings
 # =============================================================================
 
-server:
-  cors_origins:                      # Allowed CORS origins for frontend
-    - "http://localhost:3000"
-    - "http://127.0.0.1:3000"
+# CORS origins are configured with PAPERLESS_LLM_TRUSTED_UI_ORIGINS
+# (or legacy CORS_ORIGINS) in the environment. Local development allows
+# Portless and frontend fallback origins by default outside production.
 
 # =============================================================================
 # Development / Debug Settings
@@ -109,6 +111,34 @@ debug:
   log_prompts: false               # Log full prompts sent to LLM
   log_responses: false             # Log full LLM responses
   save_processing_history: true    # Save processing history for each document
+
+# =============================================================================
+# Runtime Safety
+# =============================================================================
+
+http:
+  request_timeout_ms: 120000
+  # Idle watchdog for local Pi/Ollama agent prompts. Slow prompts continue while
+  # the Pi run is active, Pi emits events, or the target model is visible in Ollama /api/ps.
+  agent_prompt_timeout_ms: 120000
+  mistral_retry_attempts: 3
+  mistral_retry_base_delay_ms: 5000
+  rate_limit_enabled: true
+  rate_limit_window_ms: 60000
+  rate_limit_max_requests: 300
+  rate_limit_trust_proxy: false
+
+concurrency:
+  ollama_max_concurrent: 1
+  mistral_max_concurrent: 1
+  ocr_max_concurrent: 1
+
+# OCR usage caps. 0 means unlimited/backward-compatible.
+ocr_budget:
+  daily_page_limit: 0
+  run_page_limit: 0
+  daily_token_limit: 0
+  run_token_limit: 0
 
 # =============================================================================
 # Scheduled Jobs

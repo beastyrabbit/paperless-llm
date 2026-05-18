@@ -42,17 +42,19 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
+import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import {
-  BootstrapAnalysisType,
-  BootstrapProgress,
-  BulkIngestProgress,
-  BulkOCRProgress,
-  JobScheduleStatus,
+  type BootstrapAnalysisType,
+  type BootstrapProgress,
+  type BulkIngestProgress,
+  type BulkOCRProgress,
+  type JobScheduleStatus,
   jobsApi,
-  ProcessingLogStats,
-  ScheduleType,
+  type ProcessingLogStats,
+  type ScheduleType,
   settingsApi,
 } from "@/lib/api";
+import { ACTIVE_JOB_POLLING_INTERVAL_MS, usePolling } from "@/lib/polling";
 
 function formatETA(seconds: number): string {
   if (seconds < 60) {
@@ -159,29 +161,15 @@ export function MaintenanceTab() {
     loadProcessingLogStats,
   ]);
 
-  // Poll bootstrap status while running
-  useEffect(() => {
-    if (bootstrapProgress?.status === "running") {
-      const interval = setInterval(loadBootstrapStatus, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [bootstrapProgress?.status, loadBootstrapStatus]);
-
-  // Poll bulk OCR status while running
-  useEffect(() => {
-    if (bulkOCRProgress?.status === "running") {
-      const interval = setInterval(loadBulkOCRStatus, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [bulkOCRProgress?.status, loadBulkOCRStatus]);
-
-  // Poll bulk ingest status while running
-  useEffect(() => {
-    if (bulkIngestProgress?.status === "running") {
-      const interval = setInterval(loadBulkIngestStatus, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [bulkIngestProgress?.status, loadBulkIngestStatus]);
+  usePolling(loadBootstrapStatus, ACTIVE_JOB_POLLING_INTERVAL_MS, {
+    enabled: bootstrapProgress?.status === "running",
+  });
+  usePolling(loadBulkOCRStatus, ACTIVE_JOB_POLLING_INTERVAL_MS, {
+    enabled: bulkOCRProgress?.status === "running",
+  });
+  usePolling(loadBulkIngestStatus, ACTIVE_JOB_POLLING_INTERVAL_MS, {
+    enabled: bulkIngestProgress?.status === "running",
+  });
 
   // Bootstrap handlers
   const handleStartBootstrap = async (type: string) => {
@@ -642,18 +630,29 @@ export function MaintenanceTab() {
               />
               <Label htmlFor="skip-existing">{tMaint("bulkOCR.skipExisting")}</Label>
             </div>
-            <Button
-              onClick={handleStartBulkOCR}
+            <ConfirmActionDialog
+              title={tMaint("bulkOCR.confirmStartTitle")}
+              description={tMaint("bulkOCR.confirmStartDescription", {
+                rate: bulkOCRDocsPerSecond,
+              })}
+              confirmLabel={tMaint("bulkOCR.confirmStartAction")}
+              cancelLabel={tCommon("cancel")}
+              confirmVariant="default"
               disabled={isBulkOCRRunning || bulkOCRStarting}
-              className="bg-emerald-600 hover:bg-emerald-700"
+              onConfirm={handleStartBulkOCR}
             >
-              {bulkOCRStarting ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Play className="h-4 w-4 mr-2" />
-              )}
-              {tMaint("bulkOCR.start")}
-            </Button>
+              <Button
+                disabled={isBulkOCRRunning || bulkOCRStarting}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                {bulkOCRStarting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4 mr-2" />
+                )}
+                {tMaint("bulkOCR.start")}
+              </Button>
+            </ConfirmActionDialog>
           </div>
 
           {/* Progress Display */}
@@ -785,18 +784,29 @@ export function MaintenanceTab() {
               />
               <Label htmlFor="skip-existing-ocr">{tMaint("bulkIngest.skipExistingOcr")}</Label>
             </div>
-            <Button
-              onClick={handleStartBulkIngest}
+            <ConfirmActionDialog
+              title={tMaint("bulkIngest.confirmStartTitle")}
+              description={tMaint("bulkIngest.confirmStartDescription", {
+                rate: bulkIngestDocsPerSecond,
+              })}
+              confirmLabel={tMaint("bulkIngest.confirmStartAction")}
+              cancelLabel={tCommon("cancel")}
+              confirmVariant="default"
               disabled={isBulkIngestRunning || bulkIngestStarting}
-              className="bg-emerald-600 hover:bg-emerald-700"
+              onConfirm={handleStartBulkIngest}
             >
-              {bulkIngestStarting ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Play className="h-4 w-4 mr-2" />
-              )}
-              {tMaint("bulkIngest.start")}
-            </Button>
+              <Button
+                disabled={isBulkIngestRunning || bulkIngestStarting}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                {bulkIngestStarting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4 mr-2" />
+                )}
+                {tMaint("bulkIngest.start")}
+              </Button>
+            </ConfirmActionDialog>
           </div>
 
           {/* Progress Display */}
@@ -971,18 +981,28 @@ export function MaintenanceTab() {
                 </div>
               )}
             </div>
-            <Button
-              variant="destructive"
-              onClick={handleClearProcessingLogs}
+            <ConfirmActionDialog
+              title={tMaint("processingLogs.confirmClearTitle")}
+              description={tMaint("processingLogs.confirmClearDescription", {
+                count: processingLogStats?.totalLogs ?? 0,
+              })}
+              confirmLabel={tMaint("processingLogs.confirmClearAction")}
+              cancelLabel={tCommon("cancel")}
               disabled={clearingLogs || (processingLogStats?.totalLogs ?? 0) === 0}
+              onConfirm={handleClearProcessingLogs}
             >
-              {clearingLogs ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Trash2 className="h-4 w-4 mr-2" />
-              )}
-              {tMaint("processingLogs.clearAll")}
-            </Button>
+              <Button
+                variant="destructive"
+                disabled={clearingLogs || (processingLogStats?.totalLogs ?? 0) === 0}
+              >
+                {clearingLogs ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4 mr-2" />
+                )}
+                {tMaint("processingLogs.clearAll")}
+              </Button>
+            </ConfirmActionDialog>
           </div>
         </CardContent>
       </Card>

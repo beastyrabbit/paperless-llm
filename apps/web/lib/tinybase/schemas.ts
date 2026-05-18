@@ -11,17 +11,25 @@ export const valuesSchema = {
   // Paperless-ngx connection
   "paperless.url": { type: "string", default: "" },
   "paperless.token": { type: "string", default: "" },
+  "paperless.token_configured": { type: "boolean", default: false },
   "paperless.external_url": { type: "string", default: "" },
 
   // Ollama LLM
   "ollama.url": { type: "string", default: "" },
-  "ollama.model_large": { type: "string", default: "" },
-  "ollama.model_small": { type: "string", default: "" },
-  "ollama.model_translation": { type: "string", default: "" },
+  "ollama.model": { type: "string", default: "" },
   "ollama.embedding_model": { type: "string", default: "" },
+
+  // OpenAI local CLI connector. This never stores or uses an OpenAI API key.
+  "openai_cli.enabled": { type: "boolean", default: false },
+  "openai_cli.command": { type: "string", default: "codex" },
+  "openai_cli.model": { type: "string", default: "gpt-5.5" },
+  "openai_cli.reasoning_effort": { type: "string", default: "medium" },
+  "openai_cli.fast_mode": { type: "boolean", default: true },
+  "openai_cli.scope": { type: "string", default: "chat" },
 
   // Mistral OCR
   "mistral.api_key": { type: "string", default: "" },
+  "mistral.api_key_configured": { type: "boolean", default: false },
   "mistral.model": { type: "string", default: "mistral-ocr-latest" },
 
   // Qdrant vector DB
@@ -31,6 +39,7 @@ export const valuesSchema = {
   // Auto processing
   "auto_processing.enabled": { type: "boolean", default: false },
   "auto_processing.interval_minutes": { type: "number", default: 10 },
+  "auto_processing.include_untagged": { type: "boolean", default: false },
   "auto_processing.pause_on_user_activity": { type: "boolean", default: true },
 
   // Confirmation settings
@@ -57,27 +66,29 @@ export const valuesSchema = {
   "debug.log_prompts": { type: "boolean", default: false },
   "debug.log_responses": { type: "boolean", default: false },
   "debug.save_processing_history": { type: "boolean", default: true },
+  language: { type: "string", default: "en" },
+  "tag_language.aliases.de": { type: "string", default: "" },
 
   // Workflow tags
   "tags.color": { type: "string", default: "#1e88e5" },
-  "tags.todo": { type: "string", default: "llm-todo" },
-  "tags.ocr": { type: "string", default: "llm-ocr" },
-  "tags.metadata": { type: "string", default: "llm-metadata" },
-  "tags.review": { type: "string", default: "llm-review" },
-  "tags.index": { type: "string", default: "llm-index" },
-  "tags.done": { type: "string", default: "llm-done" },
-  "tags.failed": { type: "string", default: "llm-failed" },
+  "tags.todo": { type: "string", default: "ai-queued" },
+  "tags.ocr": { type: "string", default: "ai-processing" },
+  "tags.metadata": { type: "string", default: "ai-processing" },
+  "tags.review": { type: "string", default: "ai-needs-input" },
+  "tags.index": { type: "string", default: "ai-processing" },
+  "tags.done": { type: "string", default: "ai-done" },
+  "tags.failed": { type: "string", default: "ai-failed" },
   // Compatibility aliases for persisted settings created before the Pi pipeline.
-  "tags.pending": { type: "string", default: "llm-todo" },
-  "tags.ocr_done": { type: "string", default: "llm-ocr" },
-  "tags.summary_done": { type: "string", default: "llm-metadata" },
-  "tags.schema_review": { type: "string", default: "llm-review" },
-  "tags.correspondent_done": { type: "string", default: "llm-metadata" },
-  "tags.document_type_done": { type: "string", default: "llm-metadata" },
-  "tags.title_done": { type: "string", default: "llm-metadata" },
-  "tags.tags_done": { type: "string", default: "llm-index" },
-  "tags.processed": { type: "string", default: "llm-done" },
-  "tags.manual_review": { type: "string", default: "llm-review" },
+  "tags.pending": { type: "string", default: "ai-queued" },
+  "tags.ocr_done": { type: "string", default: "ai-processing" },
+  "tags.summary_done": { type: "string", default: "ai-processing" },
+  "tags.schema_review": { type: "string", default: "ai-needs-input" },
+  "tags.correspondent_done": { type: "string", default: "ai-processing" },
+  "tags.document_type_done": { type: "string", default: "ai-processing" },
+  "tags.title_done": { type: "string", default: "ai-processing" },
+  "tags.tags_done": { type: "string", default: "ai-processing" },
+  "tags.processed": { type: "string", default: "ai-done" },
+  "tags.manual_review": { type: "string", default: "ai-needs-input" },
 
   // Sync metadata (internal use)
   _lastSync: { type: "string", default: "" },
@@ -106,19 +117,24 @@ export type SettingKey = keyof ValuesSchema;
 // Mapping from API keys to store keys
 export const API_TO_STORE_KEY_MAP: Record<string, SettingKey> = {
   paperless_url: "paperless.url",
-  paperless_token: "paperless.token",
+  paperless_token_configured: "paperless.token_configured",
   paperless_external_url: "paperless.external_url",
   ollama_url: "ollama.url",
-  ollama_model_large: "ollama.model_large",
-  ollama_model_small: "ollama.model_small",
-  ollama_model_translation: "ollama.model_translation",
+  ollama_model: "ollama.model",
   ollama_embedding_model: "ollama.embedding_model",
-  mistral_api_key: "mistral.api_key",
+  openai_cli_enabled: "openai_cli.enabled",
+  openai_cli_command: "openai_cli.command",
+  openai_cli_model: "openai_cli.model",
+  openai_cli_reasoning_effort: "openai_cli.reasoning_effort",
+  openai_cli_fast_mode: "openai_cli.fast_mode",
+  openai_cli_scope: "openai_cli.scope",
+  mistral_api_key_configured: "mistral.api_key_configured",
   mistral_model: "mistral.model",
   qdrant_url: "qdrant.url",
   qdrant_collection: "qdrant.collection",
   auto_processing_enabled: "auto_processing.enabled",
   auto_processing_interval_minutes: "auto_processing.interval_minutes",
+  auto_processing_include_untagged: "auto_processing.include_untagged",
   auto_processing_pause_on_user_activity: "auto_processing.pause_on_user_activity",
   confirmation_max_retries: "confirmation.max_retries",
   confirmation_require_user_for_new_entities: "confirmation.require_user_for_new_entities",
@@ -137,6 +153,8 @@ export const API_TO_STORE_KEY_MAP: Record<string, SettingKey> = {
   debug_log_prompts: "debug.log_prompts",
   debug_log_responses: "debug.log_responses",
   debug_save_processing_history: "debug.save_processing_history",
+  language: "language",
+  tag_language_aliases_de: "tag_language.aliases.de",
   tags_color: "tags.color",
   tags_todo: "tags.todo",
   tags_ocr: "tags.ocr",

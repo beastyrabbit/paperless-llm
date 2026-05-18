@@ -12,14 +12,16 @@
 import { Context, Effect, Fiber, Layer, Ref } from "effect";
 import { JobError } from "../errors/index.js";
 import {
-  ConfigService,
   MistralService,
-  OllamaService,
+  OcrUsageService,
   PaperlessService,
   QdrantService,
   TinyBaseService,
 } from "../services/index.js";
 import type { DocumentVector } from "../services/QdrantService.js";
+import { logger } from "../utils/logger.js";
+
+const bulkIngestLogger = logger.child({ component: "bulk_ingest_job" });
 
 // ===========================================================================
 // Types
@@ -71,14 +73,11 @@ export const BulkIngestJobService =
 export const BulkIngestJobServiceLive = Layer.effect(
   BulkIngestJobService,
   Effect.gen(function* () {
-    const config = yield* ConfigService;
     const paperless = yield* PaperlessService;
     const mistral = yield* MistralService;
+    const ocrUsage = yield* OcrUsageService;
     const tinybase = yield* TinyBaseService;
     const qdrant = yield* QdrantService;
-    const ollama = yield* OllamaService;
-
-    const { tags: tagConfig } = config.config;
 
     const progressRef = yield* Ref.make<BulkIngestProgress>({
       status: "idle",
@@ -125,6 +124,7 @@ export const BulkIngestJobServiceLive = Layer.effect(
           const sourceTag = options?.sourceTag; // undefined = all documents
           const targetTag = options?.targetTag;
           const delayMs = Math.floor(1000 / docsPerSecond);
+          const runId = `bulk-ingest-${Date.now()}`;
 
           yield* Ref.set(cancelledRef, false);
           yield* Ref.set(progressRef, {
@@ -229,13 +229,36 @@ export const BulkIngestJobServiceLive = Layer.effect(
                   // Run OCR
                   const ocrResult = yield* Effect.gen(function* () {
                     const pdfBytes = yield* paperless.downloadPdf(doc.id);
+                    const estimatedPages = ocrUsage.estimatePdfPages(pdfBytes);
+                    const ocrPrompt = `Extract all text from this document. Preserve the structure and formatting as much as possible. Return only the extracted text, no explanations.`;
+                    const estimatedTokens = ocrUsage.estimateOcrTokens(pdfBytes, ocrPrompt);
+                    const reservation = yield* ocrUsage.reserve({
+                      runId,
+                      docId: doc.id,
+                      source: "bulk_ingest",
+                      estimatedPages,
+                      estimatedTokens,
+                    });
                     const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
 
-                    const ocrPrompt = `Extract all text from this document. Preserve the structure and formatting as much as possible. Return only the extracted text, no explanations.`;
-                    return yield* mistral.processDocument(pdfBase64, ocrPrompt);
+                    const response = yield* mistral.processDocumentWithUsage(pdfBase64, ocrPrompt).pipe(
+                      Effect.tapError(() => ocrUsage.release(reservation, "mistral_error")),
+                    );
+                    yield* ocrUsage.commit(reservation, {
+                      pages: estimatedPages,
+                      tokens: response.usage?.total_tokens,
+                      promptTokens: response.usage?.prompt_tokens,
+                      completionTokens: response.usage?.completion_tokens,
+                      model: response.model,
+                    });
+                    return response.text;
                   }).pipe(
                     Effect.catchAll((e) => {
-                      console.error(`OCR failed for doc ${doc.id}: ${e}`);
+                      bulkIngestLogger.error("ocr_failed", {
+                        docId: doc.id,
+                        title: doc.title,
+                        error: e,
+                      });
                       return Effect.succeed(doc.content ?? "");
                     }),
                   );
@@ -298,7 +321,11 @@ export const BulkIngestJobServiceLive = Layer.effect(
                   })),
                 ),
                 Effect.catchAll((e) => {
-                  console.error(`Vector indexing failed for doc ${doc.id}: ${e.message}`);
+                  bulkIngestLogger.error("vector_indexing_failed", {
+                    docId: doc.id,
+                    title: doc.title,
+                    error: e,
+                  });
                   return Ref.update(progressRef, (p) => ({
                     ...p,
                     errors: p.errors + 1,
@@ -310,7 +337,13 @@ export const BulkIngestJobServiceLive = Layer.effect(
               if (transitionTag && sourceTag && targetTag) {
                 yield* paperless.transitionDocumentTag(doc.id, sourceTag, targetTag).pipe(
                   Effect.catchAll((e) => {
-                    console.error(`Tag transition failed for doc ${doc.id}: ${e}`);
+                    bulkIngestLogger.error("tag_transition_failed", {
+                      docId: doc.id,
+                      title: doc.title,
+                      sourceTag,
+                      targetTag,
+                      error: e,
+                    });
                     return Effect.succeed(undefined);
                   }),
                 );

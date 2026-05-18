@@ -9,10 +9,8 @@
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTable } from "tinybase/ui-react";
-import type { ProcessingLogEntry, ProcessingLogEventType } from "@/lib/api";
+import { API_BASE, type ProcessingLogEntry, type ProcessingLogEventType } from "@/lib/api";
 import { useTinyBase } from "../provider";
-
-const API_BASE = "";
 
 /**
  * Get all processing logs for a document, reactively updated.
@@ -170,7 +168,7 @@ export function useLogTree(docId: number) {
         if (!children.has(log.parentId)) {
           children.set(log.parentId, []);
         }
-        children.get(log.parentId)!.push(log);
+        children.get(log.parentId)?.push(log);
       } else {
         roots.push(log);
       }

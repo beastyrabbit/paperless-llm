@@ -1,5 +1,11 @@
 /**
- * Compatibility custom fields agent. New processing uses PiDocumentAgent.
+ * Compatibility custom fields agent.
+ *
+ * This service is intentionally retained for callers that still import the old
+ * CustomFieldsAgentGraph API. It does not infer or apply field values; custom
+ * field extraction is owned by PiDocumentAgent.
+ *
+ * @deprecated Use PiDocumentAgentService for custom field extraction.
  */
 import { Context, Effect, Layer, Stream } from "effect";
 import { AgentError } from "../errors/index.js";
@@ -37,6 +43,9 @@ export interface CustomFieldsGraphResult extends AgentProcessResult {
   skipReason?: string;
 }
 
+/**
+ * @deprecated Compatibility-only service; use PiDocumentAgentService instead.
+ */
 export interface CustomFieldsAgentGraphService
   extends Agent<CustomFieldsGraphInput, CustomFieldsGraphResult> {
   readonly name: "custom_fields";
@@ -50,6 +59,12 @@ export const CustomFieldsAgentGraphService = Context.GenericTag<CustomFieldsAgen
   "CustomFieldsAgentGraphService",
 );
 
+/**
+ * Compatibility layer that records a skipped result and returns no field updates.
+ * It must not be wired into the active processing pipeline.
+ *
+ * @deprecated Compatibility-only layer; use PiDocumentAgentServiceLive instead.
+ */
 export const CustomFieldsAgentGraphServiceLive = Layer.effect(
   CustomFieldsAgentGraphService,
   Effect.gen(function* () {

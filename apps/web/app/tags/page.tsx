@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_PAGE_BACKGROUND } from "@/lib/styles";
 import {
   Alert,
   AlertDescription,
@@ -13,20 +14,9 @@ import {
   CardTitle,
 } from "@repo/ui";
 import { AlertCircle, Check, CheckCircle2, Loader2, Plus, RefreshCw, Tag, X } from "lucide-react";
-import { useEffect, useState } from "react";
-
-interface TagStatus {
-  key: string;
-  name: string;
-  exists: boolean;
-  tag_id: number | null;
-}
-
-interface TagsStatusResponse {
-  tags: TagStatus[];
-  all_exist: boolean;
-  missing_count: number;
-}
+import { useCallback, useEffect, useState } from "react";
+import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
+import { settingsApi, type WorkflowTagsStatusResponse } from "@/lib/api";
 
 const TAG_DESCRIPTIONS: Record<string, string> = {
   pending: "Documents waiting to be processed by the LLM pipeline",
@@ -49,34 +39,26 @@ const TAG_LABELS: Record<string, string> = {
 };
 
 export default function TagsPage() {
-  const [tagsStatus, setTagsStatus] = useState<TagsStatusResponse | null>(null);
+  const [tagsStatus, setTagsStatus] = useState<WorkflowTagsStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const missingTags = tagsStatus?.tags.filter((tag) => !tag.exists).map((tag) => tag.name) ?? [];
 
-  const fetchTagsStatus = async () => {
+  const fetchTagsStatus = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const response = await fetch("/api/settings/tags/status");
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data = await response.json();
-      setTagsStatus(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch tags status");
-    } finally {
-      setLoading(false);
+    const result = await settingsApi.getWorkflowTagsStatus();
+    if (result.ok) {
+      setTagsStatus(result.data);
+    } else {
+      setError(result.error);
     }
-  };
+    setLoading(false);
+  }, []);
 
   const createMissingTags = async () => {
-    if (!tagsStatus) return;
-
-    const missingTags = tagsStatus.tags.filter((t) => !t.exists).map((t) => t.name);
-
     if (missingTags.length === 0) return;
 
     setCreating(true);
@@ -84,24 +66,20 @@ export default function TagsPage() {
     setSuccessMessage(null);
 
     try {
-      const response = await fetch("/api/settings/tags/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tag_names: missingTags }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      const result = await settingsApi.createWorkflowTags(missingTags);
+      if (!result.ok) {
+        setError(result.error);
+        return;
       }
 
-      const result = await response.json();
-
-      if (result.created.length > 0) {
-        setSuccessMessage(`Created ${result.created.length} tag(s): ${result.created.join(", ")}`);
+      if (result.data.created.length > 0) {
+        setSuccessMessage(
+          `Created ${result.data.created.length} tag(s): ${result.data.created.join(", ")}`,
+        );
       }
 
-      if (result.failed.length > 0) {
-        setError(`Failed to create: ${result.failed.join(", ")}`);
+      if (result.data.failed.length > 0) {
+        setError(`Failed to create: ${result.data.failed.join(", ")}`);
       }
 
       // Refresh status
@@ -115,10 +93,10 @@ export default function TagsPage() {
 
   useEffect(() => {
     fetchTagsStatus();
-  }, []);
+  }, [fetchTagsStatus]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-white to-emerald-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-emerald-950/20">
+    <div className={APP_PAGE_BACKGROUND}>
       {/* Header */}
       <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/80">
         <div className="flex h-16 items-center justify-between px-8">
@@ -134,14 +112,24 @@ export default function TagsPage() {
               Refresh
             </Button>
             {tagsStatus && tagsStatus.missing_count > 0 && (
-              <Button size="sm" onClick={createMissingTags} disabled={creating}>
-                {creating ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Plus className="h-4 w-4 mr-2" />
-                )}
-                Create Missing Tags ({tagsStatus.missing_count})
-              </Button>
+              <ConfirmActionDialog
+                title="Create workflow tags?"
+                description={`This will create ${missingTags.length} tag(s) in Paperless: ${missingTags.join(", ")}`}
+                confirmLabel={`Create ${missingTags.length} tag(s)`}
+                cancelLabel="Cancel"
+                confirmVariant="default"
+                disabled={creating}
+                onConfirm={createMissingTags}
+              >
+                <Button size="sm" disabled={creating}>
+                  {creating ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4 mr-2" />
+                  )}
+                  Create Missing Tags ({tagsStatus.missing_count})
+                </Button>
+              </ConfirmActionDialog>
             )}
           </div>
         </div>

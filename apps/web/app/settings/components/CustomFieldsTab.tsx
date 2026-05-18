@@ -28,15 +28,7 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
-
-interface CustomField {
-  id: number;
-  name: string;
-  data_type: string;
-  extra_data: Record<string, unknown> | null;
-}
-
-const API_BASE = "";
+import { type CustomFieldSetting, settingsApi } from "@/lib/api";
 
 // Icons for different data types
 const DATA_TYPE_ICONS: Record<string, React.ReactNode> = {
@@ -53,15 +45,14 @@ const DATA_TYPE_ICONS: Record<string, React.ReactNode> = {
 
 interface CustomFieldsTabProps {
   onHasChanges?: (hasChanges: boolean) => void;
-  onSave?: (selectedFields: number[]) => Promise<void>;
 }
 
-export function CustomFieldsTab({ onHasChanges, onSave }: CustomFieldsTabProps) {
+export function CustomFieldsTab({ onHasChanges }: CustomFieldsTabProps) {
   const t = useTranslations("settings");
   const tCommon = useTranslations("common");
 
   // UI-only state
-  const [customFields, setCustomFields] = useState<CustomField[]>([]);
+  const [customFields, setCustomFields] = useState<CustomFieldSetting[]>([]);
   const [selectedCustomFields, setSelectedCustomFields] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,20 +61,14 @@ export function CustomFieldsTab({ onHasChanges, onSave }: CustomFieldsTabProps) 
   const fetchCustomFields = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const response = await fetch(`${API_BASE}/api/settings/custom-fields`);
-      if (response.ok) {
-        const data = await response.json();
-        setCustomFields(data.fields || []);
-        setSelectedCustomFields(data.selected_fields || []);
-      } else {
-        setError("Failed to load custom fields");
-      }
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setLoading(false);
+    const result = await settingsApi.getCustomFields();
+    if (result.ok) {
+      setCustomFields(result.data.fields || []);
+      setSelectedCustomFields(result.data.selected_fields || []);
+    } else {
+      setError(result.error);
     }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -95,19 +80,12 @@ export function CustomFieldsTab({ onHasChanges, onSave }: CustomFieldsTabProps) 
   }, [hasChanges, onHasChanges]);
 
   const saveSelection = async (newSelection: number[]) => {
-    try {
-      const response = await fetch(`${API_BASE}/api/settings/custom-fields`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selected_field_ids: newSelection }),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+    setHasChanges(true);
+    const result = await settingsApi.updateCustomFields(newSelection);
+    if (result.ok) {
       setHasChanges(false);
-    } catch (err) {
-      console.error("Failed to save custom fields selection:", err);
-      setError(err instanceof Error ? err.message : "Failed to save selection");
+    } else {
+      setError(result.error);
     }
   };
 
@@ -116,26 +94,19 @@ export function CustomFieldsTab({ onHasChanges, onSave }: CustomFieldsTabProps) 
       ? selectedCustomFields.filter((f) => f !== id)
       : [...selectedCustomFields, id];
     setSelectedCustomFields(newSelection);
-    saveSelection(newSelection);
+    void saveSelection(newSelection);
   };
 
   const selectAll = () => {
     const allIds = customFields.map((f) => f.id);
     setSelectedCustomFields(allIds);
-    saveSelection(allIds);
+    void saveSelection(allIds);
   };
 
   const clearSelection = () => {
     setSelectedCustomFields([]);
-    saveSelection([]);
+    void saveSelection([]);
   };
-
-  // Expose save function for parent
-  useEffect(() => {
-    if (onSave && hasChanges) {
-      // Parent can call save when needed
-    }
-  }, [onSave, hasChanges, selectedCustomFields]);
 
   return (
     <div className="space-y-6">
@@ -219,22 +190,19 @@ export function CustomFieldsTab({ onHasChanges, onSave }: CustomFieldsTabProps) 
           <CardContent>
             <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
               {customFields.map((field) => (
-                <div
+                <label
                   key={field.id}
-                  role="checkbox"
-                  tabIndex={0}
-                  aria-checked={selectedCustomFields.includes(field.id)}
-                  aria-label={field.name}
                   className="flex items-center justify-between py-3 first:pt-0 last:pb-0 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50 -mx-4 px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
-                  onClick={() => toggleCustomField(field.id)}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter" && event.key !== " ") return;
-                    event.preventDefault();
-                    toggleCustomField(field.id);
-                  }}
                 >
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={selectedCustomFields.includes(field.id)}
+                    onChange={() => toggleCustomField(field.id)}
+                  />
                   <div className="flex items-center gap-4">
                     <div
+                      aria-hidden="true"
                       className={`h-5 w-5 rounded border-2 flex items-center justify-center transition-colors ${
                         selectedCustomFields.includes(field.id)
                           ? "bg-emerald-600 border-emerald-600"
@@ -274,7 +242,7 @@ export function CustomFieldsTab({ onHasChanges, onSave }: CustomFieldsTabProps) 
                       ? tCommon("enabled")
                       : tCommon("disabled")}
                   </Badge>
-                </div>
+                </label>
               ))}
             </div>
           </CardContent>
@@ -282,24 +250,4 @@ export function CustomFieldsTab({ onHasChanges, onSave }: CustomFieldsTabProps) 
       )}
     </div>
   );
-}
-
-// Export for parent save handling
-export function useCustomFieldsSave() {
-  const [selectedFields, setSelectedFields] = useState<number[]>([]);
-  const [hasChanges, setHasChanges] = useState(false);
-
-  const save = async () => {
-    if (!hasChanges) return;
-    const response = await fetch(`${API_BASE}/api/settings/custom-fields`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ selected_field_ids: selectedFields }),
-    });
-    if (response.ok) {
-      setHasChanges(false);
-    }
-  };
-
-  return { selectedFields, setSelectedFields, hasChanges, setHasChanges, save };
 }

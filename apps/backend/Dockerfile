@@ -11,18 +11,22 @@ WORKDIR /app
 # Copy workspace root files
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json ./
 
-# Copy backend package.json
+# Copy backend and internal package manifests
 COPY apps/backend/package.json ./apps/backend/
+COPY packages/api-contracts/package.json ./packages/api-contracts/
+COPY packages/typescript-config/package.json ./packages/typescript-config/
 
 # Install all dependencies
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
-# Copy backend source
+# Copy backend and internal package source
+COPY packages/api-contracts ./packages/api-contracts
+COPY packages/typescript-config ./packages/typescript-config
 COPY apps/backend ./apps/backend
 
-# Build TypeScript
-RUN pnpm --filter=@repo/backend build
+# Build TypeScript, including workspace dependencies that backend imports at runtime
+RUN pnpm --filter=@repo/api-contracts build && pnpm --filter=@repo/backend build
 
 # Use pnpm deploy to create isolated production bundle
 RUN pnpm --filter=@repo/backend deploy --prod /app/deploy
@@ -42,8 +46,6 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=builder /app/deploy/node_modules ./node_modules
 COPY --from=builder /app/deploy/package.json ./
 COPY --from=builder /app/apps/backend/dist ./dist
-# Copy prompts directory
-COPY --from=builder /app/apps/backend/prompts ./prompts
 
 # Create data directory with proper permissions
 RUN mkdir -p /app/data && chown -R backend:nodejs /app/data
@@ -51,5 +53,8 @@ RUN mkdir -p /app/data && chown -R backend:nodejs /app/data
 USER backend
 
 EXPOSE 8765
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD wget -qO- http://127.0.0.1:8765/health || exit 1
 
 CMD ["node", "dist/index.js"]

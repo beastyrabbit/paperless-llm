@@ -1,0 +1,33 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "dependencyDashboard": true,
+  "labels": ["dependencies"],
+  "enabledManagers": ["npm", "github-actions", "dockerfile", "docker-compose"],
+  "packageRules": [
+    {
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["@earendil-works/pi-agent-core", "@earendil-works/pi-ai"],
+      "groupName": "pi-agent-runtime",
+      "labels": ["dependencies", "pi-runtime"],
+      "prBodyNotes": [
+        "Guarded Pi runtime dependency update: run backend agent tests, frontend/backend typecheck, lint, and a manual document-processing smoke test before merge."
+      ]
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions"
+    },
+    {
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "groupName": "container-dependencies"
+    }
+  ],
+  "dockerfile": {
+    "fileMatch": [
+      "(^|/)Dockerfile$",
+      "(^|/)Dockerfile\\.[^/]+$",
+      "(^|/)apps/backend/Dockerfile$"
+    ]
+  }
+}

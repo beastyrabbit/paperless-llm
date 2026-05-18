@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ConfigService } from "../../src/config/index.js";
 import { BulkOcrJobService, BulkOcrJobServiceLive } from "../../src/jobs/BulkOcrJob.js";
 import { MistralService } from "../../src/services/MistralService.js";
+import { OcrUsageService } from "../../src/services/OcrUsageService.js";
 import { PaperlessService } from "../../src/services/PaperlessService.js";
 import { TinyBaseService } from "../../src/services/TinyBaseService.js";
 import { sampleDocument } from "../setup.js";
@@ -59,12 +60,61 @@ const createMockPaperlessService = (overrides = {}) => {
 const createMockMistralService = (overrides = {}) => {
   const defaultMocks = {
     processDocument: vi.fn(() => Effect.succeed("Extracted text from document...")),
+    processDocumentWithUsage: vi.fn(() =>
+      Effect.succeed({ text: "Extracted text from document...", model: "test-model" }),
+    ),
   };
 
   const mocks = { ...defaultMocks, ...overrides };
 
   return {
     layer: Layer.succeed(MistralService, mocks as unknown as MistralService),
+    mocks,
+  };
+};
+
+const createMockOcrUsage = (overrides = {}) => {
+  const defaultMocks = {
+    estimatePdfPages: vi.fn(() => 1),
+    estimateOcrTokens: vi.fn(() => 100),
+    reserve: vi.fn((request) =>
+      Effect.succeed({
+        id: `reservation-${request.docId ?? "job"}`,
+        runId: request.runId,
+        docId: request.docId,
+        source: request.source,
+        estimatedPages: request.estimatedPages,
+        estimatedTokens: request.estimatedTokens ?? 0,
+        date: "2026-05-15",
+      }),
+    ),
+    commit: vi.fn(() => Effect.succeed(undefined)),
+    release: vi.fn(() => Effect.succeed(undefined)),
+    getSnapshot: vi.fn(() =>
+      Effect.succeed({
+        dailyPagesUsed: 1,
+        dailyTokensUsed: 0,
+        runPagesUsed: 1,
+        runTokensUsed: 0,
+        dailyPageLimit: null,
+        runPageLimit: null,
+        dailyTokenLimit: null,
+        runTokenLimit: null,
+      }),
+    ),
+    getBudget: vi.fn(() =>
+      Effect.succeed({
+        dailyPageLimit: null,
+        runPageLimit: null,
+        dailyTokenLimit: null,
+        runTokenLimit: null,
+      }),
+    ),
+    withReservation: vi.fn(),
+  };
+  const mocks = { ...defaultMocks, ...overrides };
+  return {
+    layer: Layer.succeed(OcrUsageService, mocks as unknown as OcrUsageService),
     mocks,
   };
 };
@@ -95,7 +145,7 @@ describe("BulkOcrJobService", () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer),
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer, createMockOcrUsage().layer),
       );
 
       const result = await Effect.runPromise(
@@ -118,7 +168,7 @@ describe("BulkOcrJobService", () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer),
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer, createMockOcrUsage().layer),
       );
 
       const result = await Effect.runPromise(
@@ -150,7 +200,7 @@ describe("BulkOcrJobService", () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer),
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer, createMockOcrUsage().layer),
       );
 
       const result = await Effect.runPromise(
@@ -180,7 +230,7 @@ describe("BulkOcrJobService", () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer),
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer, createMockOcrUsage().layer),
       );
 
       await Effect.runPromise(
@@ -202,14 +252,14 @@ describe("BulkOcrJobService", () => {
         }).pipe(Effect.provide(TestLayer)),
       );
 
-      expect(mistralMocks.processDocument).toHaveBeenCalled();
+      expect(mistralMocks.processDocumentWithUsage).toHaveBeenCalled();
       expect(paperlessMocks.downloadPdf).toHaveBeenCalled();
     });
 
     it("should skip documents with existing OCR content when skipExisting is true", async () => {
       const existingContent =
         "This is existing OCR content that is long enough to be considered valid. It needs to be more than 100 characters for the skip logic to work properly.";
-      const { layer: mockPaperless, mocks: paperlessMocks } = createMockPaperlessService({
+      const { layer: mockPaperless } = createMockPaperlessService({
         getDocumentsByTag: vi.fn(() =>
           Effect.succeed([{ ...sampleDocument(1), content: existingContent }]),
         ),
@@ -219,7 +269,7 @@ describe("BulkOcrJobService", () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer),
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer, createMockOcrUsage().layer),
       );
 
       const result = await Effect.runPromise(
@@ -243,7 +293,7 @@ describe("BulkOcrJobService", () => {
 
       // Should have skipped the document
       expect(result.skipped).toBe(1);
-      expect(mistralMocks.processDocument).not.toHaveBeenCalled();
+      expect(mistralMocks.processDocumentWithUsage).not.toHaveBeenCalled();
     });
 
     it("should process documents with existing content when skipExisting is false", async () => {
@@ -259,7 +309,7 @@ describe("BulkOcrJobService", () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer),
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer, createMockOcrUsage().layer),
       );
 
       const result = await Effect.runPromise(
@@ -283,7 +333,7 @@ describe("BulkOcrJobService", () => {
 
       // Should have processed, not skipped
       expect(result.processed).toBe(1);
-      expect(mistralMocks.processDocument).toHaveBeenCalled();
+      expect(mistralMocks.processDocumentWithUsage).toHaveBeenCalled();
     });
   });
 
@@ -297,7 +347,7 @@ describe("BulkOcrJobService", () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer),
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer, createMockOcrUsage().layer),
       );
 
       await Effect.runPromise(
@@ -322,17 +372,17 @@ describe("BulkOcrJobService", () => {
     });
 
     it("should handle OCR errors in progress", async () => {
-      const { layer: mockPaperless, mocks } = createMockPaperlessService({
+      const { layer: mockPaperless } = createMockPaperlessService({
         getDocumentsByTag: vi.fn(() => Effect.succeed([{ ...sampleDocument(1), content: "" }])),
       });
       const { layer: mockMistral } = createMockMistralService({
-        processDocument: vi.fn(() => Effect.fail(new Error("OCR failed"))),
+        processDocumentWithUsage: vi.fn(() => Effect.fail(new Error("OCR failed"))),
       });
       const mockConfig = createMockConfig();
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer),
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer, createMockOcrUsage().layer),
       );
 
       const result = await Effect.runPromise(
@@ -367,10 +417,10 @@ describe("BulkOcrJobService", () => {
         ),
       });
       const { layer: mockMistral } = createMockMistralService({
-        processDocument: vi.fn(() =>
+        processDocumentWithUsage: vi.fn(() =>
           Effect.gen(function* () {
             yield* Effect.sleep("100 millis");
-            return "Extracted text";
+            return { text: "Extracted text", model: "test-model" };
           }),
         ),
       });
@@ -378,7 +428,7 @@ describe("BulkOcrJobService", () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer),
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer, createMockOcrUsage().layer),
       );
 
       const result = await Effect.runPromise(
@@ -413,7 +463,7 @@ describe("BulkOcrJobService", () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer),
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer, createMockOcrUsage().layer),
       );
 
       const result = await Effect.runPromise(
@@ -457,7 +507,7 @@ describe("BulkOcrJobService", () => {
 
       const TestLayer = Layer.provideMerge(
         BulkOcrJobServiceLive,
-        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer),
+        Layer.mergeAll(mockPaperless, mockMistral, mockConfig, createMockTinyBase().layer, createMockOcrUsage().layer),
       );
 
       const result = await Effect.runPromise(

@@ -38,6 +38,7 @@ export function setLocale(locale: Locale): void {
 
   // Set cookie with 1 year expiry
   const maxAge = 60 * 60 * 24 * 365; // 1 year in seconds
+  // biome-ignore lint/suspicious/noDocumentCookie: next-intl middleware reads NEXT_LOCALE from browser cookies.
   document.cookie = `${LOCALE_COOKIE_NAME}=${locale}; path=/; max-age=${maxAge}; SameSite=Lax`;
 
   // Reload to apply the new locale

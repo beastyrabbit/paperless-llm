@@ -34,6 +34,8 @@ export class OllamaError extends Data.TaggedError("OllamaError")<{
  */
 export class MistralError extends Data.TaggedError("MistralError")<{
   readonly message: string;
+  readonly statusCode?: number;
+  readonly retryAfterMs?: number;
   readonly cause?: unknown;
 }> {}
 
@@ -61,6 +63,11 @@ export class ValidationError extends Data.TaggedError("ValidationError")<{
   readonly message: string;
   readonly field?: string;
   readonly value?: unknown;
+  readonly issues?: ReadonlyArray<{
+    readonly path: ReadonlyArray<string | number>;
+    readonly message: string;
+    readonly code: string;
+  }>;
 }> {}
 
 /**
