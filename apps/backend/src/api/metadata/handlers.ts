@@ -22,7 +22,7 @@ export const listTags = Effect.gen(function* () {
   for (const [key, value] of Object.entries(allSettings)) {
     if (key.startsWith("tag_description_")) {
       const tagId = parseInt(key.replace("tag_description_", ""), 10);
-      if (!isNaN(tagId) && value) {
+      if (!Number.isNaN(tagId) && value) {
         tagMeta.push({
           paperless_tag_id: tagId,
           description: value,
@@ -157,7 +157,7 @@ export const optimizeTagDescription = (
 ) =>
   Effect.gen(function* () {
     const ollama = yield* OllamaService;
-    const model = ollama.getModel("small");
+    const model = ollama.getModel("generation");
 
     const prompt = `You are helping to optimize a tag description for a document management system.
 
@@ -190,7 +190,7 @@ export const translateTagDescription = (
   Effect.gen(function* () {
     const ollama = yield* OllamaService;
     const tinybase = yield* TinyBaseService;
-    const model = ollama.getModel("small");
+    const model = ollama.getModel("generation");
 
     const targetLangs = SUPPORTED_LANGS.filter((l) => l !== data.source_lang);
     const translations: Array<{ lang: string; text: string }> = [];
@@ -248,7 +248,7 @@ export const updateCustomField = (fieldId: number, data: { name?: string; extra_
     extra_data: data.extra_data ?? null,
   });
 
-export const deleteCustomField = (fieldId: number) => Effect.succeed({ deleted: true });
+export const deleteCustomField = (_fieldId: number) => Effect.succeed({ deleted: true });
 
 export const bulkUpdateCustomFields = (
   items: Array<{ id: number; name?: string; extra_data?: unknown }>,

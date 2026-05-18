@@ -10,13 +10,26 @@ import {
   type AgentTool,
   Agent as PiAgent,
 } from "@earendil-works/pi-agent-core";
-import { streamSimple } from "@earendil-works/pi-ai";
 import { Context, Effect, Layer } from "effect";
 import { Type } from "typebox";
+import { ConfigService } from "../config/index.js";
 import { AgentError } from "../errors/index.js";
 import type { Correspondent, CustomField, DocumentType, Tag } from "../models/index.js";
-import { ConfigService, PaperlessService, TinyBaseService } from "../services/index.js";
-import { buildOllamaModel } from "./piOllamaModel.js";
+import { ConcurrencyLimitService } from "../services/ConcurrencyLimitService.js";
+import { PaperlessService } from "../services/PaperlessService.js";
+import { TinyBaseService } from "../services/TinyBaseService.js";
+import {
+  formatUntrustedDataBlock,
+  UNTRUSTED_DOCUMENT_DATA_INSTRUCTION,
+} from "../utils/promptData.js";
+import { getWorkflowTagNames, isWorkflowTagName } from "../utils/tagState.js";
+import {
+  buildOllamaModel,
+  checkOllamaModelRunning,
+  makeGatedOllamaStreamSimple,
+  PromptIdleTimeoutError,
+  runWithPromptActivityWatchdog,
+} from "./piOllamaModel.js";
 
 export type ConsolidationAction = "merge" | "rename" | "delete" | "keep_separate" | "needs_review";
 export type ConsolidationAttributeType = "tag" | "correspondent" | "document_type" | "custom_field";
@@ -48,6 +61,7 @@ export interface PiConsolidationAgentService {
   readonly name: "consolidation_agent";
   readonly generateReport: (options?: {
     dryRun?: boolean;
+    persist?: boolean;
   }) => Effect.Effect<ConsolidationReport, AgentError>;
 }
 
@@ -59,7 +73,7 @@ type CatalogEntry = Pick<Tag | Correspondent | DocumentType, "id" | "name"> & {
   document_count?: number;
 };
 
-interface CatalogSnapshot {
+export interface CatalogSnapshot {
   tags: CatalogEntry[];
   correspondents: CatalogEntry[];
   documentTypes: CatalogEntry[];
@@ -78,57 +92,8 @@ const textResult = <T>(text: string, details: T, terminate = false) => ({
   terminate,
 });
 
-const normalize = (name: string): string =>
-  name
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-
-const levenshtein = (a: string, b: string): number => {
-  const rows = a.length + 1;
-  const cols = b.length + 1;
-  const matrix = Array.from({ length: rows }, () => Array<number>(cols).fill(0));
-  for (let row = 0; row < rows; row++) matrix[row]![0] = row;
-  for (let col = 0; col < cols; col++) matrix[0]![col] = col;
-
-  for (let row = 1; row < rows; row++) {
-    for (let col = 1; col < cols; col++) {
-      const cost = a[row - 1] === b[col - 1] ? 0 : 1;
-      matrix[row]![col] = Math.min(
-        matrix[row - 1]![col]! + 1,
-        matrix[row]![col - 1]! + 1,
-        matrix[row - 1]![col - 1]! + cost,
-      );
-    }
-  }
-  return matrix[a.length]![b.length]!;
-};
-
-const similarity = (a: string, b: string): number => {
-  const left = normalize(a);
-  const right = normalize(b);
-  if (!left || !right) return 0;
-  if (left === right) return 1;
-  const distance = levenshtein(left, right);
-  return 1 - distance / Math.max(left.length, right.length);
-};
-
 const clampConfidence = (value: number): number =>
   Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0.5;
-
-const getWorkflowTagNames = (tagConfig: Record<string, unknown>): Set<string> =>
-  new Set(
-    Object.values(tagConfig)
-      .filter((name): name is string => typeof name === "string" && !!name.trim())
-      .map((name) => name.trim().toLowerCase()),
-  );
-
-const isWorkflowTagName = (name: string, workflowTagNames: Set<string>): boolean => {
-  const normalized = name.trim().toLowerCase();
-  return normalized.startsWith("llm-") || workflowTagNames.has(normalized);
-};
 
 const isFinishReportResultMessage = (
   message: AgentMessage,
@@ -156,117 +121,107 @@ const getAssistantPreview = (messages: AgentMessage[]): string =>
     .trim()
     .slice(0, 1_000);
 
+export const buildConsolidationAgentFewShotExamples = (): Array<Record<string, unknown>> => [
+  {
+    note: "Synthetic IDs are valid only inside examples; real proposals must use snapshot IDs.",
+    final_tool: "finish_consolidation_report",
+    action: "merge",
+    proposal: {
+      action: "merge",
+      attributeType: "tag",
+      sourceIds: [22],
+      targetId: 12,
+      names: ["Versicherung", "Insurance"],
+      affectedDocumentCount: 9,
+      confidence: 0.84,
+      reasoning: "Same broad concept in two archive languages; merge into established target.",
+    },
+  },
+  {
+    action: "rename",
+    proposal: {
+      action: "rename",
+      attributeType: "correspondent",
+      sourceIds: [31],
+      names: ["TK Krankenkasse"],
+      proposedName: "Techniker Krankenkasse",
+      affectedDocumentCount: 14,
+      confidence: 0.78,
+      reasoning: "Normalize abbreviation to official name; no merge without stronger evidence.",
+    },
+  },
+  {
+    action: "needs_review",
+    proposal: {
+      action: "needs_review",
+      attributeType: "document_type",
+      sourceIds: [7, 8],
+      names: ["Bescheid", "Mitteilung"],
+      affectedDocumentCount: 6,
+      confidence: 0.43,
+      reasoning: "Similar names alone are weak evidence; keep workflow tags out of proposals.",
+    },
+  },
+];
+
+export const buildConsolidationAgentPrompt = (snapshot: CatalogSnapshot): string => {
+  const catalogPayload = JSON.stringify(
+    {
+      catalog_counts: {
+        tags: snapshot.tags.length,
+        correspondents: snapshot.correspondents.length,
+        document_types: snapshot.documentTypes.length,
+        custom_fields: snapshot.customFields.length,
+      },
+      candidate_proposals_sample: snapshot.candidateProposals.slice(0, 50),
+    },
+    null,
+    2,
+  );
+  return JSON.stringify(
+    {
+      agent: "consolidation_agent",
+      instructions: [
+        "Generate a manual Paperless catalog cleanup report.",
+        "Never apply catalog changes. Only call finish_consolidation_report with proposals for human review.",
+        "Use get_catalog_snapshot if you need the full catalog snapshot and candidate list.",
+        "Prefer needs_review over merge/delete when evidence is weak.",
+        "Use only real Paperless attribute IDs from the snapshot.",
+        "Never include workflow tags or unrelated operational tags in consolidation proposals.",
+        UNTRUSTED_DOCUMENT_DATA_INSTRUCTION,
+      ],
+      few_shot_examples: buildConsolidationAgentFewShotExamples(),
+      untrusted_catalog_payload: formatUntrustedDataBlock(catalogPayload, 12_000),
+      required_final_tool: "finish_consolidation_report",
+    },
+    null,
+    2,
+  );
+};
+
 export const PiConsolidationAgentServiceLive = Layer.effect(
   PiConsolidationAgentService,
   Effect.gen(function* () {
     const config = yield* ConfigService;
     const paperless = yield* PaperlessService;
+    const concurrency = yield* ConcurrencyLimitService;
     const tinybase = yield* TinyBaseService;
 
     const getRuntimeSettings = () =>
       tinybase.getAllSettings().pipe(
         Effect.map((settings) => ({
           ollamaUrl: settings["ollama.url"] ?? config.config.ollama.url,
-          model:
-            settings["ollama.model_large"] ??
-            settings["ollama.modelLarge"] ??
-            config.config.ollama.modelLarge,
+          model: settings["ollama.model"] ?? settings["ollama_model"] ?? config.config.ollama.model,
+          agentPromptTimeoutMs: config.config.http?.agentPromptTimeoutMs ?? 120_000,
         })),
         Effect.catchAll(() =>
           Effect.succeed({
             ollamaUrl: config.config.ollama.url,
-            model: config.config.ollama.modelLarge,
+            model: config.config.ollama.model,
+            agentPromptTimeoutMs: config.config.http?.agentPromptTimeoutMs ?? 120_000,
           }),
         ),
       );
-
-    const examplesFor = (field: "tags__id" | "correspondent" | "document_type", id: number) =>
-      paperless.getDocuments({ page: 1, pageSize: 25 }).pipe(
-        Effect.map((docs) =>
-          docs
-            .filter((doc) => {
-              if (field === "tags__id") return doc.tags.includes(id);
-              if (field === "correspondent") return doc.correspondent === id;
-              return doc.document_type === id;
-            })
-            .slice(0, 3)
-            .map((doc) => ({ id: doc.id, title: doc.title })),
-        ),
-        Effect.catchAll(() => Effect.succeed([])),
-      );
-
-    const addProposal = (
-      proposals: ConsolidationProposal[],
-      proposal: Omit<ConsolidationProposal, "id" | "exampleDocuments">,
-    ) =>
-      Effect.gen(function* () {
-        const id = `proposal-${proposals.length + 1}-${Date.now()}`;
-        const exampleField =
-          proposal.attributeType === "tag"
-            ? "tags__id"
-            : proposal.attributeType === "correspondent"
-              ? "correspondent"
-              : "document_type";
-        const exampleId = proposal.sourceIds[0] ?? proposal.targetId ?? 0;
-        const exampleDocuments =
-          proposal.attributeType === "custom_field" ||
-          !exampleId ||
-          proposal.affectedDocumentCount === 0
-            ? []
-            : yield* examplesFor(exampleField, exampleId);
-        proposals.push({ id, ...proposal, exampleDocuments });
-      });
-
-    const analyzeCatalog = <T extends { id: number; name: string; document_count?: number }>(
-      proposals: ConsolidationProposal[],
-      attributeType: ConsolidationAttributeType,
-      entries: T[],
-    ) =>
-      Effect.gen(function* () {
-        for (const entry of entries) {
-          if ((entry.document_count ?? 0) === 0) {
-            yield* addProposal(proposals, {
-              action: "delete",
-              attributeType,
-              sourceIds: [entry.id],
-              names: [entry.name],
-              affectedDocumentCount: 0,
-              confidence: 0.75,
-              reasoning: `${entry.name} is unused.`,
-            });
-          }
-        }
-
-        for (let i = 0; i < entries.length; i++) {
-          for (let j = i + 1; j < entries.length; j++) {
-            const left = entries[i]!;
-            const right = entries[j]!;
-            const leftCount = left.document_count ?? 0;
-            const rightCount = right.document_count ?? 0;
-            if (leftCount === 0 && rightCount === 0) continue;
-
-            const score = similarity(left.name, right.name);
-            const sameNormalized = normalize(left.name) === normalize(right.name);
-            if (!sameNormalized && score < 0.84) continue;
-
-            const target = leftCount >= rightCount ? left : right;
-            const source = target.id === left.id ? right : left;
-            yield* addProposal(proposals, {
-              action: sameNormalized ? "merge" : "needs_review",
-              attributeType,
-              sourceIds: [source.id],
-              targetId: target.id,
-              names: [left.name, right.name],
-              proposedName: target.name,
-              affectedDocumentCount: leftCount + rightCount,
-              confidence: sameNormalized ? 0.92 : Math.max(0.55, score),
-              reasoning: sameNormalized
-                ? `Names normalize to the same value: "${normalize(left.name)}".`
-                : `Names are similar (${Math.round(score * 100)}%).`,
-            });
-          }
-        }
-      });
 
     const buildSnapshot = () =>
       Effect.gen(function* () {
@@ -283,31 +238,6 @@ export const PiConsolidationAgentServiceLive = Layer.effect(
         const workflowTagNames = getWorkflowTagNames(config.config.tags);
         const userTags = tags.filter((tag) => !isWorkflowTagName(tag.name, workflowTagNames));
         const candidateProposals: ConsolidationProposal[] = [];
-        yield* analyzeCatalog(candidateProposals, "tag", userTags);
-        yield* analyzeCatalog(candidateProposals, "correspondent", correspondents);
-        yield* analyzeCatalog(candidateProposals, "document_type", documentTypes);
-
-        const normalizedCustomFields = new Map<string, typeof customFields>();
-        for (const field of customFields) {
-          const key = normalize(field.name);
-          normalizedCustomFields.set(key, [...(normalizedCustomFields.get(key) ?? []), field]);
-        }
-        for (const group of normalizedCustomFields.values()) {
-          if (group.length > 1) {
-            yield* addProposal(candidateProposals, {
-              action: "needs_review",
-              attributeType: "custom_field",
-              sourceIds: group.slice(1).map((field) => field.id),
-              targetId: group[0]!.id,
-              names: group.map((field) => `${field.name} (${field.data_type})`),
-              proposedName: group[0]!.name,
-              affectedDocumentCount: 0,
-              confidence: 0.7,
-              reasoning:
-                "Custom fields share the same normalized name and may duplicate each other.",
-            });
-          }
-        }
 
         return {
           tags: userTags.map(({ id, name, document_count }) => ({ id, name, document_count })),
@@ -457,7 +387,8 @@ export const PiConsolidationAgentServiceLive = Layer.effect(
         description:
           "Read Paperless catalog entries and deterministic duplicate/weak-attribute candidates.",
         parameters: emptyParams,
-        execute: async () => textResult(JSON.stringify(snapshot), { snapshot }),
+        execute: async () =>
+          textResult(formatUntrustedDataBlock(JSON.stringify(snapshot), 40_000), { snapshot }),
       };
 
       const finishReport: AgentTool<typeof finishParams, { report: ConsolidationReport }> = {
@@ -489,30 +420,7 @@ export const PiConsolidationAgentServiceLive = Layer.effect(
       return [getCatalogSnapshot, finishReport];
     };
 
-    const buildPrompt = (snapshot: CatalogSnapshot): string =>
-      JSON.stringify(
-        {
-          agent: "consolidation_agent",
-          instructions: [
-            "Generate a manual Paperless catalog cleanup report.",
-            "Never apply catalog changes. Only call finish_consolidation_report with proposals for human review.",
-            "Use get_catalog_snapshot if you need the full catalog snapshot and candidate list.",
-            "Prefer needs_review over merge/delete when evidence is weak.",
-            "Use only real Paperless attribute IDs from the snapshot.",
-            "Never include workflow tags or unrelated operational tags in consolidation proposals.",
-          ],
-          catalog_counts: {
-            tags: snapshot.tags.length,
-            correspondents: snapshot.correspondents.length,
-            document_types: snapshot.documentTypes.length,
-            custom_fields: snapshot.customFields.length,
-          },
-          candidate_proposals_sample: snapshot.candidateProposals.slice(0, 50),
-          required_final_tool: "finish_consolidation_report",
-        },
-        null,
-        2,
-      );
+    const buildPrompt = buildConsolidationAgentPrompt;
 
     const persistReport = (report: ConsolidationReport) =>
       Effect.gen(function* () {
@@ -588,6 +496,7 @@ export const PiConsolidationAgentServiceLive = Layer.effect(
       generateReport: (options) =>
         Effect.gen(function* () {
           const dryRun = options?.dryRun === true;
+          const shouldPersist = options?.persist !== false && !dryRun;
           const [runtime, snapshot] = yield* Effect.all([getRuntimeSettings(), buildSnapshot()], {
             concurrency: "unbounded",
           });
@@ -605,11 +514,12 @@ export const PiConsolidationAgentServiceLive = Layer.effect(
                 "You are consolidation_agent for Paperless.",
                 "You produce reviewable cleanup proposals only.",
                 "Deterministic backend tools apply approved changes later; never claim you applied anything.",
+                UNTRUSTED_DOCUMENT_DATA_INSTRUCTION,
               ].join("\n"),
               model: buildOllamaModel(runtime.ollamaUrl, runtime.model),
               tools: createTools(snapshot, reportRef),
             },
-            streamFn: streamSimple,
+            streamFn: makeGatedOllamaStreamSimple(concurrency),
             getApiKey: () => "ollama",
             sessionId,
             toolExecution: "sequential",
@@ -655,13 +565,39 @@ export const PiConsolidationAgentServiceLive = Layer.effect(
           });
 
           yield* Effect.tryPromise({
-            try: () => agent.prompt(buildPrompt(snapshot)),
-            catch: (error) =>
-              new AgentError({
-                message: `Pi consolidation run failed: ${String(error)}`,
+            try: () =>
+              runWithPromptActivityWatchdog(
+                async ({ markActivity }) => {
+                  const unsubscribe = agent.subscribe((event) => {
+                    markActivity(`agent_${event.type}`);
+                  });
+                  try {
+                    await agent.prompt(buildPrompt(snapshot));
+                  } finally {
+                    unsubscribe();
+                  }
+                },
+                {
+                  label: "Pi consolidation run",
+                  timeoutMs: runtime.agentPromptTimeoutMs,
+                  abort: () => agent.abort(),
+                  checkStillRunning: async () =>
+                    agent.state.isStreaming ||
+                    (await checkOllamaModelRunning(runtime.ollamaUrl, runtime.model)),
+                },
+              ),
+            catch: (error) => {
+              const messageText =
+                error instanceof Error && error.message ? error.message : String(error);
+              return new AgentError({
+                message:
+                  error instanceof PromptIdleTimeoutError
+                    ? messageText
+                    : `Pi consolidation run failed: ${messageText}`,
                 agent: "consolidation_agent",
                 cause: error,
-              }),
+              });
+            },
           });
 
           const finalToolResult = agent.state.messages.find(isFinishReportResultMessage);
@@ -680,7 +616,7 @@ export const PiConsolidationAgentServiceLive = Layer.effect(
             );
           }
 
-          if (!dryRun) {
+          if (shouldPersist) {
             yield* Effect.all(
               piEvents.map((entry) =>
                 tinybase

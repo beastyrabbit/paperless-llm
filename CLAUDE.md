@@ -58,7 +58,7 @@ On errors, the commit is aborted.
 
 **Two-service architecture:**
 - **Frontend**: Next.js 16 + React 19 + TailwindCSS 4 + shadcn/ui
-- **Backend**: TypeScript + Effect-TS + Hono HTTP server
+- **Backend**: TypeScript + Effect-TS + Node HTTP server
 
 **External dependencies:**
 - Paperless-ngx (document management)
@@ -69,7 +69,7 @@ On errors, the commit is aborted.
 ### Backend Structure (`apps/backend/`)
 - `src/index.ts` - Application entry point
 - `src/server.ts` - HTTP server with CORS and request handling
-- `src/api/` - API route handlers (settings, documents, processing, prompts, pending, jobs)
+- `src/api/` - API route handlers (settings, documents, processing, cases, catalog, pending, jobs)
 - `src/services/` - External service clients (PaperlessService, OllamaService, MistralService, TinyBaseService)
 - `src/agents/` - Document processing agents (TitleAgent, CorrespondentAgent, TagAgent, etc.)
 - `src/config/` - Configuration management with Effect layers
@@ -81,7 +81,8 @@ On errors, the commit is aborted.
 - `app/settings/` - Configuration UI
 - `app/documents/` - Document browser
 - `app/pending/` - Manual review queue
-- `app/prompts/` - Prompt template viewer
+- `app/cases/` - Document case queue
+- `app/catalog/` - Catalog agent proposals
 - `components/` - App-specific components (sidebar, model-combobox)
 - `lib/api.ts` - Typed API client
 
@@ -98,7 +99,7 @@ Documents flow through tag-based states:
 4. → Tag assignment → `llm-tags-done`
 5. → `llm-processed` (complete)
 
-The confirmation loop uses: Large Model analysis → Small Model verification → retry or user queue.
+The confirmation loop uses: Large Model analysis -> Small Model verification -> large-model revision or actionable case failure; metadata is auto-applied only when confirmed.
 
 ## Configuration
 
@@ -110,43 +111,18 @@ Key config sections: `paperless`, `mistral`, `ollama`, `qdrant`, `auto_processin
 
 Ports are managed by portless. Use `pnpm dev:portless` (or `pnpm dev:web:portless` / `pnpm dev:backend:portless` individually).
 
-- Frontend: `http://paperless-web.localhost:1355`
-- Backend: `http://paperless-api.localhost:1355`
+- Frontend: `https://paperless-llm-web.localhost:1355`
+- Backend: `https://paperless-llm-api.localhost:1355`
 - Fallback (without portless): frontend on 3765, backend on 8765
 
 ## Development Guidelines
 
-### Prompts and Localization
+### Pi Instructions and Localization
 
-**NEVER hardcode prompts in code.** Always use `PromptService` to load prompts:
-
-```typescript
-const promptService = yield* PromptService;
-const promptInfo = yield* promptService.getPrompt('prompt_name');
-const prompt = promptInfo.content;
-```
-
-- Prompts are stored in `apps/backend/prompts/{lang}/` (e.g., `en/`, `de/`)
-- PromptService automatically loads the correct language based on settings
-- Falls back to English if the target language prompt doesn't exist
-- Use placeholder syntax like `{document_content}`, `{existing_tags}` in prompts
-- PromptService strips Markdown formatting before sending to LLM (plain text only)
-
-**When adding a new prompt:**
-
-1. **Create both language versions** - Always provide `en/` AND `de/` translations
-2. **Update expectedPrompts** - Add the prompt name to the `expectedPrompts` array in `PromptService.ts` (around line 216) so language completeness is tracked correctly
-3. **Use consistent placeholders** - Follow existing patterns like `{document_content}`, `{existing_correspondents}`
-
-```typescript
-// In PromptService.ts - add your new prompt to this list
-const expectedPrompts = [
-  'title',
-  'correspondent',
-  // ... existing prompts
-  'your_new_prompt',  // <-- Add here
-];
-```
+Pi agent instructions, tools, schemas, and structured placeholders live in TypeScript. Do not
+reintroduce `PromptService` or file-backed prompt loading paths. When adding or changing document
+agent behavior, keep the instruction text next to the typed tool/schema definitions and make the
+placeholder contract explicit in TypeScript.
 
 ### Pipeline Steps
 

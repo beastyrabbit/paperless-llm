@@ -2,12 +2,32 @@
  * OCR agent using Mistral OCR plus Paperless v3 document versions.
  */
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Context, Effect, Layer, pipe, Stream } from "effect";
 import { AgentError, MistralError } from "../errors/index.js";
-import { ConfigService, PaperlessService, TinyBaseService } from "../services/index.js";
+import {
+  ConcurrencyLimitService,
+  ConfigService,
+  PaperlessService,
+  classifyMetricsErrorOutcome,
+  metricReasonFromError,
+  metrics,
+  observeDuration,
+  TinyBaseService,
+  OcrUsageService,
+} from "../services/index.js";
+import {
+  fetchWithTimeout,
+  getRetryAfterMs,
+  isTransientHttpStatus,
+  normalizeBaseUrl,
+} from "../utils/http.js";
+import { logger } from "../utils/logger.js";
+import { annotateSpan, withClientSpan, withInternalSpan } from "../observability/tracing.js";
+import type { PaperlessDocumentVersion } from "../services/paperless/types.js";
 import {
   type Agent,
   emitAnalyzing,
@@ -21,6 +41,7 @@ import {
 export interface OCRInput {
   docId: number;
   mockMode?: boolean;
+  force?: boolean;
 }
 
 export interface OCRResult {
@@ -35,6 +56,8 @@ export interface OCRResult {
   ocrVersionId?: number | null;
   searchablePdfUploaded?: boolean;
   ocrPersisted?: boolean;
+  sourcePdfSha256?: string;
+  textSha256?: string;
   error?: string;
 }
 
@@ -45,7 +68,49 @@ interface MistralOCRPage {
 
 interface MistralOCRResponse {
   pages: MistralOCRPage[];
+  usage_info?: {
+    pages_processed?: number;
+    doc_size_bytes?: number;
+  };
 }
+
+const sha256Bytes = (bytes: Uint8Array): string =>
+  createHash("sha256").update(Buffer.from(bytes)).digest("hex");
+
+const sha256Text = (value: string): string => createHash("sha256").update(value).digest("hex");
+
+const MIN_REUSABLE_OCR_CONTENT_LENGTH = 50;
+const MISTRAL_OCR_VERSION_LABEL_PATTERN = /\bmistral\s+ocr\b/i;
+
+const readStoredOcrHash = (value: unknown): string | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const hash = (value as Record<string, unknown>)["sourcePdfSha256"];
+  return typeof hash === "string" && hash.length > 0 ? hash : null;
+};
+
+const getVersionLabel = (version: PaperlessDocumentVersion): string =>
+  (version.label ?? version.version_label ?? "").trim();
+
+const getVersionTimestamp = (version: PaperlessDocumentVersion): number => {
+  const parsed = Date.parse(version.created ?? version.added ?? "");
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const sortVersionsNewestFirst = (
+  versions: readonly PaperlessDocumentVersion[],
+): PaperlessDocumentVersion[] =>
+  [...versions].sort((left, right) => {
+    const timestampDiff = getVersionTimestamp(right) - getVersionTimestamp(left);
+    return timestampDiff !== 0 ? timestampDiff : right.id - left.id;
+  });
+
+const findCurrentMistralOcrVersion = (
+  versions: readonly PaperlessDocumentVersion[],
+): PaperlessDocumentVersion | null => {
+  const [latest] = sortVersionsNewestFirst(versions);
+  if (!latest) return null;
+  return MISTRAL_OCR_VERSION_LABEL_PATTERN.test(getVersionLabel(latest)) ? latest : null;
+};
 
 export interface OCRAgentService extends Agent<OCRInput, OCRResult> {
   readonly name: "ocr";
@@ -54,6 +119,7 @@ export interface OCRAgentService extends Agent<OCRInput, OCRResult> {
 }
 
 export const OCRAgentService = Context.GenericTag<OCRAgentService>("OCRAgentService");
+const ocrLogger = logger.child({ component: "ocr_agent" });
 
 export const OCRAgentServiceLive = Layer.effect(
   OCRAgentService,
@@ -61,9 +127,21 @@ export const OCRAgentServiceLive = Layer.effect(
     const config = yield* ConfigService;
     const paperless = yield* PaperlessService;
     const tinybase = yield* TinyBaseService;
-    const { mistral: mistralConfig, tags: tagConfig } = config.config;
+    const concurrency = yield* ConcurrencyLimitService;
+    const ocrUsage = yield* OcrUsageService;
+    const { mistral: mistralConfig } = config.config;
 
-    const getConfig = (): Effect.Effect<{ apiKey: string; model: string }, never> =>
+    const getConfig = (): Effect.Effect<
+      {
+        apiKey: string;
+        model: string;
+        apiBaseUrl: string;
+        requestTimeoutMs: number;
+        retryAttempts: number;
+        retryBaseDelayMs: number;
+      },
+      never
+    > =>
       pipe(
         tinybase.getAllSettings(),
         Effect.map((dbSettings) => {
@@ -76,6 +154,15 @@ export const OCRAgentServiceLive = Layer.effect(
           return {
             apiKey: dbSettings["mistral.api_key"] ?? mistralConfig.apiKey,
             model: configuredModel.includes("ocr") ? configuredModel : "mistral-ocr-latest",
+            apiBaseUrl: normalizeBaseUrl(
+              dbSettings["mistral.api_base_url"] ??
+                dbSettings["mistral.apiBaseUrl"] ??
+                mistralConfig.apiBaseUrl ??
+                "https://api.mistral.ai",
+            ),
+            requestTimeoutMs: config.config.http?.requestTimeoutMs ?? 120_000,
+            retryAttempts: Math.max(1, config.config.http?.mistralRetryAttempts ?? 3),
+            retryBaseDelayMs: Math.max(1, config.config.http?.mistralRetryBaseDelayMs ?? 5_000),
           };
         }),
         Effect.catchAll(() =>
@@ -84,15 +171,29 @@ export const OCRAgentServiceLive = Layer.effect(
             model: mistralConfig.model?.includes("ocr")
               ? mistralConfig.model
               : "mistral-ocr-latest",
+            apiBaseUrl: normalizeBaseUrl(mistralConfig.apiBaseUrl ?? "https://api.mistral.ai"),
+            requestTimeoutMs: config.config.http?.requestTimeoutMs ?? 120_000,
+            retryAttempts: Math.max(1, config.config.http?.mistralRetryAttempts ?? 3),
+            retryBaseDelayMs: Math.max(1, config.config.http?.mistralRetryBaseDelayMs ?? 5_000),
           }),
         ),
       );
 
+    const isRetryableMistralError = (error: MistralError): boolean =>
+      error.statusCode === undefined || isTransientHttpStatus(error.statusCode);
+
     const runMistralOCR = (
       pdfBytes: Uint8Array,
-    ): Effect.Effect<{ text: string; pages: number }, MistralError> =>
+      docId: number,
+      runId: string,
+    ): Effect.Effect<
+      { text: string; pages: number },
+      MistralError | import("../services/OcrUsageService.js").OcrBudgetExceededError
+    > =>
       Effect.gen(function* () {
-        const { apiKey, model } = yield* getConfig();
+        const startedAt = Date.now();
+        const { apiKey, model, apiBaseUrl, requestTimeoutMs, retryAttempts, retryBaseDelayMs } =
+          yield* getConfig();
 
         if (!apiKey) {
           return yield* Effect.fail(
@@ -101,28 +202,46 @@ export const OCRAgentServiceLive = Layer.effect(
         }
 
         const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
+        const estimatedPages = ocrUsage.estimatePdfPages(pdfBytes);
+        const estimatedTokens = ocrUsage.estimateOcrTokens(pdfBytes);
+        const reservation = yield* ocrUsage.reserve({
+          runId,
+          docId,
+          source: "ocr_agent",
+          estimatedPages,
+          estimatedTokens,
+          model,
+        });
 
-        return yield* Effect.tryPromise({
+        const requestOnce = Effect.tryPromise({
           try: async () => {
-            const response = await fetch("https://api.mistral.ai/v1/ocr", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${apiKey}`,
-              },
-              body: JSON.stringify({
-                model,
-                document: {
-                  type: "document_url",
-                  document_url: `data:application/pdf;base64,${pdfBase64}`,
+            const response = await fetchWithTimeout(
+              `${apiBaseUrl}/v1/ocr`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${apiKey}`,
                 },
-                include_image_base64: false,
-              }),
-            });
+                body: JSON.stringify({
+                  model,
+                  document: {
+                    type: "document_url",
+                    document_url: `data:application/pdf;base64,${pdfBase64}`,
+                  },
+                  include_image_base64: false,
+                }),
+              },
+              requestTimeoutMs,
+            );
 
             if (!response.ok) {
               const text = await response.text();
-              throw new Error(`Mistral OCR error: ${response.status} ${text}`);
+              throw new MistralError({
+                message: `Mistral OCR error: ${response.status} ${text}`,
+                statusCode: response.status,
+                retryAfterMs: getRetryAfterMs(response) ?? undefined,
+              });
             }
 
             const result = (await response.json()) as MistralOCRResponse;
@@ -133,59 +252,138 @@ export const OCRAgentServiceLive = Layer.effect(
             };
           },
           catch: (error) =>
-            new MistralError({
-              message: `Mistral OCR failed: ${String(error)}`,
-              cause: error,
-            }),
+            error instanceof MistralError
+              ? error
+              : new MistralError({
+                  message: `Mistral OCR failed: ${String(error)}`,
+                  cause: error,
+                }),
         });
-      });
+
+        let lastError: MistralError | null = null;
+        for (let attempt = 0; attempt < retryAttempts; attempt++) {
+          const result = yield* Effect.either(
+            concurrency.withOcr(concurrency.withMistral(requestOnce)),
+          );
+          if (result._tag === "Right") {
+            metrics.llmRequestDuration.observe(
+              { provider: "mistral", operation: "ocr", model, outcome: "success" },
+              observeDuration(startedAt),
+            );
+            yield* ocrUsage.commit(reservation, { pages: Math.max(1, result.right.pages), model });
+            return result.right;
+          }
+
+          lastError = result.left;
+          if (!isRetryableMistralError(result.left) || attempt === retryAttempts - 1) {
+            metrics.llmRequestDuration.observe(
+              {
+                provider: "mistral",
+                operation: "ocr",
+                model,
+                outcome: classifyMetricsErrorOutcome(result.left),
+              },
+              observeDuration(startedAt),
+            );
+            yield* ocrUsage.release(reservation, "mistral_error");
+            return yield* Effect.fail(result.left);
+          }
+
+          metrics.retries.inc({
+            component: "mistral",
+            operation: "ocr",
+            reason: metricReasonFromError(result.left),
+          });
+          const delayMs = result.left.retryAfterMs ?? retryBaseDelayMs * 2 ** attempt;
+          yield* Effect.sleep(`${delayMs} millis`);
+        }
+
+        const error =
+          lastError ?? new MistralError({ message: "Mistral OCR failed without a cause" });
+        metrics.llmRequestDuration.observe(
+          {
+            provider: "mistral",
+            operation: "ocr",
+            model,
+            outcome: classifyMetricsErrorOutcome(error),
+          },
+          observeDuration(startedAt),
+        );
+        yield* ocrUsage.release(reservation, "mistral_error");
+        return yield* Effect.fail(error);
+      }).pipe(
+        Effect.tap((result) =>
+          annotateSpan({
+            "ocr.pages": result.pages,
+            "ocr.text_length": result.text.length,
+            "ocr.outcome": "success",
+          }),
+        ),
+        Effect.tapError((error) =>
+          annotateSpan({
+            "ocr.outcome": "error",
+            "error.type": error instanceof Error ? error.name : "unknown",
+          }),
+        ),
+        withClientSpan("mistral.ocr", {
+          "peer.service": "mistral",
+          "http.request.method": "POST",
+          "url.path": "/v1/ocr",
+          "mistral.operation": "ocr",
+          "paperless.document.id": docId,
+        }),
+      );
 
     const generateSearchablePdf = (
       docId: number,
       pdfBytes: Uint8Array,
     ): Effect.Effect<Uint8Array | null, never> =>
-      Effect.tryPromise({
-        try: async () => {
-          const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), `paperless-llm-ocr-${docId}-`));
-          const inputPath = path.join(tempDir, "input.pdf");
-          const outputPath = path.join(tempDir, "output.pdf");
+      concurrency
+        .withOcr(
+          Effect.tryPromise({
+            try: async () => {
+              const tempDir = await fs.mkdtemp(
+                path.join(os.tmpdir(), `paperless-llm-ocr-${docId}-`),
+              );
+              const inputPath = path.join(tempDir, "input.pdf");
+              const outputPath = path.join(tempDir, "output.pdf");
 
-          try {
-            await fs.writeFile(inputPath, pdfBytes);
-            await new Promise<void>((resolve, reject) => {
-              const child = spawn("ocrmypdf", [
-                "--skip-text",
-                "--deskew",
-                "--rotate-pages",
-                inputPath,
-                outputPath,
-              ]);
-              let stderr = "";
-              child.stderr.on("data", (chunk) => {
-                stderr += String(chunk);
-              });
-              child.on("error", reject);
-              child.on("close", (code) => {
-                if (code === 0) resolve();
-                else reject(new Error(stderr.trim() || `ocrmypdf exited with code ${code}`));
-              });
-            });
-            return new Uint8Array(await fs.readFile(outputPath));
-          } finally {
-            await fs.rm(tempDir, { recursive: true, force: true });
-          }
-        },
-        catch: (error) => error,
-      }).pipe(
-        Effect.catchAll((error) =>
-          Effect.sync(() => {
-            console.warn(
-              `[OCR] Searchable PDF generation skipped for document ${docId}: ${String(error)}`,
-            );
-            return null;
+              try {
+                await fs.writeFile(inputPath, pdfBytes);
+                await new Promise<void>((resolve, reject) => {
+                  const child = spawn("ocrmypdf", [
+                    "--skip-text",
+                    "--deskew",
+                    "--rotate-pages",
+                    inputPath,
+                    outputPath,
+                  ]);
+                  let stderr = "";
+                  child.stderr.on("data", (chunk) => {
+                    stderr += String(chunk);
+                  });
+                  child.on("error", reject);
+                  child.on("close", (code) => {
+                    if (code === 0) resolve();
+                    else reject(new Error(stderr.trim() || `ocrmypdf exited with code ${code}`));
+                  });
+                });
+                return new Uint8Array(await fs.readFile(outputPath));
+              } finally {
+                await fs.rm(tempDir, { recursive: true, force: true });
+              }
+            },
+            catch: (error) => error,
           }),
-        ),
-      );
+        )
+        .pipe(
+          Effect.catchAll((error) =>
+            Effect.sync(() => {
+              ocrLogger.warn("searchable_pdf_generation_skipped", { docId, error });
+              return null;
+            }),
+          ),
+        );
 
     const isTextDocument = (doc: {
       mime_type?: string;
@@ -201,24 +399,77 @@ export const OCRAgentServiceLive = Layer.effect(
       );
     };
 
+    const getReusableContent = (doc: { content?: string | null }): string => {
+      const content = doc.content?.trim() ?? "";
+      return content.length >= MIN_REUSABLE_OCR_CONTENT_LENGTH ? content : "";
+    };
+
+    const skipWithExistingContent = (
+      docId: number,
+      existingContent: string,
+      skipReason: string,
+      summary: string,
+      extraData: Record<string, unknown> = {},
+    ) =>
+      Effect.gen(function* () {
+        yield* tinybase
+          .appendRunSummary(docId, {
+            id: `ocr-${Date.now()}`,
+            agent: "ocr_agent",
+            status: "skipped",
+            summary,
+            createdAt: new Date().toISOString(),
+          })
+          .pipe(Effect.catchAll(() => Effect.void));
+        yield* tinybase.addProcessingLog({
+          docId,
+          timestamp: new Date().toISOString(),
+          step: "ocr",
+          eventType: "result",
+          data: {
+            success: true,
+            skipped: true,
+            skipReason,
+            textLength: existingContent.length,
+            pages: 1,
+            ...extraData,
+          },
+        });
+        return {
+          success: true,
+          docId,
+          textLength: existingContent.length,
+          pages: 1,
+          skipped: true,
+          skipReason,
+        };
+      });
+
     const persistOcrResult = (
       docId: number,
       pdfBytes: Uint8Array,
       text: string,
       pages: number,
+      sourcePdfSha256: string,
+      knownVersions?: readonly PaperlessDocumentVersion[],
     ): Effect.Effect<
       {
         sourceVersionIds: number[];
         ocrVersionId: number | null;
         searchablePdfUploaded: boolean;
         ocrPersisted: boolean;
+        sourcePdfSha256: string;
+        textSha256: string;
       },
       never
     > =>
       Effect.gen(function* () {
-        const existingVersions = yield* paperless
-          .getDocumentVersions(docId)
-          .pipe(Effect.catchAll(() => Effect.succeed([])));
+        const textSha256 = sha256Text(text);
+        const existingVersions =
+          knownVersions ??
+          (yield* paperless
+            .getDocumentVersions(docId)
+            .pipe(Effect.catchAll(() => Effect.succeed([]))));
         const sourceVersionIds = existingVersions.map((version) => version.id);
 
         if (text.length > 0) {
@@ -241,7 +492,7 @@ export const OCRAgentServiceLive = Layer.effect(
             .uploadOcrPdfVersion(docId, versionBytes, versionLabel)
             .pipe(
               Effect.catchAll((error) => {
-                console.warn(`[OCR] Failed to upload OCR version for ${docId}: ${String(error)}`);
+                ocrLogger.warn("ocr_version_upload_failed", { docId, error });
                 return Effect.succeed(null);
               }),
             );
@@ -263,9 +514,11 @@ export const OCRAgentServiceLive = Layer.effect(
               ),
               Effect.catchAll((error) =>
                 Effect.sync(() => {
-                  console.warn(
-                    `[OCR] Failed to patch OCR version content for ${docId}: ${String(error)}`,
-                  );
+                  ocrLogger.warn("ocr_version_content_patch_failed", {
+                    docId,
+                    ocrVersionId,
+                    error,
+                  });
                 }),
               ),
             );
@@ -285,6 +538,8 @@ export const OCRAgentServiceLive = Layer.effect(
                 textLength: text.length,
                 pages,
                 source: "mistral",
+                sourcePdfSha256,
+                textSha256,
                 updatedAt: new Date().toISOString(),
               },
             },
@@ -303,7 +558,14 @@ export const OCRAgentServiceLive = Layer.effect(
           })
           .pipe(Effect.catchAll(() => Effect.void));
 
-        return { sourceVersionIds, ocrVersionId, searchablePdfUploaded, ocrPersisted };
+        return {
+          sourceVersionIds,
+          ocrVersionId,
+          searchablePdfUploaded,
+          ocrPersisted,
+          sourcePdfSha256,
+          textSha256,
+        };
       }).pipe(
         Effect.catchAll(() =>
           Effect.succeed({
@@ -311,18 +573,20 @@ export const OCRAgentServiceLive = Layer.effect(
             ocrVersionId: null,
             searchablePdfUploaded: false,
             ocrPersisted: false,
+            sourcePdfSha256,
+            textSha256: sha256Text(text),
           }),
         ),
       );
 
     const process = (input: OCRInput): Effect.Effect<OCRResult, AgentError> =>
       Effect.gen(function* () {
-        const { docId, mockMode = false } = input;
+        const { docId, mockMode = false, force = false } = input;
+        const runId = `ocr-agent-${docId}-${Date.now()}`;
 
         if (mockMode) {
           const doc = yield* paperless.getDocument(docId);
           const existingContent = doc.content ?? "";
-          yield* paperless.transitionDocumentTag(docId, tagConfig.pending, tagConfig.ocrDone);
           yield* tinybase
             .appendRunSummary(docId, {
               id: `ocr-${Date.now()}`,
@@ -351,43 +615,117 @@ export const OCRAgentServiceLive = Layer.effect(
         const doc = yield* paperless.getDocument(docId);
         if (isTextDocument(doc)) {
           const existingContent = doc.content ?? "";
-          yield* paperless.transitionDocumentTag(docId, tagConfig.pending, tagConfig.ocrDone);
-          yield* tinybase
-            .appendRunSummary(docId, {
-              id: `ocr-${Date.now()}`,
-              agent: "ocr_agent",
-              status: "skipped",
-              summary: `OCR skipped because the source file is already text (${doc.mime_type ?? doc.original_file_name ?? "text document"}).`,
-              createdAt: new Date().toISOString(),
-            })
-            .pipe(Effect.catchAll(() => Effect.void));
-          yield* tinybase.addProcessingLog({
+          return yield* skipWithExistingContent(
             docId,
-            timestamp: new Date().toISOString(),
-            step: "ocr",
-            eventType: "result",
-            data: {
-              success: true,
-              skipped: true,
-              skipReason: "text_document",
-              textLength: existingContent.length,
-              pages: 1,
+            existingContent,
+            "text_document",
+            `OCR skipped because the source file is already text (${doc.mime_type ?? doc.original_file_name ?? "text document"}).`,
+            {
               sourceMimeType: doc.mime_type,
               sourceFileName: doc.original_file_name ?? doc.archived_file_name,
             },
-          });
-          return {
-            success: true,
+          );
+        }
+
+        const existingVersions = yield* paperless
+          .getDocumentVersions(docId)
+          .pipe(Effect.catchAll(() => Effect.succeed([])));
+        const reusableContent = force ? "" : getReusableContent(doc);
+        const currentMistralVersion = force ? null : findCurrentMistralOcrVersion(existingVersions);
+        if (reusableContent && currentMistralVersion) {
+          return yield* skipWithExistingContent(
             docId,
-            textLength: existingContent.length,
-            pages: 1,
-            skipped: true,
-            skipReason: "text_document",
-          };
+            reusableContent,
+            "existing_mistral_ocr_version",
+            `OCR skipped because the current Paperless version is already labeled as Mistral OCR and has ${reusableContent.length} characters of extracted text.`,
+            {
+              sourceMimeType: doc.mime_type,
+              sourceFileName: doc.original_file_name ?? doc.archived_file_name,
+              ocrVersionId: currentMistralVersion.id,
+              ocrVersionLabel: getVersionLabel(currentMistralVersion),
+            },
+          );
         }
 
         const pdfBytes = yield* paperless.downloadPdf(docId);
-        const ocrResult = yield* runMistralOCR(pdfBytes);
+        const sourcePdfSha256 = sha256Bytes(pdfBytes);
+        if (!force) {
+          const [memory, cachedOcr] = yield* Effect.all(
+            [
+              tinybase.getDocumentMemory(docId).pipe(Effect.catchAll(() => Effect.succeed(null))),
+              tinybase
+                .getDocumentOcrContent(docId)
+                .pipe(Effect.catchAll(() => Effect.succeed(null))),
+            ],
+            { concurrency: "unbounded" },
+          );
+          const storedHash = readStoredOcrHash(memory?.extractedFacts?.["ocr"]);
+          const cachedText = cachedOcr?.content?.trim() ?? "";
+          const cachedPages =
+            typeof cachedOcr?.pages === "number" && cachedOcr.pages > 0 ? cachedOcr.pages : 1;
+          if (storedHash === sourcePdfSha256 && cachedText.length > 0) {
+            const versionResult = yield* persistOcrResult(
+              docId,
+              pdfBytes,
+              cachedText,
+              cachedPages,
+              sourcePdfSha256,
+              existingVersions,
+            );
+            yield* tinybase.addProcessingLog({
+              docId,
+              timestamp: new Date().toISOString(),
+              step: "ocr",
+              eventType: "result",
+              data: {
+                success: versionResult.ocrPersisted,
+                skipped: true,
+                skipReason: "cached_ocr_result",
+                textLength: cachedText.length,
+                pages: cachedPages,
+                sourcePdfSha256,
+                textSha256: versionResult.textSha256,
+                sourceVersionIds: versionResult.sourceVersionIds,
+                ocrVersionId: versionResult.ocrVersionId,
+                searchablePdfUploaded: versionResult.searchablePdfUploaded,
+                ocrPersisted: versionResult.ocrPersisted,
+              },
+            });
+            if (!versionResult.ocrPersisted) {
+              return {
+                success: false,
+                docId,
+                textLength: cachedText.length,
+                pages: cachedPages,
+                skipped: true,
+                skipReason: "cached_ocr_result",
+                sourceVersionIds: versionResult.sourceVersionIds,
+                ocrVersionId: versionResult.ocrVersionId,
+                searchablePdfUploaded: versionResult.searchablePdfUploaded,
+                ocrPersisted: versionResult.ocrPersisted,
+                sourcePdfSha256,
+                textSha256: versionResult.textSha256,
+                error:
+                  "Cached OCR text matched the current PDF, but no new Paperless OCR version could be created.",
+              };
+            }
+            return {
+              success: true,
+              docId,
+              textLength: cachedText.length,
+              pages: cachedPages,
+              skipped: true,
+              skipReason: "cached_ocr_result",
+              sourceVersionIds: versionResult.sourceVersionIds,
+              ocrVersionId: versionResult.ocrVersionId,
+              searchablePdfUploaded: versionResult.searchablePdfUploaded,
+              ocrPersisted: versionResult.ocrPersisted,
+              sourcePdfSha256,
+              textSha256: versionResult.textSha256,
+            };
+          }
+        }
+        const ocrResult = yield* runMistralOCR(pdfBytes, docId, runId);
         const extractedText = ocrResult.text.trim();
         if (extractedText.length === 0 || ocrResult.pages <= 0) {
           const error = "Mistral OCR returned no text or pages.";
@@ -426,6 +764,8 @@ export const OCRAgentServiceLive = Layer.effect(
           pdfBytes,
           ocrResult.text,
           ocrResult.pages,
+          sourcePdfSha256,
+          existingVersions,
         );
 
         if (ocrResult.text.length > 0 && !versionResult.ocrPersisted) {
@@ -445,6 +785,8 @@ export const OCRAgentServiceLive = Layer.effect(
               ocrVersionId: versionResult.ocrVersionId,
               searchablePdfUploaded: versionResult.searchablePdfUploaded,
               ocrPersisted: versionResult.ocrPersisted,
+              sourcePdfSha256: versionResult.sourcePdfSha256,
+              textSha256: versionResult.textSha256,
             },
           });
           return {
@@ -456,11 +798,12 @@ export const OCRAgentServiceLive = Layer.effect(
             ocrVersionId: versionResult.ocrVersionId,
             searchablePdfUploaded: versionResult.searchablePdfUploaded,
             ocrPersisted: versionResult.ocrPersisted,
+            sourcePdfSha256: versionResult.sourcePdfSha256,
+            textSha256: versionResult.textSha256,
             error,
           };
         }
 
-        yield* paperless.transitionDocumentTag(docId, tagConfig.pending, tagConfig.ocrDone);
         yield* tinybase.addProcessingLog({
           docId,
           timestamp: new Date().toISOString(),
@@ -474,6 +817,8 @@ export const OCRAgentServiceLive = Layer.effect(
             ocrVersionId: versionResult.ocrVersionId,
             searchablePdfUploaded: versionResult.searchablePdfUploaded,
             ocrPersisted: versionResult.ocrPersisted,
+            sourcePdfSha256: versionResult.sourcePdfSha256,
+            textSha256: versionResult.textSha256,
           },
         });
 
@@ -486,8 +831,15 @@ export const OCRAgentServiceLive = Layer.effect(
           ocrVersionId: versionResult.ocrVersionId,
           searchablePdfUploaded: versionResult.searchablePdfUploaded,
           ocrPersisted: versionResult.ocrPersisted,
+          sourcePdfSha256: versionResult.sourcePdfSha256,
+          textSha256: versionResult.textSha256,
         };
       }).pipe(
+        withInternalSpan("ocr.process_document", {
+          "paperless.document.id": input.docId,
+          "ocr.mock": input.mockMode === true,
+          "ocr.force": input.force === true,
+        }),
         Effect.mapError(
           (error) =>
             new AgentError({

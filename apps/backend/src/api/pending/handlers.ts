@@ -4,6 +4,7 @@
 import { Effect, pipe } from "effect";
 import { ProcessingPipelineService } from "../../agents/ProcessingPipeline.js";
 import { NotFoundError, ValidationError } from "../../errors/index.js";
+import type { BlockType, RejectionCategory } from "../../models/index.js";
 import { ConfigService, PaperlessService, TinyBaseService } from "../../services/index.js";
 import type {
   ApproveRequest,
@@ -28,6 +29,19 @@ const parseMetadata = (metadataJson: string | null): Record<string, unknown> => 
     return {};
   }
 };
+
+const isBlockType = (value: string | undefined): value is BlockType =>
+  value === "global" || value === "correspondent" || value === "document_type" || value === "tag";
+
+const isRejectionCategory = (value: string | null | undefined): value is RejectionCategory =>
+  value === "wrong_suggestion" ||
+  value === "low_quality" ||
+  value === "duplicate" ||
+  value === "not_applicable" ||
+  value === "too_generic" ||
+  value === "irrelevant" ||
+  value === "wrong_format" ||
+  value === "other";
 
 /**
  * Apply a document link from pending review metadata.
@@ -384,20 +398,39 @@ export const approvePendingItem = (id: string, request: ApproveRequest) =>
       );
     }
 
-    const value = request.selected_value ?? request.value ?? item.suggestion;
+    const explicitValue = request.selected_value ?? request.value;
+    const value = explicitValue ?? item.suggestion;
     const metadata = parseMetadata(item.metadata);
     const isPiHumanDecision =
-      item.type === "human_decision" || metadata["kind"] === "pi_human_decision";
+      item.type === "human_decision" ||
+      metadata["kind"] === "pi_human_decision" ||
+      metadata["kind"] === "metadata_proposal";
 
     // Apply the change based on type
     switch (item.type) {
       case "human_decision": {
         const answer =
           (request.action as "create" | "map" | "edit" | "skip" | "reject" | undefined) ?? "create";
+        if (answer !== "skip" && answer !== "reject" && !explicitValue?.trim()) {
+          return yield* Effect.fail(
+            new ValidationError({
+              message: "Approving a Pi human decision requires an explicit selected value.",
+              field: "selected_value",
+            }),
+          );
+        }
         yield* applyHumanDecision(item.docId, item.id, item.metadata, value, answer);
         break;
       }
       case "consolidation": {
+        if (!explicitValue?.trim()) {
+          return yield* Effect.fail(
+            new ValidationError({
+              message: "Approving a catalog proposal requires an explicit selected value.",
+              field: "selected_value",
+            }),
+          );
+        }
         const applied = yield* applyConsolidationProposal(item.metadata, value);
         if (!applied) {
           return yield* Effect.fail(
@@ -440,12 +473,13 @@ export const approvePendingItem = (id: string, request: ApproveRequest) =>
 
     // Move to next tag if specified
     if (item.nextTag) {
+      const nextTag = item.nextTag;
       if (typeof paperless.transitionDocumentTag === "function") {
         yield* paperless
-          .transitionDocumentTag(item.docId, config.config.tags.review, item.nextTag)
-          .pipe(Effect.catchAll(() => paperless.addTagToDocument(item.docId, item.nextTag!)));
+          .transitionDocumentTag(item.docId, config.config.tags.review, nextTag)
+          .pipe(Effect.catchAll(() => paperless.addTagToDocument(item.docId, nextTag)));
       } else {
-        yield* paperless.addTagToDocument(item.docId, item.nextTag);
+        yield* paperless.addTagToDocument(item.docId, nextTag);
       }
     }
 
@@ -485,7 +519,9 @@ export const rejectPendingItem = (id: string, request: RejectRequest) =>
 
     const metadata = parseMetadata(item.metadata);
     const isPiHumanDecision =
-      item.type === "human_decision" || metadata["kind"] === "pi_human_decision";
+      item.type === "human_decision" ||
+      metadata["kind"] === "pi_human_decision" ||
+      metadata["kind"] === "metadata_proposal";
 
     if (isPiHumanDecision) {
       yield* applyHumanDecision(
@@ -528,7 +564,7 @@ export const rejectPendingItem = (id: string, request: RejectRequest) =>
           suggestionName: item.suggestion,
           blockType,
           rejectionReason: request.feedback ?? null,
-          rejectionCategory: (request.category as any) ?? null,
+          rejectionCategory: isRejectionCategory(request.category) ? request.category : null,
           docId: item.docId,
         });
       }
@@ -698,6 +734,15 @@ export const bulkAction = (request: BulkActionRequest) =>
 
     let processed = 0;
     let failed = 0;
+    const explicitBulkTarget = request.targetValue?.trim();
+    if (request.action === "approve" && !explicitBulkTarget) {
+      return yield* Effect.fail(
+        new ValidationError({
+          message: "Bulk approve requires an explicit target value.",
+          field: "targetValue",
+        }),
+      );
+    }
 
     for (const id of request.ids) {
       const item = yield* tinybase.getPendingReview(id);
@@ -707,7 +752,7 @@ export const bulkAction = (request: BulkActionRequest) =>
       }
 
       if (request.action === "approve") {
-        const value = request.targetValue ?? item.suggestion;
+        const value = explicitBulkTarget ?? "";
 
         switch (item.type) {
           case "correspondent": {
@@ -744,7 +789,7 @@ export const bulkAction = (request: BulkActionRequest) =>
             suggestionName: item.suggestion,
             blockType: "global",
             rejectionReason: request.feedback ?? null,
-            rejectionCategory: (request.category as any) ?? null,
+            rejectionCategory: isRejectionCategory(request.category) ? request.category : null,
             docId: item.docId,
           });
         }
@@ -793,7 +838,9 @@ export const rejectWithFeedback = (id: string, request: RejectWithFeedbackReques
 
     const metadata = parseMetadata(item.metadata);
     const isPiHumanDecision =
-      item.type === "human_decision" || metadata["kind"] === "pi_human_decision";
+      item.type === "human_decision" ||
+      metadata["kind"] === "pi_human_decision" ||
+      metadata["kind"] === "metadata_proposal";
 
     if (isPiHumanDecision) {
       const feedback = request.rejection_reason ?? request.feedback ?? null;
@@ -839,11 +886,12 @@ export const rejectWithFeedback = (id: string, request: RejectWithFeedbackReques
           : (toBlockType(requestedBlockType) ??
             (requestedBlockType === "global" ? "global" : null));
       if (blockType) {
+        const rejectionCategory = request.rejection_category ?? request.category;
         yield* tinybase.addBlockedSuggestion({
           suggestionName: item.suggestion,
           blockType,
           rejectionReason: request.rejection_reason ?? request.feedback ?? null,
-          rejectionCategory: ((request.rejection_category ?? request.category) as any) ?? null,
+          rejectionCategory: isRejectionCategory(rejectionCategory) ? rejectionCategory : null,
           docId: item.docId,
         });
       }
@@ -953,9 +1001,11 @@ export const addBlockedSuggestion = (request: AddBlockedSuggestionRequest) =>
 
     const id = yield* tinybase.addBlockedSuggestion({
       suggestionName: request.name,
-      blockType: request.block_type as any,
+      blockType: isBlockType(request.block_type) ? request.block_type : "global",
       rejectionReason: request.rejection_reason ?? null,
-      rejectionCategory: (request.rejection_category as any) ?? null,
+      rejectionCategory: isRejectionCategory(request.rejection_category)
+        ? request.rejection_category
+        : null,
       docId: null,
     });
 

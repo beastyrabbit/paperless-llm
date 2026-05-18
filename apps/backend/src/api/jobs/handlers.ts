@@ -1,7 +1,7 @@
 /**
  * Jobs API handlers.
  */
-import { Effect, pipe } from "effect";
+import { Effect } from "effect";
 import {
   BootstrapJobService,
   BulkIngestJobService,

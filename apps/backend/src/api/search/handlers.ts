@@ -2,8 +2,12 @@
  * Search API handlers for semantic document search.
  */
 import { Effect } from "effect";
+import { DocumentAuthorizationService } from "../../services/DocumentAuthorizationService.js";
 import { PaperlessService } from "../../services/PaperlessService.js";
 import { QdrantService } from "../../services/QdrantService.js";
+import { logger } from "../../utils/logger.js";
+
+const searchLogger = logger.child({ component: "api_search" });
 
 /**
  * Search documents using semantic vector search.
@@ -14,6 +18,7 @@ export const searchDocuments = (query: string, limit?: number) =>
       return { results: [], query: "", total: 0 };
     }
 
+    const auth = yield* DocumentAuthorizationService;
     const qdrant = yield* QdrantService;
     const results = yield* qdrant
       .searchSimilar(query, {
@@ -22,17 +27,22 @@ export const searchDocuments = (query: string, limit?: number) =>
       })
       .pipe(
         Effect.catchAll((e) => {
-          // Log the error for debugging
-          console.error("[Search] Qdrant search failed:", e);
+          searchLogger.warn("qdrant_search_failed", { error: e });
           // Return empty results on error instead of failing
           return Effect.succeed([]);
         }),
       );
 
-    return {
+    const authorizedResults = yield* auth.filterAuthorizedDocuments(
       results,
+      (result) => result.docId,
+      "view",
+    );
+
+    return {
+      results: authorizedResults,
       query,
-      total: results.length,
+      total: authorizedResults.length,
     };
   });
 
@@ -41,6 +51,8 @@ export const searchDocuments = (query: string, limit?: number) =>
  */
 export const indexDocument = (docId: number) =>
   Effect.gen(function* () {
+    const auth = yield* DocumentAuthorizationService;
+    yield* auth.authorizeDocument(docId, "view");
     const qdrant = yield* QdrantService;
     const paperless = yield* PaperlessService;
 

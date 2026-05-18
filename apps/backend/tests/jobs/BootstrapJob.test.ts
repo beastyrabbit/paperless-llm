@@ -5,11 +5,11 @@
  * and generates merge/delete suggestions.
  */
 
-import { Effect, Layer, Ref } from "effect";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Effect, Layer } from "effect";
+import { describe, expect, it, vi } from "vitest";
 import { BootstrapJobService, BootstrapJobServiceLive } from "../../src/jobs/BootstrapJob.js";
 import { PaperlessService } from "../../src/services/PaperlessService.js";
-import { TinyBaseService, TinyBaseServiceLive } from "../../src/services/TinyBaseService.js";
+import { TinyBaseServiceLive } from "../../src/services/TinyBaseService.js";
 import { sampleCorrespondents, sampleDocumentTypes, sampleTags } from "../setup.js";
 
 // ===========================================================================

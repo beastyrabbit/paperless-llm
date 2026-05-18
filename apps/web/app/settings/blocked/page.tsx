@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_PAGE_BACKGROUND } from "@/lib/styles";
 import {
   Alert,
   AlertDescription,
@@ -31,8 +32,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-
-const API_BASE = "";
+import { API_BASE } from "@/lib/api";
 
 interface BlockedSuggestion {
   id: number;
@@ -140,7 +140,7 @@ export default function BlockedSuggestionsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-white to-emerald-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-emerald-950/20">
+    <div className={APP_PAGE_BACKGROUND}>
       {/* Header */}
       <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/80">
         <div className="flex h-16 items-center justify-between px-8">

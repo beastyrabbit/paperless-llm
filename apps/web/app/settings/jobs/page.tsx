@@ -1,11 +1,13 @@
 "use client";
 
+import { APP_PAGE_BACKGROUND } from "@/lib/styles";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@repo/ui";
 import { ArrowLeft, CheckCircle, Clock, Loader2, Play, RefreshCw, XCircle } from "lucide-react";
 import Link from "next/link";
-import React, { useEffect, useState } from "react";
-
-const API_BASE = "";
+import type React from "react";
+import { useCallback, useState } from "react";
+import { API_BASE } from "@/lib/api";
+import { DEFAULT_POLLING_INTERVAL_MS, usePolling } from "@/lib/polling";
 
 interface JobStatus {
   job_name: string;
@@ -33,91 +35,57 @@ const JOB_RUN_REQUESTS: Record<string, { endpoint: string; body?: Record<string,
   metadata_enhancement: { endpoint: "/api/jobs/metadata-enhancement/run" },
 };
 
-export default function JobsPage() {
-  const [jobs, setJobs] = useState<Record<string, JobStatus>>({});
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchStatus();
-    // Poll for status every 5 seconds
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchStatus = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/jobs/status`);
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      setJobs(data);
-    } catch (error) {
-      console.error("Failed to fetch job status:", error);
-    } finally {
-      setLoading(false);
+const getStatusBadge = (status: string) => {
+  const config: Record<
+    string,
+    {
+      variant: "default" | "secondary" | "destructive" | "outline";
+      icon: React.ReactElement;
     }
+  > = {
+    idle: {
+      variant: "secondary",
+      icon: <Clock className="h-3 w-3 mr-1" />,
+    },
+    running: {
+      variant: "default",
+      icon: <Loader2 className="h-3 w-3 mr-1 animate-spin" />,
+    },
+    completed: {
+      variant: "outline",
+      icon: <CheckCircle className="h-3 w-3 mr-1" />,
+    },
+    failed: {
+      variant: "destructive",
+      icon: <XCircle className="h-3 w-3 mr-1" />,
+    },
   };
+  const { variant, icon } = config[status] || config.idle;
+  return (
+    <Badge variant={variant} className="flex items-center">
+      {icon}
+      {status}
+    </Badge>
+  );
+};
 
-  const triggerJob = async (jobName: string) => {
-    const request = JOB_RUN_REQUESTS[jobName];
-    if (!request) return;
+const formatJobName = (name: string) => {
+  return name
+    .split(/[-_]/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+};
 
-    try {
-      await fetch(`${API_BASE}${request.endpoint}`, {
-        method: "POST",
-        headers: request.body ? { "Content-Type": "application/json" } : undefined,
-        body: request.body ? JSON.stringify(request.body) : undefined,
-      });
-      // Immediately refresh status
-      await fetchStatus();
-    } catch (error) {
-      console.error("Failed to trigger job:", error);
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    const config: Record<
-      string,
-      {
-        variant: "default" | "secondary" | "destructive" | "outline";
-        icon: React.ReactElement;
-      }
-    > = {
-      idle: {
-        variant: "secondary",
-        icon: <Clock className="h-3 w-3 mr-1" />,
-      },
-      running: {
-        variant: "default",
-        icon: <Loader2 className="h-3 w-3 mr-1 animate-spin" />,
-      },
-      completed: {
-        variant: "outline",
-        icon: <CheckCircle className="h-3 w-3 mr-1" />,
-      },
-      failed: {
-        variant: "destructive",
-        icon: <XCircle className="h-3 w-3 mr-1" />,
-      },
-    };
-    const { variant, icon } = config[status] || config.idle;
-    return (
-      <Badge variant={variant} className="flex items-center">
-        {icon}
-        {status}
-      </Badge>
-    );
-  };
-
-  const formatJobName = (name: string) => {
-    return name
-      .split(/[-_]/)
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
-  };
-
-  const JobCard = ({ jobKey, jobStatus }: { jobKey: string; jobStatus: JobStatus }) => (
+function JobCard({
+  jobKey,
+  jobStatus,
+  onTrigger,
+}: {
+  jobKey: string;
+  jobStatus: JobStatus;
+  onTrigger: (jobName: string) => void;
+}) {
+  return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
@@ -145,7 +113,7 @@ export default function JobsPage() {
           )}
 
           <Button
-            onClick={() => triggerJob(jobKey)}
+            onClick={() => onTrigger(jobKey)}
             disabled={jobStatus.status === "running" || !JOB_RUN_REQUESTS[jobKey]}
             className="w-full"
           >
@@ -165,9 +133,48 @@ export default function JobsPage() {
       </CardContent>
     </Card>
   );
+}
+
+export default function JobsPage() {
+  const [jobs, setJobs] = useState<Record<string, JobStatus>>({});
+  const [loading, setLoading] = useState(true);
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/jobs/status`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setJobs(data);
+    } catch (error) {
+      console.error("Failed to fetch job status:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  usePolling(fetchStatus, DEFAULT_POLLING_INTERVAL_MS);
+
+  const triggerJob = async (jobName: string) => {
+    const request = JOB_RUN_REQUESTS[jobName];
+    if (!request) return;
+
+    try {
+      await fetch(`${API_BASE}${request.endpoint}`, {
+        method: "POST",
+        headers: request.body ? { "Content-Type": "application/json" } : undefined,
+        body: request.body ? JSON.stringify(request.body) : undefined,
+      });
+      // Immediately refresh status
+      await fetchStatus();
+    } catch (error) {
+      console.error("Failed to trigger job:", error);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-white to-emerald-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-emerald-950/20">
+    <div className={APP_PAGE_BACKGROUND}>
       {/* Header */}
       <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/80">
         <div className="flex h-16 items-center justify-between px-8">
@@ -207,7 +214,7 @@ export default function JobsPage() {
         {!loading && Object.keys(jobs).length > 0 && (
           <div className="grid gap-6 md:grid-cols-2">
             {Object.entries(jobs).map(([key, status]) => (
-              <JobCard key={key} jobKey={key} jobStatus={status} />
+              <JobCard key={key} jobKey={key} jobStatus={status} onTrigger={triggerJob} />
             ))}
           </div>
         )}

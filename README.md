@@ -28,7 +28,7 @@
 - **Vector Search** — Find similar documents for context using Qdrant
 - **Tag-based Workflow** — Independent processing steps with state tracking
 - **Live Streaming** — Real-time LLM responses in the frontend
-- **Prompt Editor** — Edit and preview prompt templates with variable substitution
+- **Document Cases** — Durable case state, human questions, and resumable Pi agent runs
 - **Multi-language UI** — English and German interface support
 - **Docker Ready** — Full Docker Compose setup included
 
@@ -52,8 +52,8 @@
 <p align="center"><strong>Settings</strong><br/>Service configuration and model selection</p>
 </td>
 <td width="50%">
-<img src="docs/images/prompts.png" alt="Prompts" />
-<p align="center"><strong>Prompts</strong><br/>Edit and preview prompt templates with variables</p>
+<img src="docs/images/documents.png" alt="Document cases" />
+<p align="center"><strong>Document Cases</strong><br/>Structured metadata decisions with resumable case state</p>
 </td>
 </tr>
 <tr>
@@ -108,8 +108,10 @@ mistral:
 
 ollama:
   url: "http://your-ollama-server:11434"
-  model_large: "your-large-model"    # e.g., llama3.1:70b
-  model_small: "your-small-model"    # e.g., llama3.1:8b
+  model: "your-generation-model"     # e.g., llama3.2
+  model_large: "your-analysis-model"
+  model_small: "your-verifier-model"
+  embedding_model: "nomic-embed-text"
 
 qdrant:
   url: "http://your-qdrant-server:6333"
@@ -117,6 +119,9 @@ qdrant:
 ```
 
 > **Note:** `config.yaml` is gitignored — your secrets stay local.
+> In production, set `PAPERLESS_LLM_CONFIG=/absolute/path/to/config.yaml` when
+> loading YAML config. The backend will not walk parent directories for
+> `config.yaml` in production.
 
 ### Running in Development
 
@@ -128,6 +133,7 @@ pnpm run dev
 The application will be available at `https://paperless-llm-web.localhost:1355`.
 The backend route will be available at `https://paperless-llm-api.localhost:1355`.
 Portless uses the shared proxy port `1355`; service names keep this project separate from other local projects while app ports are assigned automatically.
+If Portless is unavailable, use the direct localhost scripts below.
 
 **Fallback direct ports:**
 ```bash
@@ -158,7 +164,7 @@ docker compose logs -f
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │  Next.js        │────▶│  Effect-TS +    │────▶│  Paperless-ngx  │
-│  Frontend       │     │  Hono Backend   │     │                 │
+│  Frontend       │     │  Effect Backend │     │                 │
 └─────────────────┘     └────────┬────────┘     └─────────────────┘
                                  │
                     ┌────────────┼────────────┐
@@ -195,8 +201,15 @@ Documents flow through tag-based states for independent, resumable processing:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/documents/queue` | Queue statistics |
-| GET | `/api/documents/pending` | Documents pending review |
+| GET | `/api/documents/pending` | Documents by workflow status |
 | GET | `/api/documents/{id}` | Document details |
+
+### Cases
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/cases` | List document cases |
+| GET | `/api/cases/document/{id}` | Get or create a document case |
+| POST | `/api/cases/document/{id}/run` | Run or resume a document case |
 
 ### Processing
 | Method | Endpoint | Description |
@@ -204,13 +217,6 @@ Documents flow through tag-based states for independent, resumable processing:
 | POST | `/api/processing/{id}/start` | Start processing |
 | GET | `/api/processing/{id}/stream` | SSE stream of LLM responses |
 | POST | `/api/processing/{id}/confirm` | Confirm result |
-
-### Prompts
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/prompts` | List all prompts |
-| GET | `/api/prompts/{name}` | Get specific prompt |
-| PUT | `/api/prompts/{name}` | Update prompt template |
 
 ## Project Structure
 
@@ -223,14 +229,15 @@ paperless-local-llm/
 │   │   │   ├── settings/     # Configuration UI
 │   │   │   ├── documents/    # Document browser
 │   │   │   ├── pending/      # Review queue
-│   │   │   └── prompts/      # Prompt editor
+│   │   │   ├── cases/        # Document case queue
+│   │   │   └── catalog/      # Catalog agent proposals
 │   │   ├── components/       # React components
 │   │   └── lib/              # Utilities & API client
 │   │
 │   └── backend/              # TypeScript + Effect-TS
 │       ├── src/
 │       │   ├── index.ts      # Application entry point
-│       │   ├── server.ts     # Hono HTTP server
+│       │   ├── server.ts     # Node HTTP server with Effect runtime
 │       │   ├── api/          # Route handlers
 │       │   ├── services/     # External service clients
 │       │   ├── agents/       # Document processing agents
@@ -251,7 +258,7 @@ paperless-local-llm/
 | Layer | Technologies |
 |-------|-------------|
 | **Frontend** | Next.js 16, React 19, TailwindCSS 4, shadcn/ui |
-| **Backend** | TypeScript, Effect-TS, Hono HTTP server |
+| **Backend** | TypeScript, Effect-TS, Node HTTP server |
 | **AI/ML** | Ollama (local LLMs), Mistral AI (OCR), Qdrant (vector search) |
 | **Infrastructure** | Docker, Turborepo (monorepo), pnpm |
 
@@ -285,6 +292,32 @@ pnpm run precommit
 ```
 
 Active checks: **gitleaks** (secrets), **TypeScript** (types), **Biome** (linting), **large files**, **merge conflicts**
+
+`gitleaks` is expected to be available on contributor machines because lefthook calls
+`gitleaks protect --staged --no-banner`. Install it through your package manager or
+`brew install gitleaks`; CI should keep it as a second gate for protected branches.
+
+The Docker publish workflow uses the self-hosted ARC runner label
+`arc-paperless-local-llm`. Maintainers need that runner online for release images; forks can run
+the same build commands locally with Docker if the runner label is unavailable.
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `PAPERLESS_URL` | Paperless-ngx base URL |
+| `PAPERLESS_TOKEN` | Paperless API token |
+| `MISTRAL_API_KEY` | Mistral OCR API key |
+| `OLLAMA_URL` | Ollama server URL |
+| `QDRANT_URL` | Qdrant server URL |
+| `PAPERLESS_LLM_API_TOKEN` | Optional backend API token |
+| `PAPERLESS_LLM_TRUSTED_UI_ORIGINS` | Optional comma-separated CORS allowlist |
+
+### Pi Prompt Policy
+
+Pi agent instructions, tools, schemas, and structured placeholders live in TypeScript. Do not
+reintroduce file-backed prompts or `PromptService`; Docker images no longer copy
+`apps/backend/prompts`.
 
 ## Contributing
 

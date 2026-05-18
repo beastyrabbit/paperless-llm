@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_PAGE_BACKGROUND } from "@/lib/styles";
 import {
   Badge,
   Button,
@@ -21,43 +22,41 @@ import {
   Trash2,
   User,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
-import { ChatMessage, chatApi, SearchResult, settingsApi } from "@/lib/api";
+import { type ChatMessage, chatApi, type SearchResult } from "@/lib/api";
 
 interface DisplayMessage extends ChatMessage {
+  id: string;
   sources?: SearchResult[];
 }
 
+const createMessageId = () =>
+  globalThis.crypto?.randomUUID() ?? `message-${Date.now()}-${Math.random()}`;
+
 export default function ChatPage() {
   const t = useTranslations("chat");
+  const router = useRouter();
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [paperlessUrl, setPaperlessUrl] = useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Fetch Paperless URL for document links
-  useEffect(() => {
-    async function fetchSettings() {
-      const res = await settingsApi.get();
-      if (res.data) {
-        setPaperlessUrl(res.data.paperless_external_url || res.data.paperless_url || "");
-      }
-    }
-    fetchSettings();
-  }, []);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  });
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;
 
-    const userMessage: DisplayMessage = { role: "user", content: input.trim() };
+    const userMessage: DisplayMessage = {
+      id: createMessageId(),
+      role: "user",
+      content: input.trim(),
+    };
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
     setInput("");
@@ -77,6 +76,7 @@ export default function ChatPage() {
         setError(res.error);
       } else if (res.data) {
         const assistantMessage: DisplayMessage = {
+          id: createMessageId(),
           role: "assistant",
           content: res.data.message,
           sources: res.data.sources,
@@ -103,13 +103,11 @@ export default function ChatPage() {
   };
 
   const openDocument = (docId: number) => {
-    if (paperlessUrl) {
-      window.open(`${paperlessUrl}/documents/${docId}/details`, "_blank");
-    }
+    router.push(`/documents/${docId}`);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-white to-emerald-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-emerald-950/20">
+    <div className={APP_PAGE_BACKGROUND}>
       {/* Header */}
       <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/80">
         <div className="flex h-14 items-center justify-between px-6">
@@ -149,9 +147,9 @@ export default function ChatPage() {
                     </div>
                   )}
 
-                  {messages.map((message, index) => (
+                  {messages.map((message) => (
                     <div
-                      key={index}
+                      key={message.id}
                       className={`flex gap-3 ${
                         message.role === "user" ? "justify-end" : "justify-start"
                       }`}
@@ -180,6 +178,7 @@ export default function ChatPage() {
                               {message.sources.slice(0, 3).map((source) => (
                                 <button
                                   key={source.docId}
+                                  type="button"
                                   onClick={() => openDocument(source.docId)}
                                   className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 hover:underline w-full text-left"
                                 >

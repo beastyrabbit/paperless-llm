@@ -27,36 +27,16 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
+import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
+import { settingsApi, type WorkflowTagsStatusResponse } from "@/lib/api";
 import type { SettingKey } from "@/lib/tinybase";
 import { useStringSetting, useTinyBase } from "@/lib/tinybase";
 
-interface TagStatus {
-  key: string;
-  name: string;
-  exists: boolean;
-  tag_id: number | null;
-  actual_color: string | null;
-  color_matches: boolean | null;
-}
-
-interface TagsStatusResponse {
-  tags: TagStatus[];
-  expected_color: string;
-  all_exist: boolean;
-  missing_count: number;
-  all_colors_match: boolean;
-  color_mismatch_count: number;
-}
-
-const API_BASE = "";
-
 // Tag setting keys mapping
 const TAG_KEYS: { key: string; settingKey: SettingKey }[] = [
-  { key: "todo", settingKey: "tags.todo" },
-  { key: "ocr", settingKey: "tags.ocr" },
-  { key: "metadata", settingKey: "tags.metadata" },
-  { key: "review", settingKey: "tags.review" },
-  { key: "index", settingKey: "tags.index" },
+  { key: "queued", settingKey: "tags.todo" },
+  { key: "processing", settingKey: "tags.ocr" },
+  { key: "needs input", settingKey: "tags.review" },
   { key: "done", settingKey: "tags.done" },
   { key: "failed", settingKey: "tags.failed" },
 ];
@@ -112,28 +92,28 @@ export function WorkflowTagsTab() {
   const tCommon = useTranslations("common");
 
   // UI state
-  const [tagsStatus, setTagsStatus] = useState<TagsStatusResponse | null>(null);
+  const [tagsStatus, setTagsStatus] = useState<WorkflowTagsStatusResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [fixingColors, setFixingColors] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const missingTags = tagsStatus?.tags.filter((tag) => !tag.exists).map((tag) => tag.name) ?? [];
+  const colorMismatchTags =
+    tagsStatus?.tags
+      .filter((tag) => tag.exists && tag.color_matches === false)
+      .map((tag) => tag.name) ?? [];
 
   const fetchTagsStatus = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const response = await fetch(`${API_BASE}/api/settings/tags/status`);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data = await response.json();
-      setTagsStatus(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch tags status");
-    } finally {
-      setLoading(false);
+    const result = await settingsApi.getWorkflowTagsStatus();
+    if (result.ok) {
+      setTagsStatus(result.data);
+    } else {
+      setError(result.error);
     }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -141,10 +121,6 @@ export function WorkflowTagsTab() {
   }, [fetchTagsStatus]);
 
   const createMissingTags = async () => {
-    if (!tagsStatus) return;
-
-    const missingTags = tagsStatus.tags.filter((t) => !t.exists).map((t) => t.name);
-
     if (missingTags.length === 0) return;
 
     setCreating(true);
@@ -152,24 +128,23 @@ export function WorkflowTagsTab() {
     setSuccess(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/settings/tags/create`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tag_names: missingTags }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      const result = await settingsApi.createWorkflowTags(missingTags);
+      if (!result.ok) {
+        setError(result.error);
+        return;
       }
 
-      const result = await response.json();
-
-      if (result.created.length > 0) {
-        setSuccess(`Created ${result.created.length} tag(s): ${result.created.join(", ")}`);
+      if (result.data.created.length > 0) {
+        setSuccess(
+          t("workflowTags.createdSuccess", {
+            count: result.data.created.length,
+            tags: result.data.created.join(", "),
+          }),
+        );
       }
 
-      if (result.failed.length > 0) {
-        setError(`Failed to create: ${result.failed.join(", ")}`);
+      if (result.data.failed.length > 0) {
+        setError(t("workflowTags.createFailed", { tags: result.data.failed.join(", ") }));
       }
 
       // Refresh status
@@ -187,25 +162,20 @@ export function WorkflowTagsTab() {
     setSuccess(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/settings/tags/fix-colors`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      const result = await settingsApi.fixWorkflowTagColors();
+      if (!result.ok) {
+        setError(result.error);
+        return;
       }
 
-      const result = await response.json();
-
-      if (result.updated.length > 0) {
-        setSuccess(`Updated color for ${result.updated.length} tag(s)`);
+      if (result.data.updated.length > 0) {
+        setSuccess(t("workflowTags.fixedColorsSuccess", { count: result.data.updated.length }));
       } else {
-        setSuccess("All tag colors are already correct");
+        setSuccess(t("workflowTags.colorsAlreadyCorrect"));
       }
 
-      if (result.failed.length > 0) {
-        setError(`Failed to update: ${result.failed.join(", ")}`);
+      if (result.data.failed.length > 0) {
+        setError(t("workflowTags.fixColorsFailed", { tags: result.data.failed.join(", ") }));
       }
 
       // Refresh status
@@ -254,29 +224,58 @@ export function WorkflowTagsTab() {
                 {tCommon("refresh")}
               </Button>
               {tagsStatus && tagsStatus.missing_count > 0 && (
-                <Button
-                  size="sm"
-                  onClick={createMissingTags}
+                <ConfirmActionDialog
+                  title={t("workflowTags.confirmCreateTitle")}
+                  description={t("workflowTags.confirmCreateDescription", {
+                    count: missingTags.length,
+                    tags: missingTags.join(", "),
+                  })}
+                  confirmLabel={t("workflowTags.confirmCreateAction", {
+                    count: missingTags.length,
+                  })}
+                  cancelLabel={tCommon("cancel")}
+                  confirmVariant="default"
                   disabled={creating}
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  onConfirm={createMissingTags}
                 >
-                  {creating ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Plus className="h-4 w-4 mr-2" />
-                  )}
-                  {t("workflowTags.createMissingTags")}
-                </Button>
+                  <Button
+                    size="sm"
+                    disabled={creating}
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    {creating ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Plus className="h-4 w-4 mr-2" />
+                    )}
+                    {t("workflowTags.createMissingTags")}
+                  </Button>
+                </ConfirmActionDialog>
               )}
               {tagsStatus && tagsStatus.color_mismatch_count > 0 && (
-                <Button size="sm" onClick={fixColors} disabled={fixingColors} variant="outline">
-                  {fixingColors ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Palette className="h-4 w-4 mr-2" />
-                  )}
-                  Fix Colors ({tagsStatus.color_mismatch_count})
-                </Button>
+                <ConfirmActionDialog
+                  title={t("workflowTags.confirmFixColorsTitle")}
+                  description={t("workflowTags.confirmFixColorsDescription", {
+                    count: colorMismatchTags.length,
+                    tags: colorMismatchTags.join(", "),
+                  })}
+                  confirmLabel={t("workflowTags.confirmFixColorsAction", {
+                    count: colorMismatchTags.length,
+                  })}
+                  cancelLabel={tCommon("cancel")}
+                  confirmVariant="default"
+                  disabled={fixingColors}
+                  onConfirm={fixColors}
+                >
+                  <Button size="sm" disabled={fixingColors} variant="outline">
+                    {fixingColors ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Palette className="h-4 w-4 mr-2" />
+                    )}
+                    {t("workflowTags.fixColors", { count: tagsStatus.color_mismatch_count })}
+                  </Button>
+                </ConfirmActionDialog>
               )}
             </div>
           </div>

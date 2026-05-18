@@ -1,0 +1,96 @@
+# Production read-only backend config template.
+# Copy to config.yaml or another ignored absolute path, then set PAPERLESS_LLM_CONFIG.
+# Do not put real API keys in this tracked example file.
+
+paperless:
+  url: "https://paperless.example.com"
+  token: "replace-with-production-paperless-token"
+
+mistral:
+  api_key: "replace-with-production-mistral-key"
+  model: "mistral-ocr-latest"
+  api_base_url: "https://api.mistral.ai"
+
+ollama:
+  url: "http://your-ollama-server:11434"
+  model: "gpt-oss:120b"
+  embedding_model: "nomic-embed-text"
+
+qdrant:
+  url: "http://your-qdrant-server:6333"
+  collection: "paperless-documents"
+
+# Keep this false for every production read-only run.
+auto_processing:
+  enabled: false
+  interval_minutes: 10
+  include_untagged: false
+  pause_on_user_activity: true
+
+confirmation:
+  enabled: true
+  max_retries: 3
+  min_confidence: 0.7
+  require_user_for_new_entities: true
+
+tags:
+  todo: "ai-queued"
+  ocr: "ai-processing"
+  metadata: "ai-processing"
+  review: "ai-needs-input"
+  index: "ai-processing"
+  done: "ai-done"
+  failed: "ai-failed"
+
+# Leave mutation-producing pipeline steps disabled for read-only production checks.
+pipeline:
+  ocr: false
+  summary: false
+  correspondent: false
+  document_type: false
+  title: false
+  tags: false
+  custom_fields: false
+  # Safety bound against infinite workflow loops in full-pipeline SSE processing.
+  max_steps: 10
+
+vector_search:
+  enabled: false
+  top_k: 5
+  min_score: 0.7
+
+language:
+  prompt: "en"
+
+server:
+  cors_origins:
+    - "https://paperless-llm-web.localhost:1355"
+
+debug:
+  log_level: "INFO"
+  log_prompts: false
+  log_responses: false
+  save_processing_history: true
+
+http:
+  request_timeout_ms: 120000
+  agent_prompt_timeout_ms: 120000
+  mistral_retry_attempts: 3
+  mistral_retry_base_delay_ms: 5000
+
+ocr_budget:
+  daily_page_limit: 0
+  run_page_limit: 0
+  daily_token_limit: 0
+  run_token_limit: 0
+
+jobs:
+  schema_cleanup:
+    enabled: false
+    schedule: "daily"
+    cron: "0 3 * * *"
+
+  metadata_enhancement:
+    enabled: false
+    schedule: "weekly"
+    cron: "0 4 * * 0"

@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
-import { type ConnectionStatus } from "./types";
+import type { ConnectionStatus } from "./types";
 
 interface StatusIndicatorProps {
   status: ConnectionStatus;

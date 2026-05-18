@@ -2,8 +2,12 @@
  * Chat API handlers for RAG-based document Q&A.
  */
 import { Effect } from "effect";
-import { OllamaChatMessage, OllamaService } from "../../services/OllamaService.js";
-import { QdrantService, SearchResult } from "../../services/QdrantService.js";
+import { DocumentAuthorizationService } from "../../services/DocumentAuthorizationService.js";
+import { type OllamaChatMessage, OllamaService } from "../../services/OllamaService.js";
+import { QdrantService, type SearchResult } from "../../services/QdrantService.js";
+import { logger } from "../../utils/logger.js";
+
+const chatLogger = logger.child({ component: "api_chat" });
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -15,6 +19,18 @@ export interface ChatResponse {
   sources: SearchResult[];
 }
 
+const PING_MESSAGE_PATTERN =
+  /^(test|ping|hi|hello|hey|hallo|moin|servus|thanks|thank you|danke|ok|okay|yo)[.!?\s]*$/i;
+
+const DOCUMENT_INTENT_PATTERN =
+  /\b(document|documents|doc|docs|case|cases|file|files|paperless|archive|invoice|receipt|letter|contract|bill|return label|freischaltcode|rechnung|beleg|brief|vertrag|find|search|show|list|open|metadata|tag|tags|correspondent|document type|needs input|review|why)\b/i;
+
+const shouldSearchDocuments = (message: string): boolean => {
+  const normalized = message.trim();
+  if (!normalized || PING_MESSAGE_PATTERN.test(normalized)) return false;
+  return DOCUMENT_INTENT_PATTERN.test(normalized);
+};
+
 /**
  * Chat with documents using RAG (Retrieval-Augmented Generation).
  */
@@ -24,27 +40,37 @@ export const chatWithDocuments = (messages: ChatMessage[]) =>
       return { message: "Please provide a message.", sources: [] };
     }
 
-    const qdrant = yield* QdrantService;
-    const ollama = yield* OllamaService;
-
     // Get the last user message for searching
     const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
     if (!lastUserMessage) {
       return { message: "No user message found.", sources: [] };
     }
 
+    if (!shouldSearchDocuments(lastUserMessage.content)) {
+      return {
+        message: "I'm ready. Ask me to find documents, open a case, or explain metadata choices.",
+        sources: [],
+      };
+    }
+
+    const auth = yield* DocumentAuthorizationService;
+    const qdrant = yield* QdrantService;
+    const ollama = yield* OllamaService;
+
     // Search for relevant documents (gracefully handle Qdrant errors)
-    const docs = yield* qdrant
+    const rawDocs = yield* qdrant
       .searchSimilar(lastUserMessage.content, {
         limit: 5,
         filterProcessed: false,
       })
       .pipe(
         Effect.catchAll((e) => {
-          console.error("[Chat] Qdrant search failed:", e);
+          chatLogger.warn("qdrant_search_failed", { error: e });
           return Effect.succeed([] as SearchResult[]);
         }),
       );
+
+    const docs = yield* auth.filterAuthorizedDocuments(rawDocs, (doc) => doc.docId, "view");
 
     // Build context from document titles and metadata
     const context = docs
@@ -103,7 +129,7 @@ Keep responses concise and conversational.`;
     ];
 
     // Get model and chat
-    const model = ollama.getModel("large");
+    const model = ollama.getModel("generation");
     const response = yield* ollama
       .chat(model, ollamaMessages, {
         temperature: 0.3,
@@ -115,7 +141,7 @@ Keep responses concise and conversational.`;
             e && typeof e === "object" && "message" in e
               ? (e as { message: string }).message
               : String(e);
-          console.error("[Chat] Ollama chat failed:", errorMsg);
+          chatLogger.error("ollama_chat_failed", { error: e, message: errorMsg });
           return Effect.succeed({
             message: {
               content: `Sorry, I encountered an error while processing your request: ${errorMsg}`,

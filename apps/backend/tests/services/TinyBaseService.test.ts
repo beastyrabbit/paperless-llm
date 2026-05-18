@@ -6,8 +6,15 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Effect, pipe } from "effect";
+import { createStore } from "tinybase";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { TinyBaseService, TinyBaseServiceLive } from "../../src/services/TinyBaseService.js";
+import {
+  CURRENT_TINYBASE_SCHEMA_VERSION,
+  getTinyBaseSchemaVersion,
+  migrateTinyBaseStoreToCurrentSchema,
+  TinyBaseService,
+  TinyBaseServiceLive,
+} from "../../src/services/TinyBaseService.js";
 
 describe("TinyBaseService", () => {
   // Create a test layer without dependencies
@@ -16,6 +23,10 @@ describe("TinyBaseService", () => {
 
   const runEffect = <A, E>(effect: Effect.Effect<A, E, TinyBaseService>) =>
     Effect.runPromise(pipe(effect, Effect.provide(TestLayer)));
+
+  const persistenceFile = () => path.join(testDataDir ?? "", "tinybase.json");
+
+  const tinybaseJson = (tables: Record<string, unknown>) => JSON.stringify([tables, {}]);
 
   beforeEach(() => {
     testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "tinybase-service-test-"));
@@ -30,6 +41,180 @@ describe("TinyBaseService", () => {
       fs.rmSync(testDataDir, { recursive: true, force: true });
       testDataDir = null;
     }
+  });
+
+  // =========================================================================
+  // Persistence Schema Tests
+  // =========================================================================
+
+  describe("Persistence Schema", () => {
+    it("initializes new stores with the current schema version", async () => {
+      const result = await runEffect(
+        Effect.gen(function* () {
+          const service = yield* TinyBaseService;
+          return JSON.parse(yield* service.getStoreJson()) as [
+            Record<string, Record<string, Record<string, unknown>>>,
+            Record<string, unknown>,
+          ];
+        }),
+      );
+
+      expect(result[0].schemaMetadata?.schema_version?.version).toBe(
+        CURRENT_TINYBASE_SCHEMA_VERSION,
+      );
+      expect(fs.existsSync(persistenceFile())).toBe(true);
+    });
+
+    it("migrates legacy persisted stores and preserves existing rows", async () => {
+      fs.writeFileSync(
+        persistenceFile(),
+        tinybaseJson({
+          settings: {
+            language: {
+              key: "language",
+              value: "de",
+              updatedAt: "2026-05-15T10:00:00.000Z",
+            },
+          },
+        }),
+      );
+
+      const result = await runEffect(
+        Effect.gen(function* () {
+          const service = yield* TinyBaseService;
+          return {
+            language: yield* service.getSetting("language"),
+            json: JSON.parse(yield* service.getStoreJson()) as [
+              Record<string, Record<string, Record<string, unknown>>>,
+              Record<string, unknown>,
+            ],
+          };
+        }),
+      );
+
+      expect(result.language).toBe("de");
+      expect(result.json[0].schemaMetadata?.schema_version?.version).toBe(
+        CURRENT_TINYBASE_SCHEMA_VERSION,
+      );
+    });
+
+    it("refuses persisted stores from newer schema versions", async () => {
+      fs.writeFileSync(
+        persistenceFile(),
+        tinybaseJson({
+          schemaMetadata: {
+            schema_version: {
+              key: "schema_version",
+              version: CURRENT_TINYBASE_SCHEMA_VERSION + 1,
+              updatedAt: "2026-05-15T10:00:00.000Z",
+            },
+          },
+        }),
+      );
+
+      await expect(
+        runEffect(
+          Effect.gen(function* () {
+            const service = yield* TinyBaseService;
+            return yield* service.getAllSettings();
+          }),
+        ),
+      ).rejects.toThrow(/newer than supported version/);
+    });
+
+    it("backs up corrupt persisted stores before starting fresh", async () => {
+      fs.writeFileSync(persistenceFile(), "{not-json");
+
+      const result = await runEffect(
+        Effect.gen(function* () {
+          const service = yield* TinyBaseService;
+          return JSON.parse(yield* service.getStoreJson()) as [
+            Record<string, Record<string, Record<string, unknown>>>,
+            Record<string, unknown>,
+          ];
+        }),
+      );
+
+      const backups = fs
+        .readdirSync(testDataDir ?? "")
+        .filter((name) => name.startsWith("tinybase.json.corrupt-"));
+      expect(backups).toHaveLength(1);
+      expect(result[0].schemaMetadata?.schema_version?.version).toBe(
+        CURRENT_TINYBASE_SCHEMA_VERSION,
+      );
+    });
+
+    it("replays schema migrations idempotently", () => {
+      const store = createStore();
+
+      expect(migrateTinyBaseStoreToCurrentSchema(store)).toBe(true);
+      expect(getTinyBaseSchemaVersion(store)).toBe(CURRENT_TINYBASE_SCHEMA_VERSION);
+      expect(migrateTinyBaseStoreToCurrentSchema(store)).toBe(false);
+      expect(getTinyBaseSchemaVersion(store)).toBe(CURRENT_TINYBASE_SCHEMA_VERSION);
+    });
+
+    it("falls back for invalid typed JSON blobs instead of throwing", async () => {
+      fs.writeFileSync(
+        persistenceFile(),
+        tinybaseJson({
+          schemaMetadata: {
+            schema_version: {
+              key: "schema_version",
+              version: CURRENT_TINYBASE_SCHEMA_VERSION,
+              updatedAt: "2026-05-15T10:00:00.000Z",
+            },
+          },
+          documentMemory: {
+            "42": {
+              docId: 42,
+              sessionId: "doc-42",
+              ocrVersionIds: "not-json",
+              extractedFacts: "[]",
+              candidateEntities: "{}",
+              finalDecisions: "{}",
+              humanDecisions: '[{"id":"bad"}]',
+              reviewFeedback: "[]",
+              runSummaries: "[]",
+              transcript: "{}",
+              createdAt: "2026-05-15T10:00:00.000Z",
+              updatedAt: "2026-05-15T10:00:00.000Z",
+            },
+          },
+          pendingReviews: {
+            review1: {
+              id: "review1",
+              docId: 42,
+              docTitle: "Doc",
+              type: "tag",
+              suggestion: "Tag",
+              reasoning: "Reason",
+              alternatives: "{}",
+              attempts: 1,
+              lastFeedback: "",
+              nextTag: "",
+              metadata: "",
+              createdAt: "2026-05-15T10:00:00.000Z",
+            },
+          },
+        }),
+      );
+
+      const result = await runEffect(
+        Effect.gen(function* () {
+          const service = yield* TinyBaseService;
+          return {
+            memory: yield* service.getDocumentMemory(42),
+            review: yield* service.getPendingReview("review1"),
+          };
+        }),
+      );
+
+      expect(result.memory?.ocrVersionIds).toEqual([]);
+      expect(result.memory?.extractedFacts).toEqual({});
+      expect(result.memory?.humanDecisions).toEqual([]);
+      expect(result.memory?.transcript).toEqual([]);
+      expect(result.review?.alternatives).toEqual([]);
+    });
   });
 
   // =========================================================================

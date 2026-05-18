@@ -1,6 +1,7 @@
 /**
  * Settings API handlers.
  */
+import { getModels } from "@earendil-works/pi-ai";
 import { Effect, pipe } from "effect";
 import { ConfigService } from "../../config/index.js";
 import {
@@ -10,6 +11,13 @@ import {
   QdrantService,
   TinyBaseService,
 } from "../../services/index.js";
+import type { OllamaRunningModel } from "../../services/OllamaService.js";
+import { fetchWithTimeout, normalizeBaseUrl } from "../../utils/http.js";
+import {
+  getDefaultTagLanguageAliasesDeJson,
+  parseTagLanguageAliasRows,
+  serializeTagLanguageAliasRows,
+} from "../../utils/tagLanguage.js";
 import type { ConnectionTestResult, Settings, SettingsUpdate } from "./api.js";
 
 // ===========================================================================
@@ -34,16 +42,30 @@ export const getSettings = Effect.gen(function* () {
   const get = (key: string, fallback: string): string => {
     return dbSettings[key] ?? fallback;
   };
+  const getFirstNonEmpty = (keys: string[], fallback: string): string => {
+    for (const key of keys) {
+      const value = dbSettings[key];
+      if (typeof value === "string" && value.trim() !== "") return value;
+    }
+    return fallback;
+  };
   const getBool = (key: string, fallback: boolean): boolean => {
     const val = dbSettings[key];
     if (val === undefined) return fallback;
     return val === "true" || val === "1";
   };
+  const getBoolAny = (keys: string[], fallback: boolean): boolean => {
+    const values = keys
+      .map((key) => dbSettings[key])
+      .filter((value): value is string => value !== undefined);
+    if (values.length === 0) return fallback;
+    return values.some((value) => value === "true" || value === "1");
+  };
   const getNum = (key: string, fallback: number): number => {
     const val = dbSettings[key];
     if (val === undefined) return fallback;
-    const num = parseInt(val, 10);
-    return isNaN(num) ? fallback : num;
+    const num = Number(val);
+    return Number.isNaN(num) ? fallback : num;
   };
 
   const { paperless, ollama, mistral, qdrant, autoProcessing, tags, language, debug } =
@@ -60,31 +82,35 @@ export const getSettings = Effect.gen(function* () {
   };
 
   // Merge DB settings with config defaults
-  const paperlessUrl = get("paperless.url", paperless.url || "");
-  const paperlessToken = get("paperless.token", paperless.token || "");
-  const paperlessExternalUrl = get("paperless.external_url", "");
-  const ollamaUrl = get("ollama.url", ollama.url || "");
-  const ollamaModelLarge = get("ollama.model_large", ollama.modelLarge || "");
-  const ollamaModelSmall = get("ollama.model_small", ollama.modelSmall || "");
-  const ollamaEmbeddingModel = get(
-    "ollama.embedding_model",
-    ((ollama as Record<string, unknown>).embeddingModel as string) || "",
+  const paperlessUrl = getFirstNonEmpty(["paperless.url", "paperless_url"], paperless.url || "");
+  const paperlessToken = getFirstNonEmpty(
+    ["paperless.token", "paperless_token"],
+    paperless.token || "",
   );
-  const ollamaModelTranslation = get(
-    "ollama.model_translation",
-    ((ollama as Record<string, unknown>).modelTranslation as string) || "",
+  const paperlessExternalUrl = getFirstNonEmpty(
+    ["paperless.external_url", "paperless_external_url"],
+    "",
   );
-  const mistralApiKey = get("mistral.api_key", mistral.apiKey || "");
-  const mistralModel = get("mistral.model", mistral.model || "");
-  const qdrantUrl = get("qdrant.url", qdrant.url || "");
-  const qdrantCollection = get(
-    "qdrant.collectionName",
-    dbSettings["qdrant.collection"] ??
-      dbSettings["qdrant_collection"] ??
-      qdrant.collectionName ??
-      "documents",
+  const ollamaUrl = getFirstNonEmpty(["ollama.url", "ollama_url"], ollama.url || "");
+  const ollamaModel = getFirstNonEmpty(["ollama.model", "ollama_model"], ollama.model ?? "");
+  const ollamaEmbeddingModel = getFirstNonEmpty(
+    ["ollama.embedding_model", "ollama_embedding_model"],
+    ollama.embeddingModel || "",
   );
-  const vectorSearchEnabled = getBool("vector_search.enabled", false);
+  const mistralApiKey = getFirstNonEmpty(
+    ["mistral.api_key", "mistral_api_key"],
+    mistral.apiKey || "",
+  );
+  const mistralModel = getFirstNonEmpty(["mistral.model", "mistral_model"], mistral.model || "");
+  const openAiCliScope = get("openai_cli.scope", "chat");
+  const openAiCliModel = get("openai_cli.model", "gpt-5.5");
+  const openAiCliReasoningEffort = get("openai_cli.reasoning_effort", "medium");
+  const qdrantUrl = getFirstNonEmpty(["qdrant.url", "qdrant_url"], qdrant.url || "");
+  const qdrantCollection = getFirstNonEmpty(
+    ["qdrant.collectionName", "qdrant.collection", "qdrant_collection"],
+    qdrant.collectionName ?? "documents",
+  );
+  const vectorSearchEnabled = getBoolAny(["vector_search.enabled", "vector_search_enabled"], false);
   const vectorSearchTopK = getNum("vector_search.top_k", 5);
   const vectorSearchMinScore = parseFloat(get("vector_search.min_score", "0.7")) || 0.7;
 
@@ -104,10 +130,28 @@ export const getSettings = Effect.gen(function* () {
     paperless_token_configured: paperlessToken.length > 0,
     paperless_external_url: paperlessExternalUrl,
     ollama_url: ollamaUrl,
-    ollama_model_large: ollamaModelLarge,
-    ollama_model_small: ollamaModelSmall,
+    ollama_model: ollamaModel,
     ollama_embedding_model: ollamaEmbeddingModel,
-    ollama_model_translation: ollamaModelTranslation,
+    openai_cli_enabled: getBool("openai_cli.enabled", false),
+    openai_cli_command: get("openai_cli.command", "codex"),
+    openai_cli_model: openAiCliModel,
+    openai_cli_reasoning_effort:
+      openAiCliReasoningEffort === "off" ||
+      openAiCliReasoningEffort === "minimal" ||
+      openAiCliReasoningEffort === "low" ||
+      openAiCliReasoningEffort === "medium" ||
+      openAiCliReasoningEffort === "high" ||
+      openAiCliReasoningEffort === "xhigh"
+        ? openAiCliReasoningEffort
+        : "medium",
+    openai_cli_fast_mode: getBool("openai_cli.fast_mode", true),
+    openai_cli_scope:
+      openAiCliScope === "full_pipeline" ||
+      openAiCliScope === "catalog" ||
+      openAiCliScope === "all" ||
+      openAiCliScope === "chat"
+        ? openAiCliScope
+        : "chat",
     mistral_api_key: maskSecret(mistralApiKey),
     mistral_api_key_configured: mistralApiKey.length > 0,
     mistral_model: mistralModel,
@@ -121,6 +165,10 @@ export const getSettings = Effect.gen(function* () {
       "auto_processing.interval_minutes",
       autoProcessing.intervalMinutes,
     ),
+    auto_processing_include_untagged: getBool(
+      "auto_processing.include_untagged",
+      autoProcessing.includeUntagged,
+    ),
     confirmation_enabled: getBool(
       "auto_processing.confirmation_enabled",
       autoProcessing.confirmationEnabled,
@@ -129,7 +177,14 @@ export const getSettings = Effect.gen(function* () {
       "auto_processing.confirmation_max_retries",
       autoProcessing.confirmationMaxRetries,
     ),
-    language: get("language", language),
+    confirmation_min_confidence: getNum(
+      "auto_processing.confirmation_min_confidence",
+      autoProcessing.confirmationMinConfidence ?? 0.7,
+    ),
+    language: getFirstNonEmpty(["language.prompt", "prompt_language", "language"], language),
+    tag_language_aliases_de: serializeTagLanguageAliasRows(
+      parseTagLanguageAliasRows(dbSettings["tag_language.aliases.de"]),
+    ),
     debug: getBool("debug", debug),
     debug_log_level: get("debug.log_level", "INFO"),
     debug_log_prompts: getBool("debug.log_prompts", false),
@@ -177,10 +232,14 @@ const SETTINGS_KEY_MAP: Record<string, string> = {
   paperless_external_url: "paperless.external_url",
   // Ollama
   ollama_url: "ollama.url",
-  ollama_model_large: "ollama.model_large",
-  ollama_model_small: "ollama.model_small",
+  ollama_model: "ollama.model",
   ollama_embedding_model: "ollama.embedding_model",
-  ollama_model_translation: "ollama.model_translation",
+  openai_cli_enabled: "openai_cli.enabled",
+  openai_cli_command: "openai_cli.command",
+  openai_cli_model: "openai_cli.model",
+  openai_cli_reasoning_effort: "openai_cli.reasoning_effort",
+  openai_cli_fast_mode: "openai_cli.fast_mode",
+  openai_cli_scope: "openai_cli.scope",
   // Mistral
   mistral_api_key: "mistral.api_key",
   mistral_model: "mistral.model",
@@ -191,10 +250,17 @@ const SETTINGS_KEY_MAP: Record<string, string> = {
   // Auto processing
   auto_processing_enabled: "auto_processing.enabled",
   auto_processing_interval_minutes: "auto_processing.interval_minutes",
+  auto_processing_include_untagged: "auto_processing.include_untagged",
+  "auto_processing.include_untagged": "auto_processing.include_untagged",
   confirmation_enabled: "auto_processing.confirmation_enabled",
   confirmation_max_retries: "auto_processing.confirmation_max_retries",
+  confirmation_min_confidence: "auto_processing.confirmation_min_confidence",
   // Language
-  language: "language",
+  language: "language.prompt",
+  prompt_language: "language.prompt",
+  "language.prompt": "language.prompt",
+  tag_language_aliases_de: "tag_language.aliases.de",
+  "tag_language.aliases.de": "tag_language.aliases.de",
   // Debug
   debug: "debug",
   debug_log_level: "debug.log_level",
@@ -256,6 +322,13 @@ const SETTINGS_KEY_MAP: Record<string, string> = {
   "tags.manual_review": "tags.manual_review",
 };
 
+const SETTINGS_MIRROR_KEYS: Record<string, string[]> = {
+  "vector_search.enabled": ["vector_search_enabled"],
+  "vector_search.top_k": ["vector_search_top_k"],
+  "vector_search.min_score": ["vector_search_min_score"],
+  "auto_processing.include_untagged": ["auto_processing_include_untagged"],
+};
+
 export const updateSettings = (updates: SettingsUpdate) =>
   Effect.gen(function* () {
     const tinybase = yield* TinyBaseService;
@@ -278,9 +351,21 @@ export const updateSettings = (updates: SettingsUpdate) =>
       if ((dbKey === "paperless.token" || dbKey === "mistral.api_key") && isMaskedSecret(value))
         continue;
 
-      // Convert value to string for storage
-      const strValue = typeof value === "boolean" ? String(value) : String(value);
+      const strValue =
+        dbKey === "tag_language.aliases.de"
+          ? serializeTagLanguageAliasRows(
+              parseTagLanguageAliasRows(
+                value,
+                parseTagLanguageAliasRows(getDefaultTagLanguageAliasesDeJson()),
+              ),
+            )
+          : typeof value === "boolean"
+            ? String(value)
+            : String(value);
       yield* tinybase.setSetting(dbKey, strValue);
+      for (const mirrorKey of SETTINGS_MIRROR_KEYS[dbKey] ?? []) {
+        yield* tinybase.setSetting(mirrorKey, strValue);
+      }
     }
 
     // Return updated settings
@@ -316,9 +401,11 @@ export const testPaperlessConnection = Effect.gen(function* () {
 
   const result: ConnectionTestResult = yield* Effect.tryPromise({
     try: async () => {
-      const response = await fetch(`${url}/api/documents/?page_size=1`, {
-        headers: { Authorization: `Token ${token}` },
-      });
+      const response = await fetchWithTimeout(
+        `${url}/api/documents/?page_size=1`,
+        { headers: { Authorization: `Token ${token}` } },
+        config.config.http?.requestTimeoutMs ?? 120_000,
+      );
       if (response.ok) {
         return { status: "success" as const, message: "Connected to Paperless-ngx", details: null };
       }
@@ -351,7 +438,11 @@ export const testOllamaConnection = Effect.gen(function* () {
 
   const result: ConnectionTestResult = yield* Effect.tryPromise({
     try: async () => {
-      const response = await fetch(`${url}/api/tags`);
+      const response = await fetchWithTimeout(
+        `${url}/api/tags`,
+        undefined,
+        config.config.http?.requestTimeoutMs ?? 120_000,
+      );
       if (response.ok) {
         return { status: "success" as const, message: "Connected to Ollama", details: null };
       }
@@ -384,9 +475,11 @@ export const testMistralConnection = Effect.gen(function* () {
 
   const result: ConnectionTestResult = yield* Effect.tryPromise({
     try: async () => {
-      const response = await fetch("https://api.mistral.ai/v1/models", {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      });
+      const response = await fetchWithTimeout(
+        `${normalizeBaseUrl(config.config.mistral.apiBaseUrl ?? "https://api.mistral.ai")}/v1/models`,
+        { headers: { Authorization: `Bearer ${apiKey}` } },
+        config.config.http?.requestTimeoutMs ?? 120_000,
+      );
       if (response.ok) {
         return { status: "success" as const, message: "Connected to Mistral AI", details: null };
       }
@@ -429,7 +522,11 @@ export const testQdrantConnection = Effect.gen(function* () {
   // First, test basic connectivity
   const connectResult: ConnectionTestResult = yield* Effect.tryPromise({
     try: async () => {
-      const response = await fetch(`${url}/collections`);
+      const response = await fetchWithTimeout(
+        `${url}/collections`,
+        undefined,
+        config.config.http?.requestTimeoutMs ?? 120_000,
+      );
       if (response.ok) {
         return { status: "success" as const, message: "Connected to Qdrant", details: null };
       }
@@ -491,27 +588,77 @@ export const getOllamaModels = Effect.gen(function* () {
   };
 });
 
-export const getOllamaStatus = Effect.gen(function* () {
-  const ollama = yield* OllamaService;
+type OllamaStatusModel = {
+  name: string;
+  model: string;
+  size: number;
+  size_vram: number;
+  expires_at: string;
+  parameter_size: string | null;
+  quantization: string | null;
+};
 
-  const runningModels = yield* pipe(
+type OllamaStatusResult = {
+  running: boolean;
+  models: OllamaStatusModel[];
+};
+
+const OLLAMA_STATUS_CACHE_TTL_MS = 2_000;
+
+let ollamaStatusCache: { value: OllamaStatusResult; expiresAtMs: number } | null = null;
+let ollamaStatusInFlight: Promise<OllamaStatusResult> | null = null;
+
+const mapOllamaStatus = (runningModels: OllamaRunningModel[]): OllamaStatusResult => ({
+  running: runningModels.length > 0,
+  models: runningModels.map((m) => ({
+    name: m.name,
+    model: m.model,
+    size: m.size,
+    size_vram: m.size_vram,
+    expires_at: m.expires_at,
+    parameter_size: m.details?.parameter_size ?? null,
+    quantization: m.details?.quantization_level ?? null,
+  })),
+});
+
+const fetchOllamaStatus = (ollama: OllamaService): Effect.Effect<OllamaStatusResult, never> =>
+  pipe(
     ollama.getRunningModels(),
-    Effect.catchAll(() => Effect.succeed([])),
+    Effect.catchAll(() => Effect.succeed([] as OllamaRunningModel[])),
+    Effect.map(mapOllamaStatus),
   );
 
-  // Return running status and model details
-  return {
-    running: runningModels.length > 0,
-    models: runningModels.map((m) => ({
-      name: m.name,
-      model: m.model,
-      size: m.size,
-      size_vram: m.size_vram,
-      expires_at: m.expires_at,
-      parameter_size: m.details?.parameter_size ?? null,
-      quantization: m.details?.quantization_level ?? null,
-    })),
-  };
+export const clearOllamaStatusCacheForTests = () => {
+  ollamaStatusCache = null;
+  ollamaStatusInFlight = null;
+};
+
+export const getOllamaStatus = Effect.gen(function* () {
+  const ollama = yield* OllamaService;
+  const now = Date.now();
+
+  if (ollamaStatusCache && ollamaStatusCache.expiresAtMs > now) {
+    return ollamaStatusCache.value;
+  }
+
+  if (ollamaStatusInFlight) {
+    return yield* Effect.promise(() => ollamaStatusInFlight as Promise<OllamaStatusResult>);
+  }
+
+  const promise = Effect.runPromise(fetchOllamaStatus(ollama))
+    .then((value) => {
+      ollamaStatusCache = {
+        value,
+        expiresAtMs: Date.now() + OLLAMA_STATUS_CACHE_TTL_MS,
+      };
+      return value;
+    })
+    .finally(() => {
+      ollamaStatusInFlight = null;
+    });
+
+  ollamaStatusInFlight = promise;
+  return yield* Effect.promise(() => promise);
 });
 
 export const getMistralModels = Effect.gen(function* () {
@@ -531,6 +678,14 @@ export const getMistralModels = Effect.gen(function* () {
       owned_by: m.owned_by,
     })),
   };
+});
+
+export const getOpenAICodexModels = Effect.succeed({
+  models: getModels("openai-codex").map((m) => ({
+    id: m.id,
+    name: m.name,
+    provider: m.provider,
+  })),
 });
 
 // ===========================================================================
@@ -557,7 +712,6 @@ const flattenObject = (obj: Record<string, unknown>, prefix = ""): Record<string
     const newKey = prefix ? `${prefix}.${key}` : key;
 
     if (value === null || value === undefined) {
-      continue;
     } else if (Array.isArray(value)) {
       result[newKey] = JSON.stringify(value);
     } else if (typeof value === "object") {
@@ -674,11 +828,9 @@ export const getTagsStatus = Effect.gen(function* () {
   const dbSettings = yield* tinybase.getAllSettings();
   const expectedColor = dbSettings["tags.color"] ?? "#1e88e5";
   const workflowTags = {
-    todo: dbSettings["tags.todo"] ?? tagConfig.todo,
-    ocr: dbSettings["tags.ocr"] ?? tagConfig.ocr,
-    metadata: dbSettings["tags.metadata"] ?? tagConfig.metadata,
-    review: dbSettings["tags.review"] ?? tagConfig.review,
-    index: dbSettings["tags.index"] ?? tagConfig.index,
+    queued: dbSettings["tags.todo"] ?? tagConfig.todo,
+    processing: dbSettings["tags.ocr"] ?? tagConfig.ocr,
+    needs_input: dbSettings["tags.review"] ?? tagConfig.review,
     done: dbSettings["tags.done"] ?? tagConfig.done,
     failed: dbSettings["tags.failed"] ?? tagConfig.failed,
   };
@@ -753,11 +905,9 @@ export const fixWorkflowTagColors = Effect.gen(function* () {
   const dbSettings = yield* tinybase.getAllSettings();
   const expectedColor = dbSettings["tags.color"] ?? "#1e88e5";
   const workflowTags = {
-    todo: dbSettings["tags.todo"] ?? config.config.tags.todo,
-    ocr: dbSettings["tags.ocr"] ?? config.config.tags.ocr,
-    metadata: dbSettings["tags.metadata"] ?? config.config.tags.metadata,
-    review: dbSettings["tags.review"] ?? config.config.tags.review,
-    index: dbSettings["tags.index"] ?? config.config.tags.index,
+    queued: dbSettings["tags.todo"] ?? config.config.tags.todo,
+    processing: dbSettings["tags.ocr"] ?? config.config.tags.ocr,
+    needs_input: dbSettings["tags.review"] ?? config.config.tags.review,
     done: dbSettings["tags.done"] ?? config.config.tags.done,
     failed: dbSettings["tags.failed"] ?? config.config.tags.failed,
   };
@@ -774,7 +924,7 @@ export const fixWorkflowTagColors = Effect.gen(function* () {
   const failed: string[] = [];
 
   // Update color for each workflow tag that exists but has wrong color
-  for (const name of Object.values(workflowTags)) {
+  for (const name of [...new Set(Object.values(workflowTags))]) {
     const tagInfo = existingTagsMap.get(name);
     if (!tagInfo) continue; // Tag doesn't exist, skip
 

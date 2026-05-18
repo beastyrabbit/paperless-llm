@@ -12,6 +12,12 @@ services:
       - backend-data:/app/data
     networks:
       - paperless-llm
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8765/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     restart: unless-stopped
 
   # Next.js Frontend
@@ -26,9 +32,16 @@ services:
     environment:
       - BACKEND_URL=http://backend:8765
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - paperless-llm
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3765/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     restart: unless-stopped
 
 volumes:

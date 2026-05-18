@@ -21,12 +21,17 @@ dist
 .claude
 .serena
 .playwright-mcp
+.ref/
 
 # Secrets and config
 .env*
 !.env.example
+!.env*.example
 config.yaml
 *.pem
+*.key
+*.crt
+*.p12
 
 # Testing and development
 coverage
@@ -34,6 +39,9 @@ coverage
 playwright-report
 test-results
 demo-videos/
+screenshots/
+**/screenshots/
+/*.png
 
 # Cache directories
 .ruff_cache

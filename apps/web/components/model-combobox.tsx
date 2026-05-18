@@ -31,6 +31,7 @@ interface ModelComboboxProps {
   searchPlaceholder?: string;
   emptyText?: string;
   disabled?: boolean;
+  ariaLabel?: string;
 }
 
 export function ModelCombobox({
@@ -41,11 +42,17 @@ export function ModelCombobox({
   searchPlaceholder = "Search models...",
   emptyText = "No model found.",
   disabled = false,
+  ariaLabel = "Model selection",
 }: ModelComboboxProps) {
   const [open, setOpen] = React.useState(false);
+  const listId = React.useId();
 
   const getModelValue = (model: Model) => model.value ?? model.name;
   const selectedModel = models.find((model) => getModelValue(model) === value);
+  const selectedModelLabel = selectedModel?.name ?? value;
+  const triggerLabel = value
+    ? `${ariaLabel}: ${selectedModelLabel}`
+    : `${ariaLabel}: ${placeholder}`;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -53,7 +60,10 @@ export function ModelCombobox({
         <Button
           variant="outline"
           role="combobox"
+          aria-label={triggerLabel}
+          aria-controls={listId}
           aria-expanded={open}
+          aria-haspopup="listbox"
           disabled={disabled}
           className="w-full justify-between font-normal"
         >
@@ -69,20 +79,20 @@ export function ModelCombobox({
           ) : (
             <span className="text-muted-foreground">{placeholder}</span>
           )}
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          <ChevronsUpDown aria-hidden="true" className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         <Command>
-          <CommandInput placeholder={searchPlaceholder} className="h-9" />
-          <CommandList>
+          <CommandInput aria-label={searchPlaceholder} placeholder={searchPlaceholder} className="h-9" />
+          <CommandList id={listId}>
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>
-              {models.map((model, index) => {
+              {models.map((model) => {
                 const modelValue = getModelValue(model);
                 return (
                   <CommandItem
-                    key={`${modelValue}-${index}`}
+                    key={`${modelValue}-${model.name}-${model.size ?? ""}`}
                     value={model.name}
                     onSelect={() => {
                       onValueChange(modelValue === value ? "" : modelValue);
@@ -98,6 +108,7 @@ export function ModelCombobox({
                       )}
                     </div>
                     <Check
+                      aria-hidden="true"
                       className={cn(
                         "ml-2 h-4 w-4 shrink-0",
                         value === modelValue ? "opacity-100" : "opacity-0",

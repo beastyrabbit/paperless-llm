@@ -106,20 +106,24 @@ export function usePaperlessToken() {
   return useStringSetting("paperless.token");
 }
 
+export function usePaperlessTokenConfigured() {
+  return useBooleanSetting("paperless.token_configured");
+}
+
 export function useOllamaUrl() {
   return useStringSetting("ollama.url");
 }
 
-export function useOllamaModelLarge() {
-  return useStringSetting("ollama.model_large");
-}
-
-export function useOllamaModelSmall() {
-  return useStringSetting("ollama.model_small");
+export function useOllamaModel() {
+  return useStringSetting("ollama.model");
 }
 
 export function useMistralApiKey() {
   return useStringSetting("mistral.api_key");
+}
+
+export function useMistralApiKeyConfigured() {
+  return useBooleanSetting("mistral.api_key_configured");
 }
 
 export function useMistralModel() {

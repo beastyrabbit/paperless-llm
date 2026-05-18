@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_PAGE_BACKGROUND } from "@/lib/styles";
 import {
   Alert,
   AlertDescription,
@@ -30,19 +31,8 @@ import {
   Type,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-
-interface CustomField {
-  id: number;
-  name: string;
-  data_type: string;
-  extra_data: Record<string, unknown> | null;
-}
-
-interface CustomFieldsResponse {
-  fields: CustomField[];
-  selected_fields: number[];
-}
+import { useCallback, useEffect, useState } from "react";
+import { type CustomFieldSetting, settingsApi } from "@/lib/api";
 
 const DATA_TYPE_ICONS: Record<string, React.ReactNode> = {
   string: <Type className="h-4 w-4" />,
@@ -69,7 +59,7 @@ const DATA_TYPE_LABELS: Record<string, string> = {
 };
 
 export default function CustomFieldsPage() {
-  const [fields, setFields] = useState<CustomField[]>([]);
+  const [fields, setFields] = useState<CustomFieldSetting[]>([]);
   const [selectedFields, setSelectedFields] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -77,47 +67,32 @@ export default function CustomFieldsPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
 
-  const fetchCustomFields = async () => {
+  const fetchCustomFields = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const response = await fetch("/api/settings/custom-fields");
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data: CustomFieldsResponse = await response.json();
-      setFields(data.fields);
-      setSelectedFields(data.selected_fields);
+    const result = await settingsApi.getCustomFields();
+    if (result.ok) {
+      setFields(result.data.fields);
+      setSelectedFields(result.data.selected_fields);
       setHasChanges(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch custom fields");
-    } finally {
-      setLoading(false);
+    } else {
+      setError(result.error);
     }
-  };
+    setLoading(false);
+  }, []);
 
   const saveSelection = async () => {
     setSaving(true);
     setError(null);
     setSuccessMessage(null);
-    try {
-      const response = await fetch("/api/settings/custom-fields", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selected_field_ids: selectedFields }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
+    const result = await settingsApi.updateCustomFields(selectedFields);
+    if (result.ok) {
       setSuccessMessage(`Saved ${selectedFields.length} custom field(s) for LLM processing`);
       setHasChanges(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save selection");
-    } finally {
-      setSaving(false);
+    } else {
+      setError(result.error);
     }
+    setSaving(false);
   };
 
   const toggleField = (fieldId: number) => {
@@ -146,10 +121,10 @@ export default function CustomFieldsPage() {
 
   useEffect(() => {
     fetchCustomFields();
-  }, []);
+  }, [fetchCustomFields]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-white to-emerald-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-emerald-950/20">
+    <div className={APP_PAGE_BACKGROUND}>
       {/* Header */}
       <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/80">
         <div className="flex h-16 items-center justify-between px-8">

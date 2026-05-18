@@ -14,35 +14,107 @@ import {
 } from "@repo/ui";
 import { Database, Eye, EyeOff, Loader2, RefreshCw, TestTube } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 import { ModelCombobox } from "@/components/model-combobox";
-import { useBooleanSetting, useNumberSetting, useStringSetting, useTinyBase } from "@/lib/tinybase";
+import { type MistralModel, type OllamaModel, type OpenAICodexModel, settingsApi } from "@/lib/api";
 import {
-  type ConnectionStatus,
-  type MistralModel,
-  type OllamaModel,
-  StatusIndicator,
-} from "./shared";
+  type SettingKey,
+  useBooleanSetting,
+  useMistralApiKeyConfigured,
+  useNumberSetting,
+  usePaperlessTokenConfigured,
+  useStringSetting,
+  useTinyBase,
+} from "@/lib/tinybase";
+import { type ConnectionStatus, StatusIndicator } from "./shared";
 
-const API_BASE = "";
-const isMaskedSecret = (value: string): boolean => /^[*]+$/.test(value);
-const editableSecretValue = (value: string): string => (isMaskedSecret(value) ? "" : value);
+const OPENAI_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+
+function SecretInput({
+  id,
+  configured,
+  settingKey,
+  visible,
+  placeholder,
+  configuredPlaceholder,
+  updateSetting,
+}: {
+  id: string;
+  configured: boolean;
+  settingKey: SettingKey;
+  visible: boolean;
+  placeholder: string;
+  configuredPlaceholder: string;
+  updateSetting: (key: SettingKey, value: string) => Promise<boolean>;
+}) {
+  const t = useTranslations("settings");
+  const [draft, setDraft] = useState("");
+  const [state, action, isPending] = useActionState<
+    { status: "idle" | "success" | "error"; message: string | null },
+    FormData
+  >(async (_previous, formData) => {
+    const value = String(formData.get("secret") ?? "").trim();
+    if (!value) return { status: "idle", message: null };
+
+    const saved = await updateSetting(settingKey, value);
+    if (!saved) return { status: "error", message: t("secretSaveError") };
+    setDraft("");
+    return { status: "success", message: null };
+  }, { status: "idle", message: null });
+
+  return (
+    <form action={action} className="space-y-1">
+      <Input
+        id={id}
+        name="secret"
+        type={visible ? "text" : "password"}
+        placeholder={configured ? configuredPlaceholder : placeholder}
+        value={draft}
+        disabled={isPending}
+        onChange={(e) => {
+          setDraft(e.target.value);
+        }}
+      />
+      <div className="flex items-center justify-between text-xs">
+        <Button type="submit" variant="ghost" size="sm" disabled={!draft || isPending}>
+          {isPending && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+          {t("saveSecret")}
+        </Button>
+        {state.status === "error" && (
+          <span className="text-red-600 dark:text-red-400" role="alert">
+            {state.message}
+          </span>
+        )}
+      </div>
+    </form>
+  );
+}
 
 export function ConnectionsTab() {
   const t = useTranslations("settings");
   const { updateSetting, isSyncing } = useTinyBase();
+  const updateSettingSafely = useCallback(
+    (key: SettingKey, value: string | number | boolean) => {
+      void updateSetting(key, value).catch(() => undefined);
+    },
+    [updateSetting],
+  );
   const hasAutoTestedRef = useRef(false);
 
   // TinyBase settings (persisted)
   const paperlessUrl = useStringSetting("paperless.url");
-  const paperlessToken = useStringSetting("paperless.token");
+  const paperlessTokenConfigured = usePaperlessTokenConfigured();
   const paperlessExternalUrl = useStringSetting("paperless.external_url");
   const ollamaUrl = useStringSetting("ollama.url");
-  const ollamaModelLarge = useStringSetting("ollama.model_large");
-  const ollamaModelSmall = useStringSetting("ollama.model_small");
-  const ollamaModelTranslation = useStringSetting("ollama.model_translation");
+  const ollamaModel = useStringSetting("ollama.model");
   const ollamaEmbeddingModel = useStringSetting("ollama.embedding_model");
-  const mistralApiKey = useStringSetting("mistral.api_key");
+  const openAiCliEnabled = useBooleanSetting("openai_cli.enabled");
+  const openAiCliCommand = useStringSetting("openai_cli.command");
+  const openAiCliModel = useStringSetting("openai_cli.model");
+  const openAiCliReasoningEffort = useStringSetting("openai_cli.reasoning_effort");
+  const openAiCliFastMode = useBooleanSetting("openai_cli.fast_mode");
+  const openAiCliScope = useStringSetting("openai_cli.scope");
+  const mistralApiKeyConfigured = useMistralApiKeyConfigured();
   const mistralModel = useStringSetting("mistral.model");
   const qdrantUrl = useStringSetting("qdrant.url");
   const qdrantCollection = useStringSetting("qdrant.collection");
@@ -59,9 +131,11 @@ export function ConnectionsTab() {
   });
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
   const [mistralModels, setMistralModels] = useState<MistralModel[]>([]);
+  const [openAiCodexModels, setOpenAiCodexModels] = useState<OpenAICodexModel[]>([]);
   const [loadingModels, setLoadingModels] = useState<Record<string, boolean>>({
     ollama: false,
     mistral: false,
+    openai: false,
   });
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({
     paperless_token: false,
@@ -71,57 +145,53 @@ export function ConnectionsTab() {
   // Fetch models
   const fetchOllamaModels = useCallback(async () => {
     setLoadingModels((prev) => ({ ...prev, ollama: true }));
-    try {
-      const response = await fetch(`${API_BASE}/api/settings/ollama/models`);
-      const data = await response.json();
-      if (data.models) {
-        setOllamaModels(data.models);
-      }
-    } catch (error) {
-      console.error("Failed to load Ollama models:", error);
-    } finally {
-      setLoadingModels((prev) => ({ ...prev, ollama: false }));
+    const result = await settingsApi.getOllamaModels();
+    if (result.ok) {
+      setOllamaModels(result.data.models);
     }
+    setLoadingModels((prev) => ({ ...prev, ollama: false }));
   }, []);
 
   const fetchMistralModels = useCallback(async () => {
     setLoadingModels((prev) => ({ ...prev, mistral: true }));
-    try {
-      const response = await fetch(`${API_BASE}/api/settings/mistral/models`);
-      const data = await response.json();
-      if (data.models) {
-        setMistralModels(data.models);
-      }
-    } catch (error) {
-      console.error("Failed to load Mistral models:", error);
-    } finally {
-      setLoadingModels((prev) => ({ ...prev, mistral: false }));
+    const result = await settingsApi.getMistralModels();
+    if (result.ok) {
+      setMistralModels(result.data.models);
     }
+    setLoadingModels((prev) => ({ ...prev, mistral: false }));
+  }, []);
+
+  const fetchOpenAiCodexModels = useCallback(async () => {
+    setLoadingModels((prev) => ({ ...prev, openai: true }));
+    const result = await settingsApi.getOpenAICodexModels();
+    if (result.ok) {
+      setOpenAiCodexModels(result.data.models);
+    }
+    setLoadingModels((prev) => ({ ...prev, openai: false }));
   }, []);
 
   // Test connection
   const testConnection = useCallback(
     async (service: string) => {
       setConnectionStatus((prev) => ({ ...prev, [service]: "testing" }));
-      try {
-        const response = await fetch(`${API_BASE}/api/settings/test-connection/${service}`, {
-          method: "POST",
-        });
-        const data = await response.json();
-        setConnectionStatus((prev) => ({
-          ...prev,
-          [service]: data.status === "success" ? "success" : "error",
-        }));
-
-        // If connection successful, load models
-        if (data.status === "success" && service === "ollama") {
-          fetchOllamaModels();
-        }
-        if (data.status === "success" && service === "mistral") {
-          fetchMistralModels();
-        }
-      } catch {
+      const result = await settingsApi.testConnection(service);
+      if (!result.ok) {
         setConnectionStatus((prev) => ({ ...prev, [service]: "error" }));
+        return;
+      }
+
+      const isSuccess = result.data.status === "success";
+      setConnectionStatus((prev) => ({
+        ...prev,
+        [service]: isSuccess ? "success" : "error",
+      }));
+
+      // If connection successful, load models
+      if (isSuccess && service === "ollama") {
+        void fetchOllamaModels();
+      }
+      if (isSuccess && service === "mistral") {
+        void fetchMistralModels();
       }
     },
     [fetchOllamaModels, fetchMistralModels],
@@ -138,7 +208,7 @@ export function ConnectionsTab() {
 
     const autoTest = async () => {
       const tests: Promise<void>[] = [];
-      if (paperlessUrl && paperlessToken) {
+      if (paperlessUrl && paperlessTokenConfigured) {
         tests.push(testConnection("paperless"));
       }
       if (ollamaUrl) {
@@ -147,7 +217,7 @@ export function ConnectionsTab() {
       if (qdrantUrl) {
         tests.push(testConnection("qdrant"));
       }
-      if (mistralApiKey) {
+      if (mistralApiKeyConfigured) {
         tests.push(testConnection("mistral"));
       }
       await Promise.all(tests);
@@ -157,12 +227,18 @@ export function ConnectionsTab() {
   }, [
     isSyncing,
     paperlessUrl,
-    paperlessToken,
+    paperlessTokenConfigured,
     ollamaUrl,
     qdrantUrl,
-    mistralApiKey,
+    mistralApiKeyConfigured,
     testConnection,
   ]);
+
+  useEffect(() => {
+    if (!isSyncing && openAiCliEnabled && openAiCodexModels.length === 0) {
+      fetchOpenAiCodexModels();
+    }
+  }, [fetchOpenAiCodexModels, isSyncing, openAiCliEnabled, openAiCodexModels.length]);
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -180,31 +256,29 @@ export function ConnectionsTab() {
             <Label htmlFor="paperless_url">{t("paperless.serverUrl")}</Label>
             <Input
               id="paperless_url"
-              placeholder="http://your-paperless:8000"
+              placeholder={t("paperless.serverUrlPlaceholder")}
               value={paperlessUrl}
-              onChange={(e) => updateSetting("paperless.url", e.target.value)}
+              onChange={(e) => updateSettingSafely("paperless.url", e.target.value)}
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="paperless_token">{t("paperless.apiToken")}</Label>
             <div className="flex gap-2">
-              <Input
+              <SecretInput
                 id="paperless_token"
-                type={showSecrets.paperless_token ? "text" : "password"}
-                placeholder={
-                  isMaskedSecret(paperlessToken)
-                    ? "Paperless API token configured"
-                    : "Your Paperless API token"
-                }
-                value={editableSecretValue(paperlessToken)}
-                onChange={(e) => updateSetting("paperless.token", e.target.value)}
+                placeholder={t("paperless.apiTokenPlaceholder")}
+                configuredPlaceholder={t("paperless.apiTokenConfigured")}
+                configured={paperlessTokenConfigured}
+                settingKey="paperless.token"
+                visible={showSecrets.paperless_token}
+                updateSetting={updateSetting}
               />
               <Button
                 variant="outline"
                 size="icon"
                 type="button"
                 aria-label={
-                  showSecrets.paperless_token ? "Hide Paperless token" : "Show Paperless token"
+                  showSecrets.paperless_token ? t("paperless.hideToken") : t("paperless.showToken")
                 }
                 onClick={() =>
                   setShowSecrets((prev) => ({
@@ -225,9 +299,9 @@ export function ConnectionsTab() {
             <Label htmlFor="paperless_external_url">{t("paperless.externalUrl")}</Label>
             <Input
               id="paperless_external_url"
-              placeholder="https://paperless.example.com"
+              placeholder={t("paperless.externalUrlPlaceholder")}
               value={paperlessExternalUrl}
-              onChange={(e) => updateSetting("paperless.external_url", e.target.value)}
+              onChange={(e) => updateSettingSafely("paperless.external_url", e.target.value)}
             />
             <p className="text-xs text-muted-foreground">{t("paperless.externalUrlDescription")}</p>
           </div>
@@ -261,9 +335,9 @@ export function ConnectionsTab() {
             <div className="flex gap-2">
               <Input
                 id="ollama_url"
-                placeholder="http://your-ollama:11434"
+                placeholder={t("ollama.serverUrlPlaceholder")}
                 value={ollamaUrl}
-                onChange={(e) => updateSetting("ollama.url", e.target.value)}
+                onChange={(e) => updateSettingSafely("ollama.url", e.target.value)}
               />
               <Button
                 variant="outline"
@@ -292,7 +366,7 @@ export function ConnectionsTab() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  aria-label="Refresh Ollama models"
+                  aria-label={t("ollama.refreshModels")}
                   onClick={fetchOllamaModels}
                   disabled={loadingModels.ollama}
                 >
@@ -301,26 +375,14 @@ export function ConnectionsTab() {
               </div>
 
               <div className="space-y-2">
-                <Label>{t("ollama.largeModel")}</Label>
+                <Label>{t("ollama.generationModel")}</Label>
                 <ModelCombobox
                   models={ollamaModels}
-                  value={ollamaModelLarge}
-                  onValueChange={(v) => updateSetting("ollama.model_large", v)}
-                  placeholder="Select large model..."
-                  searchPlaceholder="Search models..."
-                  emptyText="No model found."
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>{t("ollama.smallModel")}</Label>
-                <ModelCombobox
-                  models={ollamaModels}
-                  value={ollamaModelSmall}
-                  onValueChange={(v) => updateSetting("ollama.model_small", v)}
-                  placeholder="Select small model..."
-                  searchPlaceholder="Search models..."
-                  emptyText="No model found."
+                  value={ollamaModel}
+                  onValueChange={(v) => updateSettingSafely("ollama.model", v)}
+                  placeholder={t("ollama.selectGenerationModel")}
+                  searchPlaceholder={t("modelSearchPlaceholder")}
+                  emptyText={t("modelEmptyText")}
                 />
               </div>
 
@@ -329,27 +391,127 @@ export function ConnectionsTab() {
                 <ModelCombobox
                   models={ollamaModels}
                   value={ollamaEmbeddingModel}
-                  onValueChange={(v) => updateSetting("ollama.embedding_model", v)}
-                  placeholder="Select embedding model..."
-                  searchPlaceholder="Search models..."
-                  emptyText="No model found."
+                  onValueChange={(v) => updateSettingSafely("ollama.embedding_model", v)}
+                  placeholder={t("ollama.selectEmbeddingModel")}
+                  searchPlaceholder={t("modelSearchPlaceholder")}
+                  emptyText={t("modelEmptyText")}
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label>{t("ollama.translationModel")}</Label>
-                <ModelCombobox
-                  models={ollamaModels}
-                  value={ollamaModelTranslation}
-                  onValueChange={(v) => updateSetting("ollama.model_translation", v)}
-                  placeholder="Select translation model (optional)..."
-                  searchPlaceholder="Search models..."
-                  emptyText="No model found."
-                />
-                <p className="text-xs text-zinc-500">{t("ollama.translationModelDesc")}</p>
               </div>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      {/* OpenAI subscription CLI connector */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <StatusIndicator status={openAiCliEnabled ? "success" : "idle"} />
+            {t("openai.title")}
+          </CardTitle>
+          <CardDescription>
+            {t("openai.description")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between rounded-md border p-3">
+            <div className="space-y-0.5">
+              <Label htmlFor="openai-enabled">{t("openai.enableConnector")}</Label>
+              <p className="text-xs text-muted-foreground">
+                {t("openai.enableDesc")}
+              </p>
+            </div>
+            <Switch
+              id="openai-enabled"
+              checked={openAiCliEnabled}
+              onCheckedChange={(v) => updateSettingSafely("openai_cli.enabled", v)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="openai_cli_command">{t("openai.cliCommand")}</Label>
+            <Input
+              id="openai_cli_command"
+              value={openAiCliCommand}
+              onChange={(e) => updateSettingSafely("openai_cli.command", e.target.value)}
+              placeholder={t("openai.commandPlaceholder")}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>{t("openai.subscriptionModel")}</Label>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={t("openai.refreshModels")}
+                onClick={fetchOpenAiCodexModels}
+                disabled={loadingModels.openai}
+              >
+                <RefreshCw className={`h-4 w-4 ${loadingModels.openai ? "animate-spin" : ""}`} />
+              </Button>
+            </div>
+            <ModelCombobox
+              models={openAiCodexModels.map((m) => ({ name: m.name || m.id, value: m.id }))}
+              value={openAiCliModel}
+              onValueChange={(v) => updateSettingSafely("openai_cli.model", v)}
+              placeholder={t("openai.selectModel")}
+              searchPlaceholder={t("openai.searchModels")}
+              emptyText={t("openai.noModels")}
+              disabled={loadingModels.openai}
+            />
+            <p className="text-xs text-muted-foreground">
+              {t("openai.modelDesc")}
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="openai_cli_reasoning_effort">{t("openai.thinkingLevel")}</Label>
+              <select
+                id="openai_cli_reasoning_effort"
+                value={openAiCliReasoningEffort || "medium"}
+                onChange={(e) => updateSettingSafely("openai_cli.reasoning_effort", e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                {OPENAI_THINKING_LEVELS.map((level) => (
+                  <option key={level} value={level}>
+                    {t(`openai.thinkingLevels.${level}`)}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {t("openai.reasoningDesc")}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between rounded-md border p-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="openai_cli_fast_mode">{t("openai.fastMode")}</Label>
+                <p className="text-xs text-muted-foreground">{t("openai.fastModeDesc")}</p>
+              </div>
+              <Switch
+                id="openai_cli_fast_mode"
+                checked={openAiCliFastMode}
+                onCheckedChange={(v) => updateSettingSafely("openai_cli.fast_mode", v)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="openai_cli_scope">{t("openai.allowedWork")}</Label>
+            <select
+              id="openai_cli_scope"
+              value={openAiCliScope || "chat"}
+              onChange={(e) => updateSettingSafely("openai_cli.scope", e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="chat">{t("openai.scopeChat")}</option>
+              <option value="full_pipeline">{t("openai.scopeFullPipeline")}</option>
+              <option value="catalog">{t("openai.scopeCatalog")}</option>
+              <option value="all">{t("openai.scopeAll")}</option>
+            </select>
+          </div>
         </CardContent>
       </Card>
 
@@ -366,23 +528,21 @@ export function ConnectionsTab() {
           <div className="space-y-2">
             <Label htmlFor="mistral_api_key">{t("mistral.apiKey")}</Label>
             <div className="flex gap-2">
-              <Input
+              <SecretInput
                 id="mistral_api_key"
-                type={showSecrets.mistral_api_key ? "text" : "password"}
-                placeholder={
-                  isMaskedSecret(mistralApiKey)
-                    ? "Mistral API key configured"
-                    : "Your Mistral API key"
-                }
-                value={editableSecretValue(mistralApiKey)}
-                onChange={(e) => updateSetting("mistral.api_key", e.target.value)}
+                placeholder={t("mistral.apiKeyPlaceholder")}
+                configuredPlaceholder={t("mistral.apiKeyConfigured")}
+                configured={mistralApiKeyConfigured}
+                settingKey="mistral.api_key"
+                visible={showSecrets.mistral_api_key}
+                updateSetting={updateSetting}
               />
               <Button
                 variant="outline"
                 size="icon"
                 type="button"
                 aria-label={
-                  showSecrets.mistral_api_key ? "Hide Mistral API key" : "Show Mistral API key"
+                  showSecrets.mistral_api_key ? t("mistral.hideApiKey") : t("mistral.showApiKey")
                 }
                 onClick={() =>
                   setShowSecrets((prev) => ({
@@ -419,7 +579,7 @@ export function ConnectionsTab() {
               <Button
                 variant="ghost"
                 size="sm"
-                aria-label="Refresh Mistral models"
+                aria-label={t("mistral.refreshModels")}
                 onClick={fetchMistralModels}
                 disabled={loadingModels.mistral}
               >
@@ -429,10 +589,10 @@ export function ConnectionsTab() {
             <ModelCombobox
               models={mistralModels.map((m) => ({ name: m.name || m.id, value: m.id }))}
               value={mistralModel}
-              onValueChange={(v) => updateSetting("mistral.model", v)}
-              placeholder="Select OCR model..."
-              searchPlaceholder="Search models..."
-              emptyText="No models found. Click refresh to load."
+              onValueChange={(v) => updateSettingSafely("mistral.model", v)}
+              placeholder={t("mistral.selectOcrModel")}
+              searchPlaceholder={t("modelSearchPlaceholder")}
+              emptyText={t("modelEmptyWithRefresh")}
               disabled={loadingModels.mistral}
             />
           </div>
@@ -455,9 +615,9 @@ export function ConnectionsTab() {
             <div className="flex gap-2">
               <Input
                 id="qdrant_url"
-                placeholder="http://your-qdrant:6333"
+                placeholder={t("qdrant.serverUrlPlaceholder")}
                 value={qdrantUrl}
-                onChange={(e) => updateSetting("qdrant.url", e.target.value)}
+                onChange={(e) => updateSettingSafely("qdrant.url", e.target.value)}
               />
               <Button
                 variant="outline"
@@ -478,9 +638,9 @@ export function ConnectionsTab() {
             <Label htmlFor="qdrant_collection">{t("qdrant.collectionName")}</Label>
             <Input
               id="qdrant_collection"
-              placeholder="paperless-documents"
+              placeholder={t("qdrant.collectionPlaceholder")}
               value={qdrantCollection}
-              onChange={(e) => updateSetting("qdrant.collection", e.target.value)}
+              onChange={(e) => updateSettingSafely("qdrant.collection", e.target.value)}
             />
           </div>
 
@@ -495,7 +655,7 @@ export function ConnectionsTab() {
               <Switch
                 id="vector-search-enabled"
                 checked={vectorSearchEnabled}
-                onCheckedChange={(v) => updateSetting("vector_search.enabled", v)}
+                onCheckedChange={(v) => updateSettingSafely("vector_search.enabled", v)}
               />
             </div>
 
@@ -510,7 +670,7 @@ export function ConnectionsTab() {
                     max={20}
                     value={vectorSearchTopK}
                     onChange={(e) =>
-                      updateSetting("vector_search.top_k", parseInt(e.target.value) || 5)
+                      updateSettingSafely("vector_search.top_k", Number.parseInt(e.target.value, 10) || 5)
                     }
                   />
                 </div>
@@ -524,7 +684,7 @@ export function ConnectionsTab() {
                     step={0.1}
                     value={vectorSearchMinScore}
                     onChange={(e) =>
-                      updateSetting("vector_search.min_score", parseFloat(e.target.value) || 0.7)
+                      updateSettingSafely("vector_search.min_score", parseFloat(e.target.value) || 0.7)
                     }
                   />
                 </div>

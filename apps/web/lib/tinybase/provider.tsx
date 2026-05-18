@@ -18,8 +18,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { Store } from "tinybase";
+import type { Store } from "tinybase";
 import { Provider as TinyBaseProvider } from "tinybase/ui-react";
+import { API_BASE } from "@/lib/api";
+import { SETTINGS_SYNC_INTERVAL_MS, usePolling } from "@/lib/polling";
 import {
   API_TO_STORE_KEY_MAP,
   type SettingKey,
@@ -28,10 +30,36 @@ import {
 } from "./schemas";
 import { createAppStore } from "./store";
 
-const API_BASE = "";
-
-// Sync interval in milliseconds (30 seconds)
-const SYNC_INTERVAL_MS = 30000;
+const SECRET_API_KEYS = new Set(["paperless_token", "mistral_api_key"]);
+const SECRET_STORE_KEYS = new Set<SettingKey>(["paperless.token", "mistral.api_key"]);
+const SECRET_CONFIGURED_KEYS: Partial<Record<SettingKey, SettingKey>> = {
+  "paperless.token": "paperless.token_configured",
+  "mistral.api_key": "mistral.api_key_configured",
+};
+const SECRET_STORE_TO_API_KEY: Partial<Record<SettingKey, string>> = {
+  "paperless.token": "paperless_token",
+  "mistral.api_key": "mistral_api_key",
+};
+const WORKFLOW_TAG_KEYS = [
+  "color",
+  "todo",
+  "ocr",
+  "metadata",
+  "review",
+  "index",
+  "done",
+  "failed",
+  "pending",
+  "ocr_done",
+  "summary_done",
+  "schema_review",
+  "correspondent_done",
+  "document_type_done",
+  "title_done",
+  "tags_done",
+  "processed",
+  "manual_review",
+] as const;
 
 // Type for setting values
 type SettingValue = string | number | boolean;
@@ -42,8 +70,8 @@ interface TinyBaseContextValue {
   saveSettings: () => Promise<void>;
   syncLogs: (docId: number) => Promise<void>;
   clearLogs: (docId: number) => Promise<void>;
-  updateSetting: (key: SettingKey, value: SettingValue) => Promise<void>;
-  updateSettings: (updates: Partial<Record<string, unknown>>) => Promise<void>;
+  updateSetting: (key: SettingKey, value: SettingValue) => Promise<boolean>;
+  updateSettings: (updates: Partial<Record<string, unknown>>) => Promise<boolean>;
   isSyncing: boolean;
   lastSyncError: string | null;
 }
@@ -58,7 +86,6 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
   const [store] = useState(() => createAppStore());
   const [isSyncing, setIsSyncing] = useState(true); // Start true to wait for initial sync
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);
-  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const mountedRef = useRef(true);
 
   /**
@@ -75,13 +102,23 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
       const response = await fetch(`${API_BASE}/api/settings`);
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const body = await response.text().catch(() => "");
+        const statusText = response.statusText ? ` ${response.statusText}` : "";
+        const errorMessage = `Settings sync failed (${response.status}${statusText})${
+          body ? `: ${body.slice(0, 160)}` : ""
+        }`;
+        store.setValue("_error", errorMessage);
+        setLastSyncError(errorMessage);
+        return;
       }
 
       const settings = await response.json();
 
       // Map API response to store values
       for (const [apiKey, storeKey] of Object.entries(API_TO_STORE_KEY_MAP)) {
+        if (SECRET_API_KEYS.has(apiKey) || SECRET_STORE_KEYS.has(storeKey as SettingKey)) {
+          continue;
+        }
         const value = settings[apiKey];
         if (value !== undefined && value !== null) {
           // Get the expected type from schema
@@ -101,26 +138,7 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
 
       // Handle nested tags object
       if (settings.tags && typeof settings.tags === "object") {
-        const tagKeys = [
-          "color",
-          "todo",
-          "ocr",
-          "metadata",
-          "review",
-          "index",
-          "done",
-          "failed",
-          "pending",
-          "ocr_done",
-          "schema_review",
-          "correspondent_done",
-          "document_type_done",
-          "title_done",
-          "tags_done",
-          "processed",
-        ] as const;
-
-        for (const tagKey of tagKeys) {
+        for (const tagKey of WORKFLOW_TAG_KEYS) {
           const value = settings.tags[tagKey];
           if (value !== undefined) {
             store.setValue(`tags.${tagKey}`, String(value));
@@ -134,7 +152,6 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
       const errorMessage = error instanceof Error ? error.message : "Failed to sync settings";
       store.setValue("_error", errorMessage);
       setLastSyncError(errorMessage);
-      console.error("Settings sync error:", error);
     } finally {
       if (mountedRef.current) {
         setIsSyncing(false);
@@ -181,7 +198,7 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
           });
         }
       } catch (error) {
-        console.error("Failed to sync logs:", error);
+        console.warn("Failed to sync logs:", error);
       }
     },
     [store],
@@ -209,7 +226,7 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
           }
         }
       } catch (error) {
-        console.error("Failed to clear logs:", error);
+        console.warn("Failed to clear logs:", error);
       }
     },
     [store],
@@ -220,11 +237,15 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
    */
   const updateSetting = useCallback(
     async (key: SettingKey, value: SettingValue) => {
-      // Optimistic update
-      store.setValue(key, value);
+      const isSecret = SECRET_STORE_KEYS.has(key);
+      const previousValue = store.getValue(key) as SettingValue | undefined;
+      if (!isSecret) {
+        // Optimistic update
+        store.setValue(key, value);
+      }
 
       // Get API key for backend
-      const apiKey = STORE_TO_API_KEY_MAP[key] || key;
+      const apiKey = SECRET_STORE_TO_API_KEY[key] ?? STORE_TO_API_KEY_MAP[key] ?? key;
 
       try {
         const response = await fetch(`${API_BASE}/api/settings`, {
@@ -236,9 +257,23 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
+        if (isSecret) {
+          store.setValue(key, "");
+          const configuredKey = SECRET_CONFIGURED_KEYS[key];
+          if (configuredKey) store.setValue(configuredKey, String(value).length > 0);
+        }
+        store.setValue("_error", "");
+        setLastSyncError(null);
+        return true;
       } catch (error) {
-        console.error("Failed to update setting:", error);
-        // Could implement rollback here if needed
+        const errorMessage = error instanceof Error ? error.message : "Failed to update setting";
+        if (!isSecret && previousValue !== undefined) {
+          store.setValue(key, previousValue);
+        }
+        store.setValue("_error", errorMessage);
+        setLastSyncError(errorMessage);
+        console.warn("Failed to update setting:", error);
+        return false;
       }
     },
     [store],
@@ -251,23 +286,30 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
     async (updates: Partial<Record<string, unknown>>) => {
       // Build API payload and update store optimistically
       const apiPayload: Record<string, unknown> = {};
+      const rollbackValues: Array<[SettingKey, SettingValue | undefined]> = [];
 
       for (const [key, value] of Object.entries(updates)) {
         // Determine if key is a store key or API key
         const isStoreKey = key in valuesSchema;
 
         if (isStoreKey) {
+          if (SECRET_STORE_KEYS.has(key as SettingKey)) {
+            apiPayload[SECRET_STORE_TO_API_KEY[key as SettingKey] ?? key] = value;
+            continue;
+          }
           // Key is a store key - map to API key for payload
           const apiKey = STORE_TO_API_KEY_MAP[key] || key;
           apiPayload[apiKey] = value;
           // Optimistic update to store
+          rollbackValues.push([key as SettingKey, store.getValue(key) as SettingValue | undefined]);
           store.setValue(key, value as SettingValue);
         } else {
           // Key is an API key - use as-is for payload
           apiPayload[key] = value;
           // Map to store key for optimistic update if mapping exists
           const storeKey = API_TO_STORE_KEY_MAP[key];
-          if (storeKey && storeKey in valuesSchema) {
+          if (storeKey && storeKey in valuesSchema && !SECRET_STORE_KEYS.has(storeKey)) {
+            rollbackValues.push([storeKey, store.getValue(storeKey) as SettingValue | undefined]);
             store.setValue(storeKey, value as SettingValue);
           }
         }
@@ -283,8 +325,26 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
+        for (const key of Object.keys(updates) as SettingKey[]) {
+          if (!SECRET_STORE_KEYS.has(key)) continue;
+          store.setValue(key, "");
+          const configuredKey = SECRET_CONFIGURED_KEYS[key];
+          const value = updates[key];
+          if (configuredKey)
+            store.setValue(configuredKey, typeof value === "string" && value.length > 0);
+        }
+        store.setValue("_error", "");
+        setLastSyncError(null);
+        return true;
       } catch (error) {
-        console.error("Failed to update settings:", error);
+        const errorMessage = error instanceof Error ? error.message : "Failed to update settings";
+        for (const [key, previousValue] of rollbackValues) {
+          if (previousValue !== undefined) store.setValue(key, previousValue);
+        }
+        store.setValue("_error", errorMessage);
+        setLastSyncError(errorMessage);
+        console.warn("Failed to update settings:", error);
+        return false;
       }
     },
     [store],
@@ -302,6 +362,9 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
 
       // Get all store values that have API mappings
       for (const [storeKey, apiKey] of Object.entries(STORE_TO_API_KEY_MAP)) {
+        if (SECRET_STORE_KEYS.has(storeKey as SettingKey)) {
+          continue;
+        }
         const value = store.getValue(storeKey);
         if (value !== undefined && value !== null) {
           apiPayload[apiKey] = value;
@@ -310,18 +373,8 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
 
       // Handle tags specially
       const tags: Record<string, string> = {};
-      const tagKeys = [
-        "color",
-        "todo",
-        "ocr",
-        "metadata",
-        "review",
-        "index",
-        "done",
-        "failed",
-      ] as const;
 
-      for (const tagKey of tagKeys) {
+      for (const tagKey of WORKFLOW_TAG_KEYS) {
         const value = store.getValue(`tags.${tagKey}`);
         if (value !== undefined && value !== null) {
           tags[tagKey] = String(value);
@@ -342,34 +395,21 @@ export function AppTinyBaseProvider({ children }: AppTinyBaseProviderProps) {
         throw new Error(`HTTP ${response.status}`);
       }
     } catch (error) {
-      console.error("Failed to save settings:", error);
+      console.warn("Failed to save settings:", error);
       throw error;
     } finally {
       setIsSyncing(false);
     }
   }, [store]);
 
-  // Initial sync and periodic polling
   useEffect(() => {
     mountedRef.current = true;
-
-    // Initial sync
-    syncSettings();
-
-    // Set up periodic polling
-    syncIntervalRef.current = setInterval(() => {
-      if (mountedRef.current) {
-        syncSettings();
-      }
-    }, SYNC_INTERVAL_MS);
-
     return () => {
       mountedRef.current = false;
-      if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current);
-      }
     };
-  }, [syncSettings]);
+  }, []);
+
+  usePolling(syncSettings, SETTINGS_SYNC_INTERVAL_MS);
 
   const contextValue: TinyBaseContextValue = {
     store,

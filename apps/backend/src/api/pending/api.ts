@@ -1,6 +1,16 @@
 /**
  * Pending reviews API definition.
  */
+import {
+  ApprovePendingBodySchema,
+  type ApprovePendingBody,
+  BulkPendingBodySchema,
+  type BulkPendingBody,
+  MergePendingBodySchema,
+  type MergePendingBody,
+  RejectPendingBodySchema,
+  type RejectPendingBody,
+} from "@repo/api-contracts";
 import { Schema } from "effect";
 
 // ===========================================================================
@@ -61,21 +71,11 @@ export const PendingCountsSchema = Schema.Struct({
 
 export type PendingCounts = Schema.Schema.Type<typeof PendingCountsSchema>;
 
-export const ApproveRequestSchema = Schema.Struct({
-  action: Schema.String.pipe(Schema.optional),
-  value: Schema.String.pipe(Schema.optional),
-  selected_value: Schema.String.pipe(Schema.optional),
-});
+export const ApproveRequestSchema = ApprovePendingBodySchema;
+export type ApproveRequest = ApprovePendingBody;
 
-export type ApproveRequest = Schema.Schema.Type<typeof ApproveRequestSchema>;
-
-export const RejectRequestSchema = Schema.Struct({
-  feedback: Schema.String.pipe(Schema.optional),
-  category: Schema.String.pipe(Schema.optional),
-  blockGlobally: Schema.Boolean.pipe(Schema.optional),
-});
-
-export type RejectRequest = Schema.Schema.Type<typeof RejectRequestSchema>;
+export const RejectRequestSchema = RejectPendingBodySchema;
+export type RejectRequest = RejectPendingBody;
 
 export const SimilarGroupSchema = Schema.Struct({
   normalizedName: Schema.String,
@@ -93,22 +93,8 @@ export const SimilarGroupSchema = Schema.Struct({
 
 export type SimilarGroup = Schema.Schema.Type<typeof SimilarGroupSchema>;
 
-export const MergeRequestSchema = Schema.Struct({
-  ids: Schema.Array(Schema.String).pipe(Schema.optional),
-  targetValue: Schema.String.pipe(Schema.optional),
-  item_ids: Schema.Array(Schema.String).pipe(Schema.optional),
-  final_name: Schema.String.pipe(Schema.optional),
-});
+export const MergeRequestSchema = MergePendingBodySchema;
+export type MergeRequest = MergePendingBody;
 
-export type MergeRequest = Schema.Schema.Type<typeof MergeRequestSchema>;
-
-export const BulkActionRequestSchema = Schema.Struct({
-  ids: Schema.Array(Schema.String),
-  action: Schema.Literal("approve", "reject"),
-  targetValue: Schema.String.pipe(Schema.optional),
-  feedback: Schema.String.pipe(Schema.optional),
-  category: Schema.String.pipe(Schema.optional),
-  blockGlobally: Schema.Boolean.pipe(Schema.optional),
-});
-
-export type BulkActionRequest = Schema.Schema.Type<typeof BulkActionRequestSchema>;
+export const BulkActionRequestSchema = BulkPendingBodySchema;
+export type BulkActionRequest = BulkPendingBody;

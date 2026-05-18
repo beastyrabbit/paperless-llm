@@ -1,16 +1,15 @@
 /**
- * Compatibility schema analysis agent. Manual cleanup now uses PiConsolidationAgent.
+ * Compatibility schema analysis agent.
+ *
+ * This service is intentionally retained for external callers that still import the
+ * old SchemaAnalysisAgentGraph API. It no longer performs catalog suggestion work;
+ * manual catalog cleanup is owned by PiConsolidationAgent/SchemaCleanupJob.
+ *
+ * @deprecated Use PiConsolidationAgentService for catalog cleanup proposals.
  */
 import { Context, Effect, Layer, Stream } from "effect";
-import { AgentError } from "../errors/index.js";
-import {
-  type Agent,
-  emitComplete,
-  emitError,
-  emitResult,
-  emitStart,
-  type StreamEvent,
-} from "./base.js";
+import type { AgentError } from "../errors/index.js";
+import { type Agent, emitComplete, emitResult, emitStart, type StreamEvent } from "./base.js";
 
 export interface SchemaAnalysisGraphInput {
   docId: number;
@@ -40,6 +39,9 @@ export interface SchemaAnalysisGraphResult {
   noSuggestionsReason?: string;
 }
 
+/**
+ * @deprecated Compatibility-only service; use PiConsolidationAgentService instead.
+ */
 export interface SchemaAnalysisAgentGraphService
   extends Agent<SchemaAnalysisGraphInput, SchemaAnalysisGraphResult> {
   readonly name: "schema_analysis";
@@ -55,6 +57,12 @@ export const SchemaAnalysisAgentGraphService = Context.GenericTag<SchemaAnalysis
   "SchemaAnalysisAgentGraphService",
 );
 
+/**
+ * Compatibility layer that emits a successful skipped/no-suggestions result.
+ * It must not be wired into the active processing pipeline.
+ *
+ * @deprecated Compatibility-only layer; use PiConsolidationAgentServiceLive instead.
+ */
 export const SchemaAnalysisAgentGraphServiceLive = Layer.succeed(SchemaAnalysisAgentGraphService, {
   name: "schema_analysis" as const,
   process: (input) =>

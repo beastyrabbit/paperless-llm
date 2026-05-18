@@ -26,16 +26,7 @@ import {
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 import { type Locale, localeNames } from "@/i18n/config";
-
-interface PaperlessTag {
-  id: number;
-  name: string;
-  color: string;
-  matching_algorithm: number;
-  document_count: number;
-}
-
-const API_BASE = "";
+import { type AiTag, metadataApi, settingsApi } from "@/lib/api";
 
 export function AiTagsTab() {
   const t = useTranslations("settings");
@@ -43,11 +34,10 @@ export function AiTagsTab() {
   const currentLocale = useLocale() as Locale;
 
   // UI state
-  const [allTags, setAllTags] = useState<PaperlessTag[]>([]);
+  const [allTags, setAllTags] = useState<AiTag[]>([]);
   const [selectedAiTags, setSelectedAiTags] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [_hasChanges, setHasChanges] = useState(false);
 
   // Tag descriptions and translations
   const [tagDescriptions, setTagDescriptions] = useState<Record<number, string>>({});
@@ -56,7 +46,6 @@ export function AiTagsTab() {
   );
   const [tagTranslatedLangs, setTagTranslatedLangs] = useState<Record<number, string[]>>({});
   const [expandedTagId, setExpandedTagId] = useState<number | null>(null);
-  const [_tagDescriptionsHasChanges, setTagDescriptionsHasChanges] = useState(false);
 
   // Action loading states
   const [optimizingTagId, setOptimizingTagId] = useState<number | null>(null);
@@ -65,62 +54,45 @@ export function AiTagsTab() {
   const fetchAiTags = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const response = await fetch(`${API_BASE}/api/settings/ai-tags`);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data = await response.json();
-      setAllTags(data.tags || []);
-      setSelectedAiTags(data.selected_tag_ids || []);
-      setHasChanges(false);
-
-      // Also fetch tag descriptions (metadata)
-      try {
-        const metaResponse = await fetch(`${API_BASE}/api/metadata/tags`);
-        if (metaResponse.ok) {
-          const metaData = await metaResponse.json();
-          const descriptions: Record<number, string> = {};
-          const tagsWithDescriptions: number[] = [];
-          for (const meta of metaData) {
-            if (meta.description) {
-              descriptions[meta.paperless_tag_id] = meta.description;
-              tagsWithDescriptions.push(meta.paperless_tag_id);
-            }
-          }
-          setTagDescriptions(descriptions);
-
-          // Fetch translations for tags with descriptions
-          const translations: Record<number, Record<string, string>> = {};
-          const translatedLangs: Record<number, string[]> = {};
-
-          for (const tagId of tagsWithDescriptions) {
-            try {
-              const transResponse = await fetch(
-                `${API_BASE}/api/metadata/tags/${tagId}/translations`,
-              );
-              if (transResponse.ok) {
-                const transData = await transResponse.json();
-                if (transData.translated_langs && transData.translated_langs.length > 0) {
-                  translations[tagId] = transData.translations;
-                  translatedLangs[tagId] = transData.translated_langs;
-                }
-              }
-            } catch {
-              // Translations are optional, continue
-            }
-          }
-          setTagTranslations(translations);
-          setTagTranslatedLangs(translatedLangs);
-        }
-      } catch {
-        // Metadata is optional, don't fail if unavailable
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch tags");
-    } finally {
+    const tagsResult = await settingsApi.getAiTags();
+    if (!tagsResult.ok) {
+      setError(tagsResult.error);
       setLoading(false);
+      return;
     }
+
+    setAllTags(tagsResult.data.tags || []);
+    setSelectedAiTags(tagsResult.data.selected_tag_ids || []);
+
+    // Metadata is optional, so failures do not block the core tag list.
+    const metadataResult = await metadataApi.listTags();
+    if (metadataResult.ok) {
+      const descriptions: Record<number, string> = {};
+      const tagsWithDescriptions: number[] = [];
+      for (const meta of metadataResult.data) {
+        if (meta.description) {
+          descriptions[meta.paperless_tag_id] = meta.description;
+          tagsWithDescriptions.push(meta.paperless_tag_id);
+        }
+      }
+      setTagDescriptions(descriptions);
+
+      // Fetch translations for tags with descriptions
+      const translations: Record<number, Record<string, string>> = {};
+      const translatedLangs: Record<number, string[]> = {};
+
+      for (const tagId of tagsWithDescriptions) {
+        const translationResult = await metadataApi.getTagTranslations(tagId);
+        if (translationResult.ok && translationResult.data.translated_langs.length > 0) {
+          translations[tagId] = translationResult.data.translations;
+          translatedLangs[tagId] = translationResult.data.translated_langs;
+        }
+      }
+      setTagTranslations(translations);
+      setTagTranslatedLangs(translatedLangs);
+    }
+
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -128,19 +100,9 @@ export function AiTagsTab() {
   }, [fetchAiTags]);
 
   const saveTagSelection = async (newSelection: number[]) => {
-    try {
-      const response = await fetch(`${API_BASE}/api/settings/ai-tags`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selected_tag_ids: newSelection }),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      setHasChanges(false);
-    } catch (err) {
-      console.error("Failed to save AI tags selection:", err);
-      setError(err instanceof Error ? err.message : "Failed to save selection");
+    const result = await settingsApi.updateAiTags(newSelection);
+    if (!result.ok) {
+      setError(result.error);
     }
   };
 
@@ -149,18 +111,18 @@ export function AiTagsTab() {
       ? selectedAiTags.filter((id) => id !== tagId)
       : [...selectedAiTags, tagId];
     setSelectedAiTags(newSelection);
-    saveTagSelection(newSelection);
+    void saveTagSelection(newSelection);
   };
 
   const selectAll = () => {
     const allIds = allTags.map((tg) => tg.id);
     setSelectedAiTags(allIds);
-    saveTagSelection(allIds);
+    void saveTagSelection(allIds);
   };
 
   const clearSelection = () => {
     setSelectedAiTags([]);
-    saveTagSelection([]);
+    void saveTagSelection([]);
   };
 
   // Optimize a tag description using AI
@@ -169,39 +131,30 @@ export function AiTagsTab() {
     if (!description?.trim()) return;
 
     setOptimizingTagId(tagId);
-    try {
-      const response = await fetch(`${API_BASE}/api/metadata/tags/${tagId}/optimize-description`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          description,
-          tag_name: tagName,
-        }),
-      });
+    const result = await metadataApi.optimizeTagDescription(tagId, {
+      description,
+      tag_name: tagName,
+    });
 
-      if (response.ok) {
-        const data = await response.json();
-        setTagTranslations((prev) => ({
-          ...prev,
-          [tagId]: {
-            ...prev[tagId],
-            [currentLocale]: data.optimized,
-          },
-        }));
-        setTagTranslatedLangs((prev) => {
-          const existing = prev[tagId] || [];
-          if (!existing.includes(currentLocale)) {
-            return { ...prev, [tagId]: [...existing, currentLocale] };
-          }
-          return prev;
-        });
-        setTagDescriptionsHasChanges(true);
-      }
-    } catch (error) {
-      console.error("Failed to optimize description:", error);
-    } finally {
-      setOptimizingTagId(null);
+    if (result.ok) {
+      setTagTranslations((prev) => ({
+        ...prev,
+        [tagId]: {
+          ...prev[tagId],
+          [currentLocale]: result.data.optimized,
+        },
+      }));
+      setTagTranslatedLangs((prev) => {
+        const existing = prev[tagId] || [];
+        if (!existing.includes(currentLocale)) {
+          return { ...prev, [tagId]: [...existing, currentLocale] };
+        }
+        return prev;
+      });
+    } else {
+      setError(result.error);
     }
+    setOptimizingTagId(null);
   };
 
   // Translate a tag description to all other languages
@@ -210,40 +163,31 @@ export function AiTagsTab() {
     if (!description?.trim()) return;
 
     setTranslatingTagId(tagId);
-    try {
-      const response = await fetch(`${API_BASE}/api/metadata/tags/${tagId}/translate-description`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          description,
-          source_lang: currentLocale,
-        }),
-      });
+    const result = await metadataApi.translateTagDescription(tagId, {
+      description,
+      source_lang: currentLocale,
+    });
 
-      if (response.ok) {
-        const data = await response.json();
-        const newTranslations: Record<string, string> = {
-          ...tagTranslations[tagId],
-          [currentLocale]: description,
-        };
-        for (const t of data.translations) {
-          newTranslations[t.lang] = t.text;
-        }
-        setTagTranslations((prev) => ({
-          ...prev,
-          [tagId]: newTranslations,
-        }));
-        setTagTranslatedLangs((prev) => ({
-          ...prev,
-          [tagId]: Object.keys(newTranslations),
-        }));
-        setTagDescriptionsHasChanges(true);
+    if (result.ok) {
+      const newTranslations: Record<string, string> = {
+        ...tagTranslations[tagId],
+        [currentLocale]: description,
+      };
+      for (const translation of result.data.translations) {
+        newTranslations[translation.lang] = translation.text;
       }
-    } catch (error) {
-      console.error("Failed to translate description:", error);
-    } finally {
-      setTranslatingTagId(null);
+      setTagTranslations((prev) => ({
+        ...prev,
+        [tagId]: newTranslations,
+      }));
+      setTagTranslatedLangs((prev) => ({
+        ...prev,
+        [tagId]: Object.keys(newTranslations),
+      }));
+    } else {
+      setError(result.error);
     }
+    setTranslatingTagId(null);
   };
 
   return (
@@ -331,22 +275,24 @@ export function AiTagsTab() {
                 <div key={tag.id} className="py-3 first:pt-0 last:pb-0 -mx-4 px-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <button
-                        type="button"
-                        role="checkbox"
-                        aria-checked={selectedAiTags.includes(tag.id)}
-                        aria-label={tag.name}
+                      <label
                         className={`h-5 w-5 rounded border-2 flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 ${
                           selectedAiTags.includes(tag.id)
                             ? "bg-emerald-600 border-emerald-600"
                             : "border-zinc-300 dark:border-zinc-600"
                         }`}
-                        onClick={() => toggleAiTag(tag.id)}
                       >
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={selectedAiTags.includes(tag.id)}
+                          aria-label={tag.name}
+                          onChange={() => toggleAiTag(tag.id)}
+                        />
                         {selectedAiTags.includes(tag.id) && (
-                          <Check className="h-3 w-3 text-white" />
+                          <Check className="h-3 w-3 text-white" aria-hidden="true" />
                         )}
-                      </button>
+                      </label>
                       <div className="flex items-center gap-3">
                         <div
                           className="h-8 w-8 rounded-full flex items-center justify-center"
@@ -427,7 +373,6 @@ export function AiTagsTab() {
                           }
                           return prev;
                         });
-                        setTagDescriptionsHasChanges(true);
                       }}
                       t={t}
                     />
@@ -443,7 +388,7 @@ export function AiTagsTab() {
 }
 
 interface ExpandedTagDescriptionProps {
-  tag: PaperlessTag;
+  tag: AiTag;
   currentLocale: Locale;
   tagTranslations: Record<number, Record<string, string>>;
   tagDescriptions: Record<number, string>;

@@ -7,8 +7,8 @@
  * The store is in-memory only (no browser persistence).
  */
 
-import { createStore, Store } from "tinybase";
-import { tablesSchema as _tablesSchema, valuesSchema } from "./schemas";
+import { createStore, type Store } from "tinybase";
+import { valuesSchema } from "./schemas";
 
 /**
  * Creates a new TinyBase store with schemas applied.

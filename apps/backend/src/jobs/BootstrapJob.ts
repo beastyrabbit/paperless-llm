@@ -77,7 +77,7 @@ export const BootstrapJobServiceLive = Layer.effect(
     const skipRef = yield* Ref.make(0);
     const fiberRef = yield* Ref.make<Fiber.RuntimeFiber<void, never> | null>(null);
 
-    const run = (analysisType: AnalysisType): Effect.Effect<void, never> =>
+    const run = (_analysisType: AnalysisType): Effect.Effect<void, never> =>
       Effect.gen(function* () {
         const started = Date.now();
         try {
