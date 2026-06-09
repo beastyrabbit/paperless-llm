@@ -1,5 +1,5 @@
 # Stage 1: Base with pnpm
-FROM node:22-alpine AS base
+FROM node:24-alpine AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
@@ -32,7 +32,7 @@ RUN pnpm --filter=@repo/api-contracts build && pnpm --filter=@repo/backend build
 RUN pnpm --filter=@repo/backend deploy --prod /app/deploy
 
 # Stage 3: Production Runner
-FROM node:22-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
