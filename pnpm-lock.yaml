@@ -37,10 +37,10 @@ importers:
     dependencies:
       '@earendil-works/pi-agent-core':
         specifier: ^0.74.0
-        version: 0.74.0(ws@8.19.0)(zod@4.3.5)
+        version: 0.74.0(zod@4.3.5)
       '@earendil-works/pi-ai':
         specifier: ^0.74.0
-        version: 0.74.0(ws@8.19.0)(zod@4.3.5)
+        version: 0.74.0(zod@4.3.5)
       '@effect/platform':
         specifier: ^0.94.1
         version: 0.94.1(effect@3.19.14)
@@ -57,8 +57,8 @@ importers:
         specifier: ^3.19.14
         version: 3.19.14
       tinybase:
-        specifier: ^7.3.1
-        version: 7.3.1(effect@3.19.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(ws@8.19.0)(zod@4.3.5)
+        specifier: ^9.0.0
+        version: 9.0.0(effect@3.19.14)(zod@4.3.5)
       typebox:
         specifier: ^1.1.38
         version: 1.1.38
@@ -109,8 +109,8 @@ importers:
         specifier: 19.2.3
         version: 19.2.3(react@19.2.3)
       tinybase:
-        specifier: ^7.3.1
-        version: 7.3.1(effect@3.19.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(ws@8.19.0)(zod@4.3.5)
+        specifier: ^9.0.0
+        version: 9.0.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
     devDependencies:
       '@playwright/test':
         specifier: ^1.60.0
@@ -1844,6 +1844,7 @@ packages:
   '@smithy/core@3.24.1':
     resolution: {integrity: sha512-3mT7o4qQyUWttYnVK3A0Z/u3Xha3E81tXn32Tz6vjZiUXhBrkEivpw1hBYfh84iFF9CSzkBU9Y1DJ3Q6RQ231g==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to bug in browser bundling instructions https://github.com/smithy-lang/smithy-typescript/issues/2025
 
   '@smithy/credential-provider-imds@4.3.1':
     resolution: {integrity: sha512-0S/acwHnqX4WrjXzhdiDRxsG2s9SC0cpPIK9nZ1R6UOHd+j7uL28+4bHu22urbLk2TVw3fkp6na/+fkUt/pLNQ==}
@@ -3293,35 +3294,37 @@ packages:
     resolution: {integrity: sha512-ujeqbceABgwMZxEJnk2HDY2DlnUZ+9oEcb1KzTVfYHio0UE6dG71n60d8D2I4qNvleWrrXpmjpt7vZeF1LnMZQ==}
     engines: {node: '>=6'}
 
-  tinybase@7.3.1:
-    resolution: {integrity: sha512-tQTKcjUkZRYiSnZMci6KaJjSKiSP6QGz1CwUeGRAa9eaTqes74+IjASWxyUlGIuAIojVOxLXnY7acl73yuMLEQ==}
+  tinybase@9.0.0:
+    resolution: {integrity: sha512-RyIzWgYqfejGQ/H0oXKdWHMS48FJiFgxR7ib05TVdUdHNa8xbHPaUZhZEPNZv96CAOVuh1hRSqtAmLdXTBL03Q==}
     peerDependencies:
-      '@automerge/automerge-repo': ^2.5.1
-      '@cloudflare/workers-types': ^4.20251230.0
-      '@electric-sql/pglite': ^0.3.14
-      '@libsql/client': ^0.15.15
-      '@powersync/common': ^1.44.0
-      '@sinclair/typebox': ^0.34.45
-      '@sqlite.org/sqlite-wasm': ^3.50.4-build1
+      '@automerge/automerge-repo': ^2.5.6
+      '@cloudflare/workers-types': ^5.20260703.1
+      '@electric-sql/pglite': ^0.5.4
+      '@libsql/client': ^0.17.4
+      '@powersync/common': ^1.57.0
+      '@sinclair/typebox': ^0.34.49
+      '@sqlite.org/sqlite-wasm': ^3.53.0-build1
       '@vlcn.io/crsqlite-wasm': ^0.16.0
-      arktype: ^2.1.29
-      bun: ^1.3.5
-      effect: ^3.19.13
+      arktype: ^2.2.2
+      bun: ^1.3.14
+      effect: ^3.21.4
       electric-sql: ^0.12.1
-      expo: ^54.0.10
-      expo-sqlite: ^16.0.10
+      expo: ^57.0.1
+      expo-sqlite: ^57.0.0
       partykit: ^0.0.115
-      partysocket: ^1.1.10
-      postgres: ^3.4.7
-      react: ^19.0.0
-      react-dom: ^19.0.0
-      react-native-mmkv: 4.1.0
+      partysocket: ^1.3.0
+      postgres: ^3.4.9
+      react: ^19.2.7
+      react-dom: ^19.2.7
+      react-native-mmkv: 4.3.2
       react-native-sqlite-storage: ^6.0.1
+      solid-js: ^1.9.14
       sqlite3: ^5.1.7
-      valibot: ^1.2.0
-      ws: ^8.18.3
-      yjs: ^13.6.28
-      zod: ^4.2.1
+      svelte: ^5.56.4
+      valibot: ^1.4.2
+      ws: ^8.21.0
+      yjs: ^13.6.31
+      zod: ^4.4.3
     peerDependenciesMeta:
       '@automerge/automerge-repo':
         optional: true
@@ -3365,7 +3368,11 @@ packages:
         optional: true
       react-native-sqlite-storage:
         optional: true
+      solid-js:
+        optional: true
       sqlite3:
+        optional: true
+      svelte:
         optional: true
       valibot:
         optional: true
@@ -4213,9 +4220,9 @@ snapshots:
 
   '@csstools/css-tokenizer@4.0.0': {}
 
-  '@earendil-works/pi-agent-core@0.74.0(ws@8.19.0)(zod@4.3.5)':
+  '@earendil-works/pi-agent-core@0.74.0(zod@4.3.5)':
     dependencies:
-      '@earendil-works/pi-ai': 0.74.0(ws@8.19.0)(zod@4.3.5)
+      '@earendil-works/pi-ai': 0.74.0(zod@4.3.5)
       typebox: 1.1.38
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
@@ -4226,14 +4233,14 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@0.74.0(ws@8.19.0)(zod@4.3.5)':
+  '@earendil-works/pi-ai@0.74.0(zod@4.3.5)':
     dependencies:
       '@anthropic-ai/sdk': 0.91.1(zod@4.3.5)
       '@aws-sdk/client-bedrock-runtime': 3.1045.0
       '@google/genai': 1.52.0
       '@mistralai/mistralai': 2.2.1
       chalk: 5.6.2
-      openai: 6.26.0(ws@8.19.0)(zod@4.3.5)
+      openai: 6.26.0(zod@4.3.5)
       partial-json: 0.1.7
       proxy-agent: 6.5.0
       typebox: 1.1.38
@@ -6477,9 +6484,8 @@ snapshots:
     dependencies:
       wrappy: 1.0.2
 
-  openai@6.26.0(ws@8.19.0)(zod@4.3.5):
+  openai@6.26.0(zod@4.3.5):
     optionalDependencies:
-      ws: 8.19.0
       zod: 4.3.5
 
   p-retry@4.6.2:
@@ -6844,13 +6850,15 @@ snapshots:
       inherits: 2.0.4
       readable-stream: 3.6.2
 
-  tinybase@7.3.1(effect@3.19.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(ws@8.19.0)(zod@4.3.5):
+  tinybase@9.0.0(effect@3.19.14)(zod@4.3.5):
     optionalDependencies:
       effect: 3.19.14
+      zod: 4.3.5
+
+  tinybase@9.0.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
+    optionalDependencies:
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
-      ws: 8.19.0
-      zod: 4.3.5
 
   tinybench@2.9.0: {}
 

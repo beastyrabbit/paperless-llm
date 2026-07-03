@@ -21,7 +21,7 @@
     "@qdrant/js-client-rest": "^1.16.2",
     "@repo/api-contracts": "workspace:*",
     "effect": "^3.19.14",
-    "tinybase": "^7.3.1",
+    "tinybase": "^9.0.0",
     "typebox": "^1.1.38",
     "yaml": "^2.8.2",
     "zod": "^4.3.5"
