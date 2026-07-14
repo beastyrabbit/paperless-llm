@@ -17,7 +17,7 @@
     "@earendil-works/pi-agent-core": "^0.74.0",
     "@earendil-works/pi-ai": "^0.74.0",
     "@effect/platform": "^0.94.1",
-    "@effect/platform-node": "^0.104.0",
+    "@effect/platform-node": "^0.108.0",
     "@qdrant/js-client-rest": "^1.16.2",
     "@repo/api-contracts": "workspace:*",
     "effect": "^3.19.14",
