@@ -5,6 +5,7 @@
  */
 import { Effect } from "effect";
 import { OllamaService } from "../../services/OllamaService.js";
+import { PaperlessService } from "../../services/PaperlessService.js";
 import { TinyBaseService } from "../../services/TinyBaseService.js";
 
 // ===========================================================================
@@ -227,17 +228,31 @@ Text to translate:
   });
 
 // ===========================================================================
-// Custom Fields - stub implementations (not used for descriptions yet)
+// Custom fields are Paperless-owned. Reads must always use the live Paperless
+// catalog so review surfaces never fall back to stale or missing local mirrors.
 // ===========================================================================
 
-export const listCustomFields = Effect.succeed([]);
+const customFieldProjection = (field: {
+  readonly id: number;
+  readonly name: string;
+  readonly data_type: string;
+}) => ({
+  id: field.id,
+  name: field.name,
+  data_type: field.data_type,
+  extra_data: null,
+});
+
+export const listCustomFields = Effect.gen(function* () {
+  const paperless = yield* PaperlessService;
+  const fields = yield* paperless.getCustomFields();
+  return fields.map(customFieldProjection);
+});
 
 export const getCustomField = (fieldId: number) =>
-  Effect.succeed({
-    id: fieldId,
-    name: `Field ${fieldId}`,
-    data_type: "string",
-    extra_data: null,
+  Effect.gen(function* () {
+    const paperless = yield* PaperlessService;
+    return customFieldProjection(yield* paperless.getCustomField(fieldId));
   });
 
 export const updateCustomField = (fieldId: number, data: { name?: string; extra_data?: unknown }) =>

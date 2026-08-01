@@ -6,19 +6,21 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Context, Effect, Layer, pipe, Stream } from "effect";
+import { Context, Effect, Layer, Stream } from "effect";
 import { AgentError, MistralError } from "../errors/index.js";
+import { annotateSpan, withClientSpan, withInternalSpan } from "../observability/tracing.js";
 import {
   ConcurrencyLimitService,
   ConfigService,
-  PaperlessService,
   classifyMetricsErrorOutcome,
   metricReasonFromError,
   metrics,
-  observeDuration,
-  TinyBaseService,
   OcrUsageService,
+  observeDuration,
+  PaperlessService,
+  TinyBaseService,
 } from "../services/index.js";
+import type { PaperlessDocumentVersion } from "../services/paperless/types.js";
 import {
   fetchWithTimeout,
   getRetryAfterMs,
@@ -26,8 +28,6 @@ import {
   normalizeBaseUrl,
 } from "../utils/http.js";
 import { logger } from "../utils/logger.js";
-import { annotateSpan, withClientSpan, withInternalSpan } from "../observability/tracing.js";
-import type { PaperlessDocumentVersion } from "../services/paperless/types.js";
 import {
   type Agent,
   emitAnalyzing,
@@ -141,43 +141,17 @@ export const OCRAgentServiceLive = Layer.effect(
         retryBaseDelayMs: number;
       },
       never
-    > =>
-      pipe(
-        tinybase.getAllSettings(),
-        Effect.map((dbSettings) => {
-          const configuredModel =
-            dbSettings["mistral.ocr_model"] ??
-            dbSettings["mistral.ocrModel"] ??
-            dbSettings["mistral.model"] ??
-            mistralConfig.model ??
-            "mistral-ocr-latest";
-          return {
-            apiKey: dbSettings["mistral.api_key"] ?? mistralConfig.apiKey,
-            model: configuredModel.includes("ocr") ? configuredModel : "mistral-ocr-latest",
-            apiBaseUrl: normalizeBaseUrl(
-              dbSettings["mistral.api_base_url"] ??
-                dbSettings["mistral.apiBaseUrl"] ??
-                mistralConfig.apiBaseUrl ??
-                "https://api.mistral.ai",
-            ),
-            requestTimeoutMs: config.config.http?.requestTimeoutMs ?? 120_000,
-            retryAttempts: Math.max(1, config.config.http?.mistralRetryAttempts ?? 3),
-            retryBaseDelayMs: Math.max(1, config.config.http?.mistralRetryBaseDelayMs ?? 5_000),
-          };
-        }),
-        Effect.catchAll(() =>
-          Effect.succeed({
-            apiKey: mistralConfig.apiKey,
-            model: mistralConfig.model?.includes("ocr")
-              ? mistralConfig.model
-              : "mistral-ocr-latest",
-            apiBaseUrl: normalizeBaseUrl(mistralConfig.apiBaseUrl ?? "https://api.mistral.ai"),
-            requestTimeoutMs: config.config.http?.requestTimeoutMs ?? 120_000,
-            retryAttempts: Math.max(1, config.config.http?.mistralRetryAttempts ?? 3),
-            retryBaseDelayMs: Math.max(1, config.config.http?.mistralRetryBaseDelayMs ?? 5_000),
-          }),
-        ),
-      );
+    > => {
+      const configuredModel = mistralConfig.model ?? "mistral-ocr-latest";
+      return Effect.succeed({
+        apiKey: mistralConfig.apiKey,
+        model: configuredModel.includes("ocr") ? configuredModel : "mistral-ocr-latest",
+        apiBaseUrl: normalizeBaseUrl(mistralConfig.apiBaseUrl ?? "https://api.mistral.ai"),
+        requestTimeoutMs: config.config.http?.requestTimeoutMs ?? 120_000,
+        retryAttempts: Math.max(1, config.config.http?.mistralRetryAttempts ?? 3),
+        retryBaseDelayMs: Math.max(1, config.config.http?.mistralRetryBaseDelayMs ?? 5_000),
+      });
+    };
 
     const isRetryableMistralError = (error: MistralError): boolean =>
       error.statusCode === undefined || isTransientHttpStatus(error.statusCode);

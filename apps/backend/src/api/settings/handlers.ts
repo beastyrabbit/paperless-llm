@@ -5,6 +5,11 @@ import { getModels } from "@earendil-works/pi-ai";
 import { Effect, pipe } from "effect";
 import { ConfigService } from "../../config/index.js";
 import {
+  isConfigOwnedProviderSettingKey,
+  isSecretLikeSettingKey,
+} from "../../config/provider-settings.js";
+import { ValidationError } from "../../errors/index.js";
+import {
   MistralService,
   OllamaService,
   PaperlessService,
@@ -23,13 +28,6 @@ import type { ConnectionTestResult, Settings, SettingsUpdate } from "./api.js";
 // ===========================================================================
 // Get Settings
 // ===========================================================================
-
-const MASKED_SECRET = "********";
-
-const maskSecret = (value: string): string => (value ? MASKED_SECRET : "");
-
-const isMaskedSecret = (value: unknown): boolean =>
-  typeof value === "string" && /^[*]+$/.test(value);
 
 export const getSettings = Effect.gen(function* () {
   const config = yield* ConfigService;
@@ -82,34 +80,20 @@ export const getSettings = Effect.gen(function* () {
   };
 
   // Merge DB settings with config defaults
-  const paperlessUrl = getFirstNonEmpty(["paperless.url", "paperless_url"], paperless.url || "");
-  const paperlessToken = getFirstNonEmpty(
-    ["paperless.token", "paperless_token"],
-    paperless.token || "",
-  );
+  const paperlessUrl = paperless.url || "";
   const paperlessExternalUrl = getFirstNonEmpty(
     ["paperless.external_url", "paperless_external_url"],
     "",
   );
-  const ollamaUrl = getFirstNonEmpty(["ollama.url", "ollama_url"], ollama.url || "");
-  const ollamaModel = getFirstNonEmpty(["ollama.model", "ollama_model"], ollama.model ?? "");
-  const ollamaEmbeddingModel = getFirstNonEmpty(
-    ["ollama.embedding_model", "ollama_embedding_model"],
-    ollama.embeddingModel || "",
-  );
-  const mistralApiKey = getFirstNonEmpty(
-    ["mistral.api_key", "mistral_api_key"],
-    mistral.apiKey || "",
-  );
-  const mistralModel = getFirstNonEmpty(["mistral.model", "mistral_model"], mistral.model || "");
+  const ollamaUrl = ollama.url || "";
+  const ollamaModel = ollama.model ?? "";
+  const ollamaEmbeddingModel = ollama.embeddingModel || "";
+  const mistralModel = mistral.model || "";
   const openAiCliScope = get("openai_cli.scope", "chat");
   const openAiCliModel = get("openai_cli.model", "gpt-5.5");
   const openAiCliReasoningEffort = get("openai_cli.reasoning_effort", "medium");
-  const qdrantUrl = getFirstNonEmpty(["qdrant.url", "qdrant_url"], qdrant.url || "");
-  const qdrantCollection = getFirstNonEmpty(
-    ["qdrant.collectionName", "qdrant.collection", "qdrant_collection"],
-    qdrant.collectionName ?? "documents",
-  );
+  const qdrantUrl = qdrant.url || "";
+  const qdrantCollection = qdrant.collectionName ?? "documents";
   const vectorSearchEnabled = getBoolAny(["vector_search.enabled", "vector_search_enabled"], false);
   const vectorSearchTopK = getNum("vector_search.top_k", 5);
   const vectorSearchMinScore = parseFloat(get("vector_search.min_score", "0.7")) || 0.7;
@@ -126,8 +110,7 @@ export const getSettings = Effect.gen(function* () {
 
   const settings: Settings = {
     paperless_url: paperlessUrl,
-    paperless_token: maskSecret(paperlessToken),
-    paperless_token_configured: paperlessToken.length > 0,
+    paperless_token_configured: paperless.token.trim().length > 0,
     paperless_external_url: paperlessExternalUrl,
     ollama_url: ollamaUrl,
     ollama_model: ollamaModel,
@@ -152,8 +135,7 @@ export const getSettings = Effect.gen(function* () {
       openAiCliScope === "chat"
         ? openAiCliScope
         : "chat",
-    mistral_api_key: maskSecret(mistralApiKey),
-    mistral_api_key_configured: mistralApiKey.length > 0,
+    mistral_api_key_configured: mistral.apiKey.trim().length > 0,
     mistral_model: mistralModel,
     qdrant_url: qdrantUrl,
     qdrant_collection: qdrantCollection,
@@ -226,9 +208,7 @@ export const getSettings = Effect.gen(function* () {
 
 // Map frontend field names to TinyBase keys
 const SETTINGS_KEY_MAP: Record<string, string> = {
-  // Paperless connection
-  paperless_url: "paperless.url",
-  paperless_token: "paperless.token",
+  // Paperless browser-only display setting. Runtime connection values are config-owned.
   paperless_external_url: "paperless.external_url",
   // Ollama
   ollama_url: "ollama.url",
@@ -240,9 +220,6 @@ const SETTINGS_KEY_MAP: Record<string, string> = {
   openai_cli_reasoning_effort: "openai_cli.reasoning_effort",
   openai_cli_fast_mode: "openai_cli.fast_mode",
   openai_cli_scope: "openai_cli.scope",
-  // Mistral
-  mistral_api_key: "mistral.api_key",
-  mistral_model: "mistral.model",
   // Qdrant
   qdrant_url: "qdrant.url",
   qdrant_collection: "qdrant.collectionName",
@@ -336,6 +313,15 @@ export const updateSettings = (updates: SettingsUpdate) =>
     // Store updates in TinyBase settings table
     for (const [key, value] of Object.entries(updates)) {
       if (value === undefined) continue;
+      if (isConfigOwnedProviderSettingKey(key) || isSecretLikeSettingKey(key)) {
+        return yield* Effect.fail(
+          new ValidationError({
+            field: key,
+            message:
+              "Provider connection settings are managed by environment/YAML configuration and cannot be changed through the settings API.",
+          }),
+        );
+      }
 
       if (key === "tags" && value && typeof value === "object" && !Array.isArray(value)) {
         for (const [tagKey, tagValue] of Object.entries(value as Record<string, unknown>)) {
@@ -348,9 +334,6 @@ export const updateSettings = (updates: SettingsUpdate) =>
 
       // Map frontend key to TinyBase key
       const dbKey = SETTINGS_KEY_MAP[key] ?? key;
-      if ((dbKey === "paperless.token" || dbKey === "mistral.api_key") && isMaskedSecret(value))
-        continue;
-
       const strValue =
         dbKey === "tag_language.aliases.de"
           ? serializeTagLanguageAliasRows(
@@ -373,7 +356,7 @@ export const updateSettings = (updates: SettingsUpdate) =>
   });
 
 // ===========================================================================
-// Connection Tests - Read settings from TinyBase for dynamic config
+// Connection Tests - use the same immutable ConfigService values as runtime clients
 // ===========================================================================
 
 /**
@@ -389,11 +372,7 @@ const getSettingValue = (
 
 export const testPaperlessConnection = Effect.gen(function* () {
   const config = yield* ConfigService;
-  const tinybase = yield* TinyBaseService;
-  const dbSettings = yield* tinybase.getAllSettings();
-
-  const url = getSettingValue(dbSettings, "paperless.url", config.config.paperless.url);
-  const token = getSettingValue(dbSettings, "paperless.token", config.config.paperless.token);
+  const { url, token } = config.config.paperless;
 
   if (!url || !token) {
     return { status: "error" as const, message: "Paperless-ngx not configured", details: null };
@@ -464,10 +443,7 @@ export const testOllamaConnection = Effect.gen(function* () {
 
 export const testMistralConnection = Effect.gen(function* () {
   const config = yield* ConfigService;
-  const tinybase = yield* TinyBaseService;
-  const dbSettings = yield* tinybase.getAllSettings();
-
-  const apiKey = getSettingValue(dbSettings, "mistral.api_key", config.config.mistral.apiKey);
+  const apiKey = config.config.mistral.apiKey;
 
   if (!apiKey) {
     return { status: "error" as const, message: "Mistral API key not configured", details: null };

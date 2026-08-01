@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConfigService } from "../../src/config/index.js";
 import { ConcurrencyLimitServiceLive } from "../../src/services/ConcurrencyLimitService.js";
 import { OllamaService, OllamaServiceLive } from "../../src/services/OllamaService.js";
-import { TinyBaseService } from "../../src/services/TinyBaseService.js";
 
 const createConfigLayer = (requestTimeoutMs = 1_000) =>
   Layer.succeed(ConfigService, {
@@ -24,20 +23,11 @@ const createConfigLayer = (requestTimeoutMs = 1_000) =>
     },
   } as unknown as ConfigService);
 
-const createTinyBaseLayer = () =>
-  Layer.succeed(TinyBaseService, {
-    getAllSettings: vi.fn(() => Effect.succeed({})),
-  } as unknown as TinyBaseService);
-
 const createTestLayer = (requestTimeoutMs = 1_000) => {
   const configLayer = createConfigLayer(requestTimeoutMs);
   return Layer.provideMerge(
     OllamaServiceLive,
-    Layer.mergeAll(
-      configLayer,
-      createTinyBaseLayer(),
-      Layer.provide(ConcurrencyLimitServiceLive, configLayer),
-    ),
+    Layer.mergeAll(configLayer, Layer.provide(ConcurrencyLimitServiceLive, configLayer)),
   );
 };
 

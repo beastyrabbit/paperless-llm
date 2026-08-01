@@ -50,6 +50,7 @@ describe("ConfigService", () => {
     expect(service.config.paperless.url).toBe("http://localhost:8000");
     expect(service.config.ollama.url).toBe("http://localhost:11434");
     expect(service.config.pipeline.maxSteps).toBe(10);
+    expect(service.config.cutover.scanner.aiAnalyseTagId).toBe(0);
     expect(service.config.debug).toBe(false);
   });
 
@@ -139,11 +140,38 @@ describe("ConfigService", () => {
     process.chdir(tempDir);
     process.env["NODE_ENV"] = "production";
     process.env["PAPERLESS_LLM_CONFIG"] = configPath;
+    process.env["PAPERLESS_TOKEN"] = "paperless-token";
+    process.env["MISTRAL_API_KEY"] = "mistral-key";
     process.env["PAPERLESS_LLM_API_TOKEN"] = "api-token";
 
     const service = await Effect.runPromise(makeConfigService());
 
     expect(service.config.paperless.url).toBe("http://absolute-config.example");
+  });
+
+  it("ignores provider credentials from YAML and requires environment values", async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "paperless-config-test-"));
+    const configPath = path.join(tempDir, "runtime-config.yaml");
+    fs.writeFileSync(
+      configPath,
+      [
+        "paperless:",
+        "  url: http://absolute-config.example",
+        "  token: yaml-paperless-secret",
+        "mistral:",
+        "  api_key: yaml-mistral-secret",
+      ].join("\n"),
+    );
+    process.chdir(tempDir);
+    process.env["PAPERLESS_LLM_CONFIG"] = configPath;
+    delete process.env["PAPERLESS_TOKEN"];
+    delete process.env["MISTRAL_API_KEY"];
+
+    const service = await Effect.runPromise(makeConfigService());
+
+    expect(service.config.paperless.url).toBe("http://absolute-config.example");
+    expect(service.config.paperless.token).toBe("");
+    expect(service.config.mistral.apiKey).toBe("");
   });
 
   it("loads HTTP rate limit settings from YAML and env overrides", async () => {
@@ -221,6 +249,69 @@ describe("ConfigService", () => {
     expect(service.config.ocrBudget.runPageLimit).toBe(5);
     expect(service.config.ocrBudget.dailyTokenLimit).toBe(1000);
     expect(service.config.ocrBudget.runTokenLimit).toBe(200);
+  });
+
+  it("loads cutover mutation mode and scanner canary IDs from YAML and env", async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "paperless-config-test-"));
+    process.chdir(tempDir);
+    fs.writeFileSync(
+      path.join(tempDir, "config.yaml"),
+      [
+        "cutover:",
+        "  mutation_mode: paperless_first",
+        "  scanner:",
+        "    scope: canary",
+        "    ai_analyse_tag_id: 100",
+        "    canary_document_ids: [42]",
+      ].join("\n"),
+    );
+    process.env["PAPERLESS_LLM_AI_ANALYSE_CANARY_DOCUMENT_IDS"] = "42,77";
+
+    const service = await Effect.runPromise(makeConfigService());
+
+    expect(service.config.cutover.mutationMode).toBe("paperless_first");
+    expect(service.config.cutover.scanner.scope).toBe("canary");
+    expect(service.config.cutover.scanner.aiAnalyseTagId).toBe(100);
+    expect(service.config.cutover.scanner.canaryDocumentIds).toEqual([42, 77]);
+  });
+
+  it("rejects invalid cutover scanner identifiers and mode combinations", async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "paperless-config-test-"));
+    process.chdir(tempDir);
+    fs.writeFileSync(
+      path.join(tempDir, "config.yaml"),
+      [
+        "cutover:",
+        "  mutation_mode: legacy",
+        "  scanner:",
+        "    scope: canary",
+        "    ai_analyse_tag_id: 0",
+        "    canary_document_ids: []",
+      ].join("\n"),
+    );
+
+    const result = await Effect.runPromise(Effect.either(makeConfigService()));
+
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(result.left.message).toMatch(/Invalid application configuration|scanner/i);
+    }
+  });
+
+  it("rejects malformed cutover ID environment tokens", async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "paperless-config-test-"));
+    process.chdir(tempDir);
+    process.env["PAPERLESS_LLM_MUTATION_MODE"] = "paperless_first";
+    process.env["PAPERLESS_LLM_AI_ANALYSE_SCANNER_SCOPE"] = "canary";
+    process.env["PAPERLESS_LLM_AI_ANALYSE_TAG_ID"] = "100";
+    process.env["PAPERLESS_LLM_AI_ANALYSE_CANARY_DOCUMENT_IDS"] = "42,not-a-number";
+
+    const result = await Effect.runPromise(Effect.either(makeConfigService()));
+
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(result.left.message).toMatch(/Invalid application configuration|Canary document IDs/i);
+    }
   });
 
   it("rejects invalid OCR budget limits from YAML", async () => {

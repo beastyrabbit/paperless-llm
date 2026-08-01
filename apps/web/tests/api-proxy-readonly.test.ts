@@ -75,6 +75,80 @@ describe("API proxy read-only mode", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("allows frozen analysis/catalog GET routes without turning them into commands", async () => {
+    process.env.PAPERLESS_LLM_PROD_READ_ONLY = "true";
+    process.env.BACKEND_URL = "https://paperless-llm-api.example";
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ items: [], page: { nextCursor: null, hasNextPage: false, limit: 25 } }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const route = await importProxyRoute();
+
+    await route.GET(
+      new Request("http://paperless-llm-web.localhost/api/analysis/review?limit=25"),
+      routeContext(["analysis", "review"]),
+    );
+    await route.GET(
+      new Request("http://paperless-llm-web.localhost/api/analysis/failed?limit=25"),
+      routeContext(["analysis", "failed"]),
+    );
+    await route.GET(
+      new Request("http://paperless-llm-web.localhost/api/catalog/epochs?limit=25"),
+      routeContext(["catalog", "epochs"]),
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(
+      fetchMock.mock.calls.map(([targetUrl, init]) => [(targetUrl as URL).pathname, init?.method]),
+    ).toEqual([
+      ["/api/analysis/review", "GET"],
+      ["/api/analysis/failed", "GET"],
+      ["/api/catalog/epochs", "GET"],
+    ]);
+  });
+
+  it("blocks frozen analysis/catalog command routes in read-only mode", async () => {
+    process.env.PAPERLESS_LLM_PROD_READ_ONLY = "true";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const route = await importProxyRoute();
+
+    await expect(
+      route.POST(
+        new Request("http://paperless-llm-web.localhost/api/analysis/runs", {
+          method: "POST",
+        }),
+        routeContext(["analysis", "runs"]),
+      ),
+    ).resolves.toMatchObject({ status: 403 });
+    await expect(
+      route.POST(
+        new Request("http://paperless-llm-web.localhost/api/catalog/epochs", {
+          method: "POST",
+        }),
+        routeContext(["catalog", "epochs"]),
+      ),
+    ).resolves.toMatchObject({ status: 403 });
+    await expect(
+      route.POST(
+        new Request("http://paperless-llm-web.localhost/api/catalog/proposals/prop_1/apply", {
+          method: "POST",
+        }),
+        routeContext(["catalog", "proposals", "prop_1", "apply"]),
+      ),
+    ).resolves.toMatchObject({ status: 403 });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("allows reads and forwards the backend auth header", async () => {
     process.env.PAPERLESS_LLM_PROD_READ_ONLY = "true";
     process.env.BACKEND_URL = "https://paperless-llm-api.example";

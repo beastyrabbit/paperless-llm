@@ -61,6 +61,37 @@ const SettingsValueSchema = Schema.Union(
   Schema.Record({ key: ShortTextSchema, value: Schema.Unknown }),
 );
 
+const configOwnedProviderSettingKeys = new Set([
+  "paperless.url",
+  "paperless_url",
+  "paperless.token",
+  "paperless_token",
+  "paperless.api_token",
+  "paperless_api_token",
+  "mistral.api_key",
+  "mistral.apiKey",
+  "mistral_api_key",
+  "mistral.api_base_url",
+  "mistral.apiBaseUrl",
+  "mistral_api_base_url",
+  "mistral.model",
+  "mistral_model",
+  "mistral.ocr_model",
+  "mistral.ocrModel",
+]);
+
+const isAllowedSettingsKey = (key: string): boolean => {
+  const hasSecretSegment =
+    /(?:^|[._-])(api[_-]?key|password|secret|credential)(?:$|[._-])/i.test(key);
+  const hasTokenSegment = /(?:^|[._-])token(?:$|[._-])/i.test(key);
+  const isTokenMetric = /(?:^|[._-])token(?:s|[_-]limit)(?:$|[._-])/i.test(key);
+  return (
+    !configOwnedProviderSettingKeys.has(key) &&
+    !hasSecretSegment &&
+    (!hasTokenSegment || isTokenMetric)
+  );
+};
+
 export const PositiveIntFromStringSchema = PositiveSafeIntFromStringSchema;
 
 export const LooseObjectSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown });
@@ -68,7 +99,12 @@ export const LooseObjectSchema = Schema.Record({ key: Schema.String, value: Sche
 export const SettingsUpdateBodySchema = Schema.Record({
   key: ShortTextSchema,
   value: SettingsValueSchema,
-});
+}).pipe(
+  Schema.filter((settings) => Object.keys(settings).every(isAllowedSettingsKey), {
+    message: () =>
+      "Provider connection settings and secrets are managed by environment/YAML configuration",
+  }),
+);
 export const WorkflowTagsBodySchema = Schema.Struct({
   tag_names: StringArraySchema.pipe(Schema.optional),
 });

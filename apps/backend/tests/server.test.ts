@@ -74,6 +74,18 @@ const createHealthLayer = (
           rateLimitMaxRequests: 100,
           rateLimitTrustProxy: false,
         },
+        cutover: {
+          mutationMode: "legacy",
+          scanner: {
+            scope: "disabled",
+            canaryDocumentIds: [],
+            aiAnalyseTagId: 0,
+            configuredCustomFieldIds: [],
+            systemTagIds: [],
+            parentTagIds: [],
+            workflowTagIds: [],
+          },
+        },
       },
     } as unknown as ConfigService),
   );
@@ -404,9 +416,32 @@ describe("server security helpers", () => {
   });
 
   it("returns structured HTTP 400 JSON for invalid request bodies", async () => {
-    process.env["PAPERLESS_LLM_CONFIG"] = "/tmp/paperless-llm-test-missing-config.yaml";
     const port = await getFreePort();
-    const cleanup = await Effect.runPromise(createHttpServer(port));
+    const layer = Layer.succeed(ConfigService, {
+      config: {
+        http: {
+          rateLimitEnabled: true,
+          rateLimitWindowMs: 60_000,
+          rateLimitMaxRequests: 100,
+          rateLimitTrustProxy: false,
+        },
+        cutover: {
+          mutationMode: "legacy",
+          scanner: {
+            scope: "disabled",
+            canaryDocumentIds: [],
+            aiAnalyseTagId: 0,
+            configuredCustomFieldIds: [],
+            systemTagIds: [],
+            parentTagIds: [],
+            workflowTagIds: [],
+          },
+        },
+      },
+    } as unknown as ConfigService);
+    const cleanup = await Effect.runPromise(
+      createHttpServerWithLayer(port, "127.0.0.1", layer, { startBackgroundServices: false }),
+    );
 
     try {
       const response = await requestJson(port, "/api/pending/bulk", {
@@ -427,6 +462,88 @@ describe("server security helpers", () => {
     } finally {
       cleanup();
     }
+  });
+
+  it("keeps cutover background work off by default and returns typed command failures", async () => {
+    delete process.env["PAPERLESS_LLM_API_TOKEN"];
+    delete process.env["LOCAL_LLM_API_KEY"];
+    const port = await getFreePort();
+    const layer = Layer.succeed(ConfigService, {
+      config: {
+        http: {
+          rateLimitEnabled: true,
+          rateLimitWindowMs: 60_000,
+          rateLimitMaxRequests: 100,
+          rateLimitTrustProxy: false,
+        },
+      },
+    } as unknown as ConfigService);
+    const cleanup = await Effect.runPromise(createHttpServerWithLayer(port, "127.0.0.1", layer));
+
+    try {
+      const response = await requestJson(port, "/api/catalog/epochs", { unknown: true });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.body).toMatchObject({
+        status: 409,
+        error: "Mutation Mode Conflict",
+        code: "STATE_TRANSITION_CONFLICT",
+      });
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("does not let the shared catalog apply route cross mutation runtimes", async () => {
+    const requestForMode = async (
+      mutationMode: "legacy" | "paperless_first",
+      body: Record<string, unknown>,
+    ) => {
+      const port = await getFreePort();
+      const layer = Layer.succeed(ConfigService, {
+        config: {
+          http: {
+            rateLimitEnabled: true,
+            rateLimitWindowMs: 60_000,
+            rateLimitMaxRequests: 100,
+            rateLimitTrustProxy: false,
+          },
+          cutover: {
+            mutationMode,
+            scanner: {
+              scope: "disabled",
+              canaryDocumentIds: [],
+              aiAnalyseTagId: 0,
+              configuredCustomFieldIds: [],
+              systemTagIds: [],
+              parentTagIds: [],
+              workflowTagIds: [],
+            },
+          },
+        },
+      } as unknown as ConfigService);
+      const cleanup = await Effect.runPromise(
+        createHttpServerWithLayer(port, "127.0.0.1", layer, { startBackgroundServices: false }),
+      );
+      try {
+        return await requestJson(port, "/api/catalog/proposals/proposal-1/apply", body);
+      } finally {
+        cleanup();
+      }
+    };
+
+    const legacyBodyInNewMode = await requestForMode("paperless_first", {});
+    expect(legacyBodyInNewMode.statusCode).toBe(409);
+    expect(legacyBodyInNewMode.body).toMatchObject({ code: "STATE_TRANSITION_CONFLICT" });
+
+    const newBodyInLegacyMode = await requestForMode("legacy", {
+      expectedProposalFingerprint: "a".repeat(64),
+      expectedEvidenceFingerprint: "b".repeat(64),
+      expectedCatalogFingerprint: "c".repeat(64),
+      idempotencyKey: "catalog-apply-1",
+    });
+    expect(newBodyInLegacyMode.statusCode).toBe(409);
+    expect(newBodyInLegacyMode.body).toMatchObject({ code: "STATE_TRANSITION_CONFLICT" });
   });
 });
 
@@ -608,7 +725,7 @@ describe("health HTTP responses", () => {
     clearMemoryTraceSpans();
     const port = await getFreePort();
     const layer = Layer.mergeAll(
-      createHealthLayer({ ollama: () => Effect.succeed(false) }),
+      createHealthLayer({ paperless: () => Effect.succeed(false) }),
       makeTracingLayer({
         enabled: true,
         sink: "memory",
@@ -633,13 +750,13 @@ describe("health HTTP responses", () => {
     }
   });
 
-  it("returns HTTP 503 when a dependency is down", async () => {
+  it("returns HTTP 503 when a required dependency is down", async () => {
     const port = await getFreePort();
     const shutdown = await Effect.runPromise(
       createHttpServerWithLayer(
         port,
         "127.0.0.1",
-        createHealthLayer({ ollama: () => Effect.succeed(false) }),
+        createHealthLayer({ mistral: () => Effect.succeed(false) }),
         { startBackgroundServices: false },
       ),
     );
@@ -650,6 +767,42 @@ describe("health HTTP responses", () => {
 
       expect(response.statusCode).toBe(503);
       expect(body).toMatchObject({ status: 503, health: "unhealthy" });
+    } finally {
+      shutdown();
+    }
+  });
+
+  it("returns HTTP 200 when only an optional legacy dependency is down", async () => {
+    const port = await getFreePort();
+    const shutdown = await Effect.runPromise(
+      createHttpServerWithLayer(
+        port,
+        "127.0.0.1",
+        createHealthLayer({
+          ollama: () => Effect.succeed(false),
+          qdrant: () => Effect.succeed(false),
+        }),
+        { startBackgroundServices: false },
+      ),
+    );
+
+    try {
+      const response = await requestGet(port, "/health");
+      const body = JSON.parse(response.body) as {
+        status: number;
+        health: string;
+        services: Record<string, { required: boolean; status: string }>;
+      };
+
+      expect(response.statusCode).toBe(200);
+      expect(body).toMatchObject({
+        status: 200,
+        health: "healthy",
+        services: {
+          ollama: { required: false, status: "down" },
+          qdrant: { required: false, status: "down" },
+        },
+      });
     } finally {
       shutdown();
     }
@@ -736,6 +889,18 @@ describe("processing SSE", () => {
         manualReview: "manual-review",
       },
       pipeline: { maxSteps: 10 },
+      cutover: {
+        mutationMode: "legacy",
+        scanner: {
+          scope: "disabled",
+          canaryDocumentIds: [],
+          aiAnalyseTagId: 0,
+          configuredCustomFieldIds: [],
+          systemTagIds: [],
+          parentTagIds: [],
+          workflowTagIds: [],
+        },
+      },
     };
     const layer = Layer.mergeAll(
       DocumentAuthorizationServiceNoop,
@@ -807,6 +972,18 @@ describe("processing SSE", () => {
         manualReview: "manual-review",
       },
       pipeline: { maxSteps: 1 },
+      cutover: {
+        mutationMode: "legacy",
+        scanner: {
+          scope: "disabled",
+          canaryDocumentIds: [],
+          aiAnalyseTagId: 0,
+          configuredCustomFieldIds: [],
+          systemTagIds: [],
+          parentTagIds: [],
+          workflowTagIds: [],
+        },
+      },
     };
     const layer = Layer.mergeAll(
       DocumentAuthorizationServiceNoop,

@@ -101,10 +101,9 @@ cp config.example.yaml config.yaml
 ```yaml
 paperless:
   url: "http://your-paperless-server:8000"
-  token: "your-paperless-api-token"
 
 mistral:
-  api_key: "your-mistral-api-key"
+  model: "mistral-ocr-latest"
 
 ollama:
   url: "http://your-ollama-server:11434"
@@ -118,7 +117,9 @@ qdrant:
   collection: "paperless-documents"
 ```
 
-> **Note:** `config.yaml` is gitignored — your secrets stay local.
+> **Note:** `PAPERLESS_TOKEN` and `MISTRAL_API_KEY` are environment-only
+> credentials. Inject them with Infisical; YAML values are ignored, and the
+> settings GUI does not store or update them.
 > In production, set `PAPERLESS_LLM_CONFIG=/absolute/path/to/config.yaml` when
 > loading YAML config. The backend will not walk parent directories for
 > `config.yaml` in production.
@@ -144,20 +145,21 @@ pnpm run dev:backend   # Backend on http://localhost:8765
 ## Docker Deployment
 
 ```bash
-# Set environment variables (or create a .env file)
-export PAPERLESS_URL=http://your-paperless:8000
-export PAPERLESS_TOKEN=your-token
-export MISTRAL_API_KEY=your-key
-export OLLAMA_URL=http://host.docker.internal:11434
+# Validate the Infisical prod environment and resolved Compose configuration
+pnpm run compose:config:prod
 
-# Start all services
-docker compose up -d
+# Build and start all services with the same runtime variable contract as dev
+pnpm run deploy:prod
 
-# View logs
-docker compose logs -f
+# Run further Compose commands with the Infisical prod environment
+pnpm run compose:prod -- logs -f
 ```
 
-> **Tip:** Use `host.docker.internal` to access Ollama running on your host machine. This works on Linux, macOS, and Windows thanks to the `extra_hosts` configuration in `docker-compose.yml`.
+`PAPERLESS_URL`, `PAPERLESS_TOKEN`, `MISTRAL_API_KEY`, `OLLAMA_URL`,
+`QDRANT_URL`, `PAPERLESS_LLM_API_TOKEN`, and `APP_VERSION` are required in
+Infisical for both `dev` and `prod`. Local and deployed starts use the same
+validated variable names; environment-specific values may differ deliberately.
+Compose has no localhost provider fallback.
 
 ## Architecture
 

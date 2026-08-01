@@ -7,13 +7,13 @@
 # =============================================================================
 
 # Paperless-ngx Connection
+# PAPERLESS_TOKEN is environment-only (inject it with Infisical).
 paperless:
   url: "http://your-paperless-server:8000"
-  token: "your-paperless-api-token"
 
 # Mistral AI (for OCR)
+# MISTRAL_API_KEY is environment-only (inject it with Infisical).
 mistral:
-  api_key: "your-mistral-api-key"
   model: "mistral-ocr-latest"
   api_base_url: "https://api.mistral.ai"
 
@@ -21,12 +21,13 @@ mistral:
 ollama:
   url: "http://your-ollama-server:11434"
   model: "gpt-oss:120b"            # Model used for all LLM generation and verification
-  embedding_model: "nomic-embed-text"  # For Qdrant embeddings
+  embedding_model: "qwen3-embedding:8b"  # 4096-dimensional Qdrant embeddings
 
 # Qdrant Vector Database
 qdrant:
   url: "http://your-qdrant-server:6333"
   collection: "paperless-documents"
+  embedding_dimension: 4096
 
 # =============================================================================
 # Processing Settings

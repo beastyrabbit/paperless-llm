@@ -7,6 +7,7 @@ import * as path from "node:path";
 import { Context, Effect, Layer } from "effect";
 import { createStore, type Store } from "tinybase";
 import { parse as parseYaml } from "yaml";
+import { isForbiddenPersistedSettingKey } from "../config/provider-settings.js";
 import { resolveConfigPath } from "../config/yaml-loader.js";
 import { DatabaseError } from "../errors/index.js";
 import type {
@@ -532,6 +533,7 @@ const autoImportConfigYaml = (store: Store): void => {
     let count = 0;
 
     for (const [key, value] of Object.entries(flattened)) {
+      if (isForbiddenPersistedSettingKey(key)) continue;
       store.setRow("settings", key, {
         key,
         value,
@@ -566,6 +568,17 @@ const readConfigYamlSettings = (): Record<string, string> => {
 
 const migrateCanonicalSettings = (store: Store): boolean => {
   const configSettings = readConfigYamlSettings();
+  const existingSettings = store.getTable("settings") ?? {};
+  const removedProviderSettings = Object.keys(existingSettings).filter((key) => {
+    if (!isForbiddenPersistedSettingKey(key)) return false;
+    store.delRow("settings", key);
+    return true;
+  }).length;
+  if (removedProviderSettings > 0) {
+    tinybaseLogger.warn("config_owned_provider_settings_removed", {
+      removed: removedProviderSettings,
+    });
+  }
   const table = store.getTable("settings") ?? {};
   const now = new Date().toISOString();
   const readSetting = (key: string): string | undefined => {
@@ -618,8 +631,6 @@ const migrateCanonicalSettings = (store: Store): boolean => {
   };
 
   const migrations: Array<[string, string[]]> = [
-    ["paperless.url", ["paperless.url", "paperless_url"]],
-    ["paperless.token", ["paperless.token", "paperless_token"]],
     ["paperless.external_url", ["paperless.external_url", "paperless_external_url"]],
     ["ollama.url", ["ollama.url", "ollama_url"]],
     ["ollama.model", ["ollama.model", "ollama_model"]],
@@ -627,8 +638,6 @@ const migrateCanonicalSettings = (store: Store): boolean => {
       "ollama.embedding_model",
       ["ollama.embedding_model", "ollama.embeddingModel", "ollama_embedding_model"],
     ],
-    ["mistral.api_key", ["mistral.api_key", "mistral.apiKey", "mistral_api_key"]],
-    ["mistral.model", ["mistral.model", "mistral_model"]],
     ["qdrant.url", ["qdrant.url", "qdrant_url"]],
     ["qdrant.collectionName", ["qdrant.collectionName", "qdrant.collection", "qdrant_collection"]],
     [
@@ -707,7 +716,7 @@ const migrateCanonicalSettings = (store: Store): boolean => {
     tinybaseLogger.info("canonical_settings_synchronized_from_aliases", { synchronized });
   }
 
-  return migrated > 0 || synchronized > 0;
+  return removedProviderSettings > 0 || migrated > 0 || synchronized > 0;
 };
 
 // ===========================================================================
@@ -1545,6 +1554,11 @@ export const TinyBaseServiceLive = Layer.effect(
       setSetting: (key, value) =>
         Effect.try({
           try: () => {
+            if (isForbiddenPersistedSettingKey(key)) {
+              throw new Error(
+                "Provider connection and secret settings must come from environment/YAML configuration",
+              );
+            }
             store.setRow("settings", key, {
               key,
               value,

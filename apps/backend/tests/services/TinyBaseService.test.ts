@@ -37,6 +37,7 @@ describe("TinyBaseService", () => {
   afterEach(() => {
     delete process.env["PAPERLESS_LLM_TINYBASE_DATA_DIR"];
     delete process.env["PAPERLESS_LLM_TINYBASE_DISABLE_CONFIG_IMPORT"];
+    delete process.env["PAPERLESS_LLM_CONFIG"];
     if (testDataDir) {
       fs.rmSync(testDataDir, { recursive: true, force: true });
       testDataDir = null;
@@ -96,6 +97,117 @@ describe("TinyBaseService", () => {
       expect(result.json[0].schemaMetadata?.schema_version?.version).toBe(
         CURRENT_TINYBASE_SCHEMA_VERSION,
       );
+    });
+
+    it("purges persisted provider configuration and secrets while preserving ordinary settings", async () => {
+      fs.writeFileSync(
+        persistenceFile(),
+        tinybaseJson({
+          settings: {
+            language: {
+              key: "language",
+              value: "de",
+              updatedAt: "2026-05-15T10:00:00.000Z",
+            },
+            "paperless.token": {
+              key: "paperless.token",
+              value: "forbidden-paperless-secret",
+              updatedAt: "2026-05-15T10:00:00.000Z",
+            },
+            "paperless.url": {
+              key: "paperless.url",
+              value: "http://stale-paperless:8000",
+              updatedAt: "2026-05-15T10:00:00.000Z",
+            },
+            "mistral.api_key": {
+              key: "mistral.api_key",
+              value: "forbidden-mistral-secret",
+              updatedAt: "2026-05-15T10:00:00.000Z",
+            },
+            "mistral.model": {
+              key: "mistral.model",
+              value: "stale-model",
+              updatedAt: "2026-05-15T10:00:00.000Z",
+            },
+          },
+        }),
+      );
+
+      const result = await runEffect(
+        Effect.gen(function* () {
+          const service = yield* TinyBaseService;
+          return {
+            settings: yield* service.getAllSettings(),
+            serialized: yield* service.getStoreJson(),
+          };
+        }),
+      );
+
+      expect(result.settings).toMatchObject({ language: "de", "language.prompt": "de" });
+      expect(result.settings).not.toHaveProperty("paperless.url");
+      expect(result.settings).not.toHaveProperty("paperless.token");
+      expect(result.settings).not.toHaveProperty("mistral.api_key");
+      expect(result.settings).not.toHaveProperty("mistral.model");
+      expect(result.serialized).not.toContain("forbidden-paperless-secret");
+      expect(result.serialized).not.toContain("forbidden-mistral-secret");
+      expect(result.serialized).not.toContain("stale-paperless");
+      expect(result.serialized).not.toContain("stale-model");
+    });
+
+    it("rejects direct persistence of provider and secret settings", async () => {
+      await expect(
+        runEffect(
+          Effect.gen(function* () {
+            const service = yield* TinyBaseService;
+            yield* service.setSetting("paperless.token", "forbidden-secret");
+          }),
+        ),
+      ).rejects.toThrow(/must come from environment\/YAML/);
+
+      await expect(
+        runEffect(
+          Effect.gen(function* () {
+            const service = yield* TinyBaseService;
+            yield* service.setSetting("paperless.url", "http://stale-paperless:8000");
+          }),
+        ),
+      ).rejects.toThrow(/must come from environment\/YAML/);
+    });
+
+    it("never imports provider connection values or secrets from YAML", async () => {
+      const configPath = path.join(testDataDir ?? "", "config.yaml");
+      fs.writeFileSync(
+        configPath,
+        [
+          "paperless:",
+          "  url: http://paperless-from-yaml:8000",
+          "  token: forbidden-paperless-yaml-secret",
+          "mistral:",
+          "  api_key: forbidden-mistral-yaml-secret",
+          "  model: mistral-ocr-latest",
+          "language: de",
+        ].join("\n"),
+      );
+      delete process.env["PAPERLESS_LLM_TINYBASE_DISABLE_CONFIG_IMPORT"];
+      process.env["PAPERLESS_LLM_CONFIG"] = configPath;
+
+      const result = await runEffect(
+        Effect.gen(function* () {
+          const service = yield* TinyBaseService;
+          return {
+            settings: yield* service.getAllSettings(),
+            serialized: yield* service.getStoreJson(),
+          };
+        }),
+      );
+
+      expect(result.settings["language.prompt"]).toBe("de");
+      expect(result.settings).not.toHaveProperty("paperless.url");
+      expect(result.settings).not.toHaveProperty("paperless.token");
+      expect(result.settings).not.toHaveProperty("mistral.api_key");
+      expect(result.settings).not.toHaveProperty("mistral.model");
+      expect(result.serialized).not.toContain("forbidden-paperless-yaml-secret");
+      expect(result.serialized).not.toContain("forbidden-mistral-yaml-secret");
     });
 
     it("refuses persisted stores from newer schema versions", async () => {

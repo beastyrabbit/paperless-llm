@@ -3,8 +3,6 @@ import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import "./globals.css";
 import { Sidebar } from "@/components/sidebar";
-import { GlobalStatusProvider } from "@/lib/global-status";
-import { AppTinyBaseProvider } from "@/lib/tinybase";
 
 export const metadata: Metadata = {
   title: "Paperless Local LLM",
@@ -23,14 +21,10 @@ export default async function RootLayout({
     <html lang={locale} className="dark">
       <body className="antialiased">
         <NextIntlClientProvider messages={messages}>
-          <AppTinyBaseProvider>
-            <GlobalStatusProvider>
-              <div className="flex h-screen bg-background">
-                <Sidebar />
-                <main className="flex-1 overflow-auto">{children}</main>
-              </div>
-            </GlobalStatusProvider>
-          </AppTinyBaseProvider>
+          <div className="flex h-screen flex-col bg-background md:flex-row">
+            <Sidebar />
+            <main className="min-h-0 min-w-0 flex-1 overflow-auto">{children}</main>
+          </div>
         </NextIntlClientProvider>
       </body>
     </html>

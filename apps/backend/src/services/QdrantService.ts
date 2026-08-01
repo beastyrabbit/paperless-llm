@@ -7,7 +7,6 @@ import { Context, Effect, Layer, pipe } from "effect";
 import { ConfigService } from "../config/index.js";
 import { withClientSpan } from "../observability/tracing.js";
 import { OllamaService } from "./OllamaService.js";
-import { TinyBaseService } from "./TinyBaseService.js";
 
 // ===========================================================================
 // Types
@@ -97,34 +96,18 @@ export const QdrantServiceLive = Layer.effect(
   QdrantService,
   Effect.gen(function* () {
     const configService = yield* ConfigService;
-    const tinybaseService = yield* TinyBaseService;
     const ollamaService = yield* OllamaService;
     const { qdrant: configQdrant } = configService.config;
 
-    // Get config from TinyBase with fallback
-    const getConfig = (): Effect.Effect<
-      { url: string; collectionName: string; embeddingDimension: number },
-      never
-    > =>
-      pipe(
-        tinybaseService.getAllSettings(),
-        Effect.map((settings) => ({
-          url: settings["qdrant.url"] ?? configQdrant.url,
-          collectionName:
-            settings["qdrant.collectionName"] ??
-            settings["qdrant.collection"] ??
-            settings["qdrant_collection"] ??
-            configQdrant.collectionName,
-          embeddingDimension: configQdrant.embeddingDimension ?? 768,
-        })),
-        Effect.catchAll(() =>
-          Effect.succeed({
-            url: configQdrant.url,
-            collectionName: configQdrant.collectionName,
-            embeddingDimension: configQdrant.embeddingDimension ?? 768,
-          }),
-        ),
-      );
+    // Provider connection, collection, and vector shape are immutable startup
+    // configuration. Reading stale TinyBase values here can silently point the
+    // runtime at another collection.
+    const getConfig = () =>
+      Effect.succeed({
+        url: configQdrant.url,
+        collectionName: configQdrant.collectionName,
+        embeddingDimension: configQdrant.embeddingDimension,
+      });
 
     // Create Qdrant client lazily
     const getClient = () =>

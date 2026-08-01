@@ -4,16 +4,16 @@
  * Tests for settings CRUD and connection testing endpoints.
  */
 
+import { SettingsUpdateBodySchema } from "@repo/api-contracts";
 import { Effect, Layer, Schema } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SettingsUpdateBodySchema } from "@repo/api-contracts";
 import * as settingsHandlers from "../../src/api/settings/handlers.js";
 import { ConfigService } from "../../src/config/index.js";
-import { getDefaultTagLanguageAliasesDeJson } from "../../src/utils/tagLanguage.js";
 import { MistralService } from "../../src/services/MistralService.js";
 import { OllamaService } from "../../src/services/OllamaService.js";
 import { QdrantService } from "../../src/services/QdrantService.js";
 import { TinyBaseService } from "../../src/services/TinyBaseService.js";
+import { getDefaultTagLanguageAliasesDeJson } from "../../src/utils/tagLanguage.js";
 import { mockFetchError, mockFetchResponse } from "../setup.js";
 
 // ===========================================================================
@@ -135,7 +135,6 @@ describe("Settings Handlers", () => {
 
       expect(result).toMatchObject({
         paperless_url: "http://localhost:8000",
-        paperless_token: "********",
         paperless_token_configured: true,
         ollama_url: "http://localhost:11434",
         ollama_model: "llama3:latest",
@@ -144,7 +143,6 @@ describe("Settings Handlers", () => {
         openai_cli_command: "codex",
         openai_cli_model: "gpt-5.5",
         openai_cli_scope: "chat",
-        mistral_api_key: "********",
         mistral_api_key_configured: true,
         auto_processing_enabled: false,
         auto_processing_interval_minutes: 10,
@@ -157,18 +155,29 @@ describe("Settings Handlers", () => {
       });
     });
 
-    it("should mask configured tokens", async () => {
-      const { layer: mockTinyBase } = createMockTinyBase();
+    it("should expose only config-derived provider status and ignore persisted overrides", async () => {
+      const { layer: mockTinyBase } = createMockTinyBase({
+        getAllSettings: vi.fn(() =>
+          Effect.succeed({
+            "paperless.url": "http://wrong-paperless:8000",
+            "paperless.token": "wrong-paperless-token",
+            "mistral.api_key": "wrong-mistral-key",
+            "mistral.model": "wrong-model",
+          }),
+        ),
+      });
       const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase, createMockQdrant());
 
       const result = await Effect.runPromise(
         settingsHandlers.getSettings.pipe(Effect.provide(TestLayer)),
       );
 
-      expect(result.paperless_token).toBe("********");
+      expect(result).not.toHaveProperty("paperless_token");
       expect(result.paperless_token_configured).toBe(true);
-      expect(result.mistral_api_key).toBe("********");
+      expect(result.paperless_url).toBe("http://localhost:8000");
+      expect(result).not.toHaveProperty("mistral_api_key");
       expect(result.mistral_api_key_configured).toBe(true);
+      expect(result.mistral_model).toBe("mistral-large-latest");
     });
 
     it("should not expose OpenAI API key settings", async () => {
@@ -245,7 +254,7 @@ describe("Settings Handlers", () => {
       });
     });
 
-    it("should return empty string for unset values", async () => {
+    it("should report provider secrets as unconfigured without exposing secret fields", async () => {
       const emptyConfig = Layer.succeed(ConfigService, {
         config: {
           paperless: { url: "", token: "" },
@@ -279,8 +288,10 @@ describe("Settings Handlers", () => {
         settingsHandlers.getSettings.pipe(Effect.provide(TestLayer)),
       );
 
-      expect(result.paperless_token).toBe("");
-      expect(result.mistral_api_key).toBe("");
+      expect(result).not.toHaveProperty("paperless_token");
+      expect(result.paperless_token_configured).toBe(false);
+      expect(result).not.toHaveProperty("mistral_api_key");
+      expect(result.mistral_api_key_configured).toBe(false);
     });
   });
 
@@ -332,25 +343,21 @@ describe("Settings Handlers", () => {
       expect(mocks.setSetting).toHaveBeenCalledWith("auto_processing.enabled", "true");
     });
 
-    it("should not store masked secrets as token values", async () => {
+    it("should reject provider connection and secret updates", async () => {
       const { layer: mockTinyBase, mocks } = createMockTinyBase();
       const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
 
-      await Effect.runPromise(
-        settingsHandlers
-          .updateSettings({
-            paperless_token: "********",
-            mistral_api_key: "********",
-            "paperless.token": "********",
-            "mistral.api_key": "********",
-            ollama_url: "http://ollama:11434",
-          } as Parameters<typeof settingsHandlers.updateSettings>[0])
-          .pipe(Effect.provide(TestLayer)),
-      );
+      await expect(
+        Effect.runPromise(
+          settingsHandlers
+            .updateSettings({
+              paperless_token: "attempted-secret",
+            } as Parameters<typeof settingsHandlers.updateSettings>[0])
+            .pipe(Effect.provide(TestLayer)),
+        ),
+      ).rejects.toThrow(/managed by environment\/YAML/);
 
-      expect(mocks.setSetting).toHaveBeenCalledWith("ollama.url", "http://ollama:11434");
-      expect(mocks.setSetting).not.toHaveBeenCalledWith("paperless.token", "********");
-      expect(mocks.setSetting).not.toHaveBeenCalledWith("mistral.api_key", "********");
+      expect(mocks.setSetting).not.toHaveBeenCalled();
     });
 
     it("should store normalized German tag-language aliases", async () => {
@@ -379,6 +386,18 @@ describe("Settings Handlers", () => {
       const payload = { tag_language_aliases_de: getDefaultTagLanguageAliasesDeJson() };
 
       expect(() => Schema.decodeUnknownSync(SettingsUpdateBodySchema)(payload)).not.toThrow();
+    });
+
+    it.each([
+      "paperless_token",
+      "paperless.url",
+      "mistral_api_key",
+      "mistral.model",
+      "some_password",
+    ])("rejects config-owned or secret-like settings keys: %s", (key) => {
+      expect(() =>
+        Schema.decodeUnknownSync(SettingsUpdateBodySchema)({ [key]: "forbidden" }),
+      ).toThrow(/managed by environment\/YAML/);
     });
 
     it("should return updated settings", async () => {
@@ -417,6 +436,32 @@ describe("Settings Handlers", () => {
       });
     });
 
+    it("uses the same config-owned URL and token as the runtime client", async () => {
+      const fetchMock = vi
+        .spyOn(global, "fetch")
+        .mockImplementation(() => mockFetchResponse({ results: [] }));
+      const { layer: mockTinyBase } = createMockTinyBase({
+        getAllSettings: vi.fn(() =>
+          Effect.succeed({
+            "paperless.url": "http://gui-only-paperless:8000",
+            "paperless.token": "gui-only-token",
+          }),
+        ),
+      });
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
+
+      await Effect.runPromise(
+        settingsHandlers.testPaperlessConnection.pipe(Effect.provide(TestLayer)),
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://localhost:8000/api/documents/?page_size=1",
+        expect.objectContaining({
+          headers: { Authorization: "Token test-token" },
+        }),
+      );
+    });
+
     it("should return error when not connected", async () => {
       vi.spyOn(global, "fetch").mockImplementation(() => mockFetchError(401, "Unauthorized"));
 
@@ -451,6 +496,31 @@ describe("Settings Handlers", () => {
         message: "Connected to Ollama",
         details: null,
       });
+    });
+
+    it("uses the config-owned API key rather than a persisted GUI value", async () => {
+      const fetchMock = vi
+        .spyOn(global, "fetch")
+        .mockImplementation(() => mockFetchResponse({ data: [] }));
+      const { layer: mockTinyBase } = createMockTinyBase({
+        getAllSettings: vi.fn(() =>
+          Effect.succeed({
+            "mistral.api_key": "gui-only-mistral-key",
+          }),
+        ),
+      });
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
+
+      await Effect.runPromise(
+        settingsHandlers.testMistralConnection.pipe(Effect.provide(TestLayer)),
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://api.mistral.ai/v1/models",
+        expect.objectContaining({
+          headers: { Authorization: "Bearer test-mistral-key" },
+        }),
+      );
     });
 
     it("should return error when not connected", async () => {

@@ -2,6 +2,7 @@
  * Configuration service for the application.
  */
 import { Context, Effect, Layer, pipe, Schema } from "effect";
+import { validateCutoverRuntimeConfig } from "../services/cutover/mode.js";
 import { type AppConfig, AppConfigSchema, type ResolvedConfig } from "./schema.js";
 import {
   type ConfigLoadError,
@@ -18,8 +19,8 @@ const defaultConfig: ResolvedConfig = {
   },
   ollama: {
     url: "http://localhost:11434",
-    model: "llama3.2",
-    embeddingModel: "nomic-embed-text",
+    model: "gpt-oss:120b",
+    embeddingModel: "qwen3-embedding:8b",
   },
   mistral: {
     apiKey: "",
@@ -28,8 +29,8 @@ const defaultConfig: ResolvedConfig = {
   },
   qdrant: {
     url: "http://localhost:6333",
-    collectionName: "documents",
-    embeddingDimension: 768, // Must match embedding model (nomic-embed-text=768, mxbai-embed-large=1024)
+    collectionName: "paperless-documents",
+    embeddingDimension: 4096,
   },
   ocrBudget: {
     dailyPageLimit: null,
@@ -91,6 +92,14 @@ const defaultConfig: ResolvedConfig = {
     ollamaMaxConcurrent: 1,
     mistralMaxConcurrent: 1,
     ocrMaxConcurrent: 1,
+  },
+  cutover: {
+    mutationMode: "disabled",
+    scanner: {
+      scope: "disabled",
+      canaryDocumentIds: [],
+      aiAnalyseTagId: 0,
+    },
   },
   language: "en",
   debug: false,
@@ -160,6 +169,14 @@ const applyDefaults = (partial: AppConfig): ResolvedConfig => ({
     ...defaultConfig.concurrency,
     ...partial.concurrency,
   },
+  cutover: {
+    ...defaultConfig.cutover,
+    ...partial.cutover,
+    scanner: {
+      ...defaultConfig.cutover.scanner,
+      ...partial.cutover?.scanner,
+    },
+  },
   language: partial.language ?? defaultConfig.language,
   debug: partial.debug ?? defaultConfig.debug,
 });
@@ -207,6 +224,21 @@ const validateRequiredSecrets = (
   });
 };
 
+const validateCutoverConfig = (
+  resolved: ResolvedConfig,
+): Effect.Effect<ResolvedConfig, ConfigLoadError> =>
+  Effect.try({
+    try: () => {
+      validateCutoverRuntimeConfig(resolved.cutover);
+      return resolved;
+    },
+    catch: (error) => ({
+      _tag: "ConfigLoadError" as const,
+      message: error instanceof Error ? error.message : "Invalid cutover configuration",
+      cause: error,
+    }),
+  });
+
 /**
  * Create the configuration service.
  */
@@ -223,6 +255,7 @@ export const makeConfigService = (
       return pipe(
         validateAppConfig(merged),
         Effect.map(applyDefaults),
+        Effect.flatMap(validateCutoverConfig),
         Effect.flatMap(validateRequiredSecrets),
         Effect.map((resolved) => ({
           config: resolved,

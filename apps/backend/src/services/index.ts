@@ -18,6 +18,33 @@ export {
   type CatalogRun,
 } from "./CatalogAgentService.js";
 export {
+  CatalogEvidenceReadPort,
+  CatalogEvidenceReadPortFromPaperlessLive,
+  CatalogEvidenceService,
+  CatalogEvidenceServiceLive,
+  makeCatalogEvidenceReadPortFromPaperlessLive,
+} from "./CatalogEvidenceService.js";
+export type {
+  CatalogEvidencePolicy,
+  CatalogEvidenceReadPortContract,
+} from "./CatalogEvidenceService.js";
+export {
+  CatalogApplyLedgerPort,
+  CatalogApplyMutationPort,
+  CatalogApplyService,
+  CatalogApplyServiceLive,
+} from "./catalog-apply/index.js";
+export type {
+  CatalogApplyLedgerPortType,
+  CatalogApplyMutationPortType,
+  CatalogApplySupportedKind,
+} from "./catalog-apply/index.js";
+export {
+  CatalogCouncilService,
+  CatalogCouncilServiceLive,
+} from "./catalog-council/index.js";
+export { CodexRuntimeService, CodexRuntimeServiceLive } from "./CodexRuntimeService.js";
+export {
   type CaseAnswer,
   type CaseFailureDetail,
   type CaseQuestion,
@@ -65,6 +92,10 @@ export {
   MistralService,
   MistralServiceLive,
 } from "./MistralService.js";
+export {
+  MistralOcrService,
+  MistralOcrServiceLive,
+} from "./MistralOcrService.js";
 
 export {
   type OllamaChatMessage,
@@ -86,6 +117,18 @@ export {
   TagCacheServiceLive,
   type TagCacheSource,
 } from "./TagCacheService.js";
+export {
+  OperationalLedgerService,
+  OperationalLedgerServiceLive,
+} from "./OperationalLedgerService.js";
+export {
+  AiAnalyseAutomationScanner,
+  AiAnalyseAutomationScannerLive,
+} from "./document-analysis/ai-analyse-automation-scanner.js";
+export {
+  DocumentAnalysisOrchestrator,
+  DocumentAnalysisOrchestratorLive,
+} from "./document-analysis/orchestrator.js";
 
 export {
   type DocumentVector,

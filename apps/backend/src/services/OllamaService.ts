@@ -8,7 +8,6 @@ import { withClientSpan } from "../observability/tracing.js";
 import { fetchWithTimeout } from "../utils/http.js";
 import { ConcurrencyLimitService } from "./ConcurrencyLimitService.js";
 import { classifyMetricsErrorOutcome, metrics, observeDuration } from "./MetricsService.js";
-import { TinyBaseService } from "./TinyBaseService.js";
 
 // ===========================================================================
 // Types
@@ -121,47 +120,18 @@ export const OllamaServiceLive = Layer.effect(
   OllamaService,
   Effect.gen(function* () {
     const configService = yield* ConfigService;
-    const tinybaseService = yield* TinyBaseService;
     const concurrency = yield* ConcurrencyLimitService;
     const { ollama: configOllama } = configService.config;
 
-    // Cache initial model names at service creation time
-    const dbSettings = yield* tinybaseService.getAllSettings();
-    const cachedModel =
-      dbSettings["ollama.model"] ?? dbSettings["ollama_model"] ?? configOllama.model;
-    const cachedModelEmbedding =
-      dbSettings["ollama.embedding_model"] ?? configOllama.embeddingModel;
-
-    // Helper to get current config from TinyBase with fallback to ConfigService
-    const getConfig = (): Effect.Effect<
-      {
-        url: string;
-        model: string;
-        modelEmbedding: string;
-        requestTimeoutMs: number;
-      },
-      never
-    > =>
-      pipe(
-        tinybaseService.getAllSettings(),
-        Effect.map((settings) => {
-          const model = settings["ollama.model"] ?? settings["ollama_model"] ?? configOllama.model;
-          return {
-            url: settings["ollama.url"] ?? configOllama.url,
-            model,
-            modelEmbedding: settings["ollama.embedding_model"] ?? configOllama.embeddingModel,
-            requestTimeoutMs: configService.config.http?.requestTimeoutMs ?? 120_000,
-          };
-        }),
-        Effect.catchAll(() =>
-          Effect.succeed({
-            url: configOllama.url,
-            model: configOllama.model,
-            modelEmbedding: configOllama.embeddingModel,
-            requestTimeoutMs: configService.config.http?.requestTimeoutMs ?? 120_000,
-          }),
-        ),
-      );
+    // Provider connection and model configuration is immutable startup state
+    // (normally injected by Infisical). TinyBase must never override it.
+    const getConfig = () =>
+      Effect.succeed({
+        url: configOllama.url,
+        model: configOllama.model,
+        modelEmbedding: configOllama.embeddingModel,
+        requestTimeoutMs: configService.config.http?.requestTimeoutMs ?? 120_000,
+      });
 
     // Helper for making requests - reads config dynamically
     const request = <T>(
@@ -654,9 +624,9 @@ export const OllamaServiceLive = Layer.effect(
       getModel: (size) => {
         switch (size) {
           case "generation":
-            return cachedModel;
+            return configOllama.model;
           case "embedding":
-            return cachedModelEmbedding;
+            return configOllama.embeddingModel;
         }
       },
     };

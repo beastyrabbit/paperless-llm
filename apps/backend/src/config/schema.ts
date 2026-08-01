@@ -91,6 +91,21 @@ export const ConcurrencyConfigSchema = Schema.Struct({
   ocrMaxConcurrent: Schema.Number.pipe(Schema.optional),
 });
 
+const PositiveIntegerIdArraySchema = Schema.Array(
+  Schema.Number.pipe(Schema.int(), Schema.positive()),
+);
+
+export const CutoverScannerConfigSchema = Schema.Struct({
+  scope: Schema.Literal("disabled", "canary", "all").pipe(Schema.optional),
+  canaryDocumentIds: PositiveIntegerIdArraySchema.pipe(Schema.optional),
+  aiAnalyseTagId: Schema.Number.pipe(Schema.int()).pipe(Schema.optional),
+});
+
+export const CutoverConfigSchema = Schema.Struct({
+  mutationMode: Schema.Literal("disabled", "legacy", "paperless_first").pipe(Schema.optional),
+  scanner: CutoverScannerConfigSchema.pipe(Schema.optional),
+});
+
 // HTTP/runtime safety configuration
 export const HttpConfigSchema = Schema.Struct({
   requestTimeoutMs: Schema.Number.pipe(Schema.optional),
@@ -115,6 +130,7 @@ export const AppConfigSchema = Schema.Struct({
   pipeline: PipelineConfigSchema.pipe(Schema.optional),
   http: HttpConfigSchema.pipe(Schema.optional),
   concurrency: ConcurrencyConfigSchema.pipe(Schema.optional),
+  cutover: CutoverConfigSchema.pipe(Schema.optional),
   language: Schema.String.pipe(Schema.optional),
   debug: Schema.Boolean.pipe(Schema.optional),
 });
@@ -130,6 +146,7 @@ export type TagsConfig = Schema.Schema.Type<typeof TagsConfigSchema>;
 export type PipelineConfig = Schema.Schema.Type<typeof PipelineConfigSchema>;
 export type HttpConfig = Schema.Schema.Type<typeof HttpConfigSchema>;
 export type ConcurrencyConfig = Schema.Schema.Type<typeof ConcurrencyConfigSchema>;
+export type CutoverConfig = Schema.Schema.Type<typeof CutoverConfigSchema>;
 export type AppConfig = Schema.Schema.Type<typeof AppConfigSchema>;
 
 // Resolved configuration with defaults applied
@@ -212,6 +229,14 @@ export interface ResolvedConfig {
     ollamaMaxConcurrent: number;
     mistralMaxConcurrent: number;
     ocrMaxConcurrent: number;
+  };
+  cutover: {
+    mutationMode: "disabled" | "legacy" | "paperless_first";
+    scanner: {
+      scope: "disabled" | "canary" | "all";
+      canaryDocumentIds: readonly number[];
+      aiAnalyseTagId: number;
+    };
   };
   language: string;
   debug: boolean;

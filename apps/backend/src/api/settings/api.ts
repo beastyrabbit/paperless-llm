@@ -32,8 +32,7 @@ export type TagsConfig = Schema.Schema.Type<typeof TagsConfigSchema>;
 
 export const SettingsSchema = Schema.Struct({
   paperless_url: Schema.NullOr(Schema.String),
-  paperless_token: Schema.NullOr(Schema.String),
-  paperless_token_configured: Schema.Boolean.pipe(Schema.optional),
+  paperless_token_configured: Schema.Boolean,
   paperless_external_url: Schema.NullOr(Schema.String),
   ollama_url: Schema.NullOr(Schema.String),
   ollama_model: Schema.NullOr(Schema.String),
@@ -44,8 +43,7 @@ export const SettingsSchema = Schema.Struct({
   openai_cli_reasoning_effort: Schema.Literal("off", "minimal", "low", "medium", "high", "xhigh"),
   openai_cli_fast_mode: Schema.Boolean,
   openai_cli_scope: Schema.Literal("chat", "full_pipeline", "catalog", "all"),
-  mistral_api_key: Schema.NullOr(Schema.String),
-  mistral_api_key_configured: Schema.Boolean.pipe(Schema.optional),
+  mistral_api_key_configured: Schema.Boolean,
   mistral_model: Schema.NullOr(Schema.String),
   qdrant_url: Schema.NullOr(Schema.String),
   qdrant_collection: Schema.NullOr(Schema.String),
@@ -80,8 +78,6 @@ export const SettingsSchema = Schema.Struct({
 export type Settings = Schema.Schema.Type<typeof SettingsSchema>;
 
 export const SettingsUpdateSchema = Schema.Struct({
-  paperless_url: Schema.String.pipe(Schema.optional),
-  paperless_token: Schema.String.pipe(Schema.optional),
   paperless_external_url: Schema.String.pipe(Schema.optional),
   ollama_url: Schema.String.pipe(Schema.optional),
   ollama_model: Schema.String.pipe(Schema.optional),
@@ -99,8 +95,6 @@ export const SettingsUpdateSchema = Schema.Struct({
   ).pipe(Schema.optional),
   openai_cli_fast_mode: Schema.Boolean.pipe(Schema.optional),
   openai_cli_scope: Schema.Literal("chat", "full_pipeline", "catalog", "all").pipe(Schema.optional),
-  mistral_api_key: Schema.String.pipe(Schema.optional),
-  mistral_model: Schema.String.pipe(Schema.optional),
   qdrant_url: Schema.String.pipe(Schema.optional),
   qdrant_collection: Schema.String.pipe(Schema.optional),
   vector_search_enabled: Schema.Boolean.pipe(Schema.optional),
@@ -113,7 +107,9 @@ export const SettingsUpdateSchema = Schema.Struct({
   confirmation_max_retries: Schema.Number.pipe(Schema.optional),
   confirmation_min_confidence: Schema.Number.pipe(Schema.optional),
   language: Schema.String.pipe(Schema.optional),
-  tag_language_aliases_de: Schema.Union(Schema.String, Schema.Array(Schema.Unknown)).pipe(Schema.optional),
+  tag_language_aliases_de: Schema.Union(Schema.String, Schema.Array(Schema.Unknown)).pipe(
+    Schema.optional,
+  ),
   debug: Schema.Boolean.pipe(Schema.optional),
   debug_log_level: Schema.String.pipe(Schema.optional),
   debug_log_prompts: Schema.Boolean.pipe(Schema.optional),

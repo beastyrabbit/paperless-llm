@@ -5,6 +5,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   ApprovePendingBodySchema,
+  BlockedSuggestionIdFromStringSchema,
   BlockSuggestionBodySchema,
   BootstrapSkipBodySchema,
   BootstrapStartBodySchema,
@@ -19,14 +20,13 @@ import {
   CleanupApproveBodySchema,
   CleanupTagsBodySchema,
   CustomFieldBulkUpdateBodySchema,
+  CustomFieldIdFromStringSchema,
   CustomFieldUpdateBodySchema,
+  DocumentIdFromStringSchema,
+  generateOpenApiDocument,
+  LockReleaseBodySchema,
   MergePendingBodySchema,
   PendingBlockedSuggestionBodySchema,
-  LockReleaseBodySchema,
-  BlockedSuggestionIdFromStringSchema,
-  CustomFieldIdFromStringSchema,
-  DocumentIdFromStringSchema,
-  TagIdFromStringSchema,
   ProcessingCancelBodySchema,
   ProcessingStartBodySchema,
   RejectPendingBodySchema,
@@ -38,6 +38,7 @@ import {
   SelectedTypeIdsBodySchema,
   SettingsUpdateBodySchema,
   TagBulkUpdateBodySchema,
+  TagIdFromStringSchema,
   TagOptimizeBodySchema,
   TagTranslateBodySchema,
   TagTranslationBodySchema,
@@ -45,12 +46,23 @@ import {
   TranslateBodySchema,
   TranslationClearBodySchema,
   WorkflowTagsBodySchema,
-  generateOpenApiDocument,
 } from "@repo/api-contracts";
 import { Effect, Either, type ParseResult, Schema } from "effect";
+import { ConfigService } from "../config/index.js";
 import { ValidationError } from "../errors/index.js";
+import { PaperlessService } from "../services/PaperlessService.js";
+import {
+  makeAnalysisCommandHandlers,
+  makeDaemonAnalysisCommandRuntime,
+} from "./analysis/command-handlers.js";
+import * as analysisQueryHandlers from "./analysis/query-handlers.js";
 import * as casesHandlers from "./cases/handlers.js";
+import {
+  makeCatalogCommandHandlers,
+  makeDaemonCatalogCommandRuntime,
+} from "./catalog/command-handlers.js";
 import * as catalogHandlers from "./catalog/handlers.js";
+import * as catalogQueryHandlers from "./catalog/query-handlers.js";
 import * as chatHandlers from "./chat/handlers.js";
 import * as documentsHandlers from "./documents/handlers.js";
 import * as healthHandlers from "./health/handlers.js";
@@ -61,6 +73,7 @@ import * as processingHandlers from "./processing/handlers.js";
 import * as schemaHandlers from "./schema/handlers.js";
 import * as searchHandlers from "./search/handlers.js";
 import * as settingsHandlers from "./settings/handlers.js";
+import * as systemHandlers from "./system/handlers.js";
 import * as translationHandlers from "./translation/handlers.js";
 
 // ===========================================================================
@@ -73,6 +86,7 @@ interface RouteMatch {
   handler: (
     params: Record<string, string>,
     body: unknown,
+    url: URL,
   ) => Effect.Effect<unknown, unknown, unknown>;
   params: Record<string, string>;
 }
@@ -85,6 +99,7 @@ interface Route {
   handler: (
     params: Record<string, string>,
     body: unknown,
+    url: URL,
   ) => Effect.Effect<unknown, unknown, unknown>;
 }
 
@@ -95,6 +110,46 @@ interface Route {
 const routes: Route[] = [];
 
 const routeParam = (params: Record<string, string>, name: string): string => params[name] ?? "";
+
+const analysisCommandRuntime = makeDaemonAnalysisCommandRuntime();
+const withAnalysisCommandHandlers = <A, E, R>(
+  use: (handlers: ReturnType<typeof makeAnalysisCommandHandlers>) => Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R | ConfigService> =>
+  Effect.gen(function* () {
+    const config = yield* ConfigService;
+    const scanner = config.config.cutover.scanner;
+    const handlers = makeAnalysisCommandHandlers(
+      {
+        configuredCustomFieldIds: [],
+        parentTagIds: [],
+        systemTagIds: [],
+        workflowTagIds: [],
+        aiAnalyseTagId: scanner.aiAnalyseTagId > 0 ? scanner.aiAnalyseTagId : undefined,
+      },
+      analysisCommandRuntime,
+    );
+    return yield* use(handlers);
+  });
+const catalogCommandHandlers = makeCatalogCommandHandlers({}, makeDaemonCatalogCommandRuntime());
+
+const numericQueryParamNames = new Set(["limit", "documentId"]);
+
+const queryRequest = (url: URL): Record<string, string | number> => {
+  const request: Record<string, string | number> = {};
+  for (const [key, value] of url.searchParams.entries()) {
+    request[key] = numericQueryParamNames.has(key) ? Number(value) : value;
+  }
+  return request;
+};
+
+const isCatalogApplyCommandBody = (body: unknown): boolean =>
+  typeof body === "object" &&
+  body !== null &&
+  !Array.isArray(body) &&
+  ("expectedProposalFingerprint" in body ||
+    "expectedEvidenceFingerprint" in body ||
+    "expectedCatalogFingerprint" in body ||
+    "idempotencyKey" in body);
 
 const toPathArray = (path: ParseResult.Path): Array<string | number> =>
   (Array.isArray(path) ? path : [path]).map((segment) =>
@@ -206,6 +261,7 @@ const addRoute = (
   handler: (
     params: Record<string, string>,
     body: unknown,
+    url: URL,
   ) => Effect.Effect<unknown, unknown, unknown>,
 ) => {
   // Convert path pattern to regex
@@ -239,6 +295,8 @@ addRoute("GET", "/", () =>
 addRoute("GET", "/health", () => healthHandlers.getHealth);
 
 addRoute("GET", "/openapi.json", () => Effect.succeed(generateOpenApiDocument()));
+
+addRoute("GET", "/api/system/readiness", () => systemHandlers.getSystemReadiness);
 
 // ===========================================================================
 // Settings API - /api/settings
@@ -491,6 +549,10 @@ addRoute("PATCH", "/api/settings/ai-tags", (_, body) => {
 
 addRoute("GET", "/api/documents/queue", () => documentsHandlers.getQueueStats);
 
+addRoute("GET", "/api/documents", (_, __, url) =>
+  documentsHandlers.listDocuments(Number(url.searchParams.get("limit") ?? "50")),
+);
+
 // NOTE: tag query param is handled in handleRequest() below
 addRoute("GET", "/api/documents/pending", () => documentsHandlers.getPendingDocuments());
 
@@ -504,6 +566,13 @@ addRoute("GET", "/api/documents/:id/content", (params) =>
 
 addRoute("GET", "/api/documents/:id/pdf", (params) =>
   documentIdParam(params, "id").pipe(Effect.flatMap(documentsHandlers.getDocumentPdf)),
+);
+
+addRoute("GET", "/api/paperless/capabilities", () =>
+  Effect.gen(function* () {
+    const paperless = yield* PaperlessService;
+    return paperless.capability.descriptor;
+  }),
 );
 
 addRoute("POST", "/api/documents/:id/cleanup-tags", (params, body) => {
@@ -553,9 +622,7 @@ addRoute("POST", "/api/processing/:docId/release-lock", (params, body) => {
     docId: documentIdParam(params, "docId"),
     request: bodySchema(LockReleaseBodySchema, body),
   }).pipe(
-    Effect.flatMap(({ docId, request }) =>
-      processingHandlers.releaseDocumentLock(docId, request),
-    ),
+    Effect.flatMap(({ docId, request }) => processingHandlers.releaseDocumentLock(docId, request)),
   );
 });
 
@@ -619,8 +686,129 @@ addRoute("GET", "/api/cases/:caseId", (params) =>
 // Catalog Agent API - /api/catalog
 // ===========================================================================
 
+addRoute("POST", "/api/analysis/runs", (_, body) =>
+  withAnalysisCommandHandlers((handlers) => handlers.startAnalysis(body)),
+);
+
+addRoute("GET", "/api/analysis/runs", (_, __, url) =>
+  analysisQueryHandlers.listAnalysisRuns(queryRequest(url)),
+);
+
+addRoute("GET", "/api/analysis/runs/:runId", (params) =>
+  analysisQueryHandlers.getAnalysisRun(routeParam(params, "runId")),
+);
+
+addRoute("GET", "/api/analysis/runs/:runId/progress", (params) =>
+  Effect.succeed({
+    status: 503,
+    error: "SSE endpoint",
+    code: "CAPABILITY_UNAVAILABLE",
+    message: `Analysis progress for ${routeParam(params, "runId")} is served by the HTTP SSE runtime.`,
+  }),
+);
+
+addRoute("GET", "/api/analysis/runs/:runId/proposals", (params, _, url) =>
+  analysisQueryHandlers.listAnalysisProposals(routeParam(params, "runId"), queryRequest(url)),
+);
+
+addRoute("POST", "/api/analysis/runs/:runId/apply", (params, body) =>
+  withAnalysisCommandHandlers((handlers) =>
+    handlers.applyAnalysisRun(routeParam(params, "runId"), body),
+  ),
+);
+
+addRoute("POST", "/api/analysis/runs/:runId/reject", (params, body) =>
+  withAnalysisCommandHandlers((handlers) =>
+    handlers.rejectAnalysisRun(routeParam(params, "runId"), body),
+  ),
+);
+
+addRoute("POST", "/api/analysis/runs/:runId/retry", (params, body) =>
+  withAnalysisCommandHandlers((handlers) =>
+    handlers.retryAnalysisRun(routeParam(params, "runId"), body),
+  ),
+);
+
+addRoute("POST", "/api/analysis/runs/:runId/cancel", (params, body) =>
+  withAnalysisCommandHandlers((handlers) =>
+    handlers.cancelAnalysisRun(routeParam(params, "runId"), body),
+  ),
+);
+
+addRoute("POST", "/api/analysis/runs/:runId/force-ocr", (params, body) =>
+  withAnalysisCommandHandlers((handlers) =>
+    handlers.forceOcrAnalysisRun(routeParam(params, "runId"), body),
+  ),
+);
+
+addRoute("GET", "/api/analysis/review", (_, __, url) =>
+  analysisQueryHandlers.listAnalysisReviewQueue(queryRequest(url)),
+);
+
+addRoute("GET", "/api/analysis/failed", (_, __, url) =>
+  analysisQueryHandlers.listAnalysisFailures(queryRequest(url)),
+);
+
+addRoute("POST", "/api/analysis/random-cycle/select", (_, body) =>
+  withAnalysisCommandHandlers((handlers) => handlers.selectRandomCycle(body)),
+);
+
+addRoute("POST", "/api/analysis/random-cycle/reset", (_, body) =>
+  withAnalysisCommandHandlers((handlers) => handlers.resetRandomCycle(body)),
+);
+
 addRoute("POST", "/api/catalog/runs", (_, body) =>
   bodySchema(CatalogRunBodySchema, body).pipe(Effect.flatMap(catalogHandlers.startCatalogRun)),
+);
+
+addRoute("POST", "/api/catalog/epochs", (_, body) =>
+  catalogCommandHandlers.startCatalogOptimization(body),
+);
+
+addRoute("GET", "/api/catalog/epochs", (_, __, url) =>
+  catalogQueryHandlers.listCatalogEpochs(queryRequest(url)),
+);
+
+// Side-effect-free hydration of the current catalog precondition (first-run start).
+addRoute("GET", "/api/catalog/current-hash", (_, __, url) =>
+  catalogQueryHandlers.getCurrentCatalogHash(url.searchParams.getAll("kind")),
+);
+
+addRoute("GET", "/api/catalog/epochs/:epochId", (params) =>
+  catalogQueryHandlers.getCatalogEpoch(routeParam(params, "epochId")),
+);
+
+addRoute("POST", "/api/catalog/epochs/:epochId/cancel", (params, body) =>
+  catalogCommandHandlers.cancelCatalogOptimization(routeParam(params, "epochId"), body),
+);
+
+addRoute("GET", "/api/catalog/epochs/:epochId/events", (params) =>
+  Effect.succeed({
+    status: 503,
+    error: "SSE endpoint",
+    code: "CAPABILITY_UNAVAILABLE",
+    message: `Catalog events for ${routeParam(params, "epochId")} are served by the HTTP SSE runtime.`,
+  }),
+);
+
+addRoute("GET", "/api/catalog/epochs/:epochId/candidates", (params, _, url) =>
+  catalogQueryHandlers.listCatalogCandidates(routeParam(params, "epochId"), queryRequest(url)),
+);
+
+addRoute("GET", "/api/catalog/epochs/:epochId/evidence", (params, _, url) =>
+  catalogQueryHandlers.listCatalogEvidence(routeParam(params, "epochId"), queryRequest(url)),
+);
+
+addRoute("GET", "/api/catalog/epochs/:epochId/proposals", (params, _, url) =>
+  catalogQueryHandlers.listCatalogProposals(routeParam(params, "epochId"), queryRequest(url)),
+);
+
+addRoute("POST", "/api/catalog/proposals/:proposalId/approve", (params, body) =>
+  catalogCommandHandlers.approveCatalogProposal(routeParam(params, "proposalId"), body),
+);
+
+addRoute("POST", "/api/catalog/proposals/:proposalId/reject", (params, body) =>
+  catalogCommandHandlers.rejectCatalogProposal(routeParam(params, "proposalId"), body),
 );
 
 addRoute("GET", "/api/catalog/runs", () => catalogHandlers.listCatalogRuns);
@@ -639,8 +827,14 @@ addRoute("POST", "/api/catalog/proposals/:proposalId/decision", (params, body) =
   ),
 );
 
-addRoute("POST", "/api/catalog/proposals/:proposalId/apply", (params) =>
-  catalogHandlers.applyCatalogProposal(routeParam(params, "proposalId")),
+addRoute("POST", "/api/catalog/proposals/:proposalId/apply", (params, body) =>
+  isCatalogApplyCommandBody(body)
+    ? catalogCommandHandlers.applyCatalogProposal(routeParam(params, "proposalId"), body)
+    : catalogHandlers.applyCatalogProposal(routeParam(params, "proposalId")),
+);
+
+addRoute("GET", "/api/catalog/proposals/:proposalId/apply-journal", (params) =>
+  catalogQueryHandlers.getCatalogApplyJournal(routeParam(params, "proposalId")),
 );
 
 addRoute("GET", "/api/catalog/logs", () => catalogHandlers.getCatalogLogs());
@@ -858,9 +1052,11 @@ export const handleRequest = (
   if (path === "/api/search") {
     const parsedLimit = Number.parseInt(url.searchParams.get("limit") ?? "10", 10);
     const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 100) : 10;
-    return parseWithSchema(SearchQuerySchema, url.searchParams.get("q") ?? "", "query parameter 'q'").pipe(
-      Effect.flatMap((q) => searchHandlers.searchDocuments(q, limit)),
-    );
+    return parseWithSchema(
+      SearchQuerySchema,
+      url.searchParams.get("q") ?? "",
+      "query parameter 'q'",
+    ).pipe(Effect.flatMap((q) => searchHandlers.searchDocuments(q, limit)));
   }
 
   if (path === "/api/cases" && method === "GET") {
@@ -886,5 +1082,5 @@ export const handleRequest = (
     );
   }
 
-  return match.handler(match.params, body);
+  return match.handler(match.params, body, url);
 };

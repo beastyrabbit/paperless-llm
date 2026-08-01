@@ -1,6 +1,7 @@
 export interface Settings {
   paperless_url: string;
   paperless_external_url: string;
+  paperless_token_configured: boolean;
   paperless_connected: boolean;
   ollama_url: string;
   ollama_model: string;
@@ -11,8 +12,8 @@ export interface Settings {
   openai_cli_reasoning_effort: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   openai_cli_fast_mode: boolean;
   openai_cli_scope: "chat" | "full_pipeline" | "catalog" | "all";
-  mistral_api_key?: string | null;
-  mistral_api_key_configured?: boolean;
+  mistral_api_key_configured: boolean;
+  mistral_model: string;
   qdrant_url: string;
   qdrant_collection: string;
   auto_processing_enabled: boolean;
@@ -65,7 +66,7 @@ export type OverallHealth = "healthy" | "unhealthy";
 
 export interface HealthDependency {
   status: HealthDependencyStatus;
-  required: true;
+  required: boolean;
   durationMs: number;
   message?: string;
 }

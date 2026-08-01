@@ -12,6 +12,14 @@ import { NotFoundError, ValidationError } from "./errors/index.js";
 import { AppLayer } from "./layers/index.js";
 import { annotateSpan, withServerSpan } from "./observability/tracing.js";
 import {
+  catalogApplyRequestAllowed,
+  cutoverRuntimePlan,
+  isCatalogApplyPath,
+  mutationModeRequestAllowed,
+  scannerOptionsFromConfig,
+} from "./services/cutover/mode.js";
+import { makeAiAnalyseAutomationScanner } from "./services/document-analysis/ai-analyse-automation-scanner.js";
+import {
   AutoProcessingService,
   ConfigService,
   DocumentAuthorizationService,
@@ -19,6 +27,7 @@ import {
   metrics,
   metricsRegistry,
   normalizeMetricPath,
+  OperationalLedgerService,
   PaperlessService,
   QdrantService,
   TagCacheService,
@@ -199,6 +208,8 @@ const setCorsHeaders = (req: IncomingMessage, res: ServerResponse): void => {
 const SSE_STREAM_PATTERN = /^\/api\/processing\/(\d+)\/stream$/;
 const CASE_STREAM_PATTERN = /^\/api\/cases\/document\/(\d+)\/stream$/;
 const CATALOG_STREAM_PATTERN = /^\/api\/catalog\/runs\/([^/]+)\/stream$/;
+const ANALYSIS_PROGRESS_PATTERN = /^\/api\/analysis\/runs\/([^/]+)\/progress$/;
+const CATALOG_EPOCH_EVENTS_PATTERN = /^\/api\/catalog\/epochs\/([^/]+)\/events$/;
 const getApiAuthToken = (): string =>
   process.env["PAPERLESS_LLM_API_TOKEN"] ?? process.env["LOCAL_LLM_API_KEY"] ?? "";
 
@@ -269,6 +280,15 @@ const readOnlyRejection = (requestId: string) => ({
   error: "Read Only Mode",
   message:
     "PAPERLESS_LLM_PROD_READ_ONLY is enabled; mutating API requests are blocked to protect production documents.",
+  requestId,
+});
+
+const mutationModeRejection = (requestId: string) => ({
+  status: 409,
+  error: "Mutation Mode Conflict",
+  code: "STATE_TRANSITION_CONFLICT",
+  message:
+    "The configured cutover mutation mode blocks this mutating endpoint so legacy and Paperless-first writers cannot run together.",
   requestId,
 });
 
@@ -503,6 +523,22 @@ const toHttpError = (error: unknown) => {
       message: notFound.message,
     };
   }
+  if (typeof error === "object" && error !== null && "status" in error && "code" in error) {
+    const typed = error as {
+      readonly status?: unknown;
+      readonly code?: unknown;
+      readonly message?: unknown;
+    };
+    if (typeof typed.status === "number" && typed.status >= 400 && typed.status < 600) {
+      const code = typeof typed.code === "string" ? typed.code : "PROVIDER_FAILURE";
+      return {
+        status: typed.status,
+        error: code,
+        code,
+        message: typeof typed.message === "string" ? typed.message : "Request failed",
+      };
+    }
+  }
   return { status: 500, error: "Internal Server Error", message: String(error) };
 };
 
@@ -517,7 +553,7 @@ export const createHttpServerWithLayer = (
   options: { readonly startBackgroundServices?: boolean } = {},
 ) =>
   Effect.gen(function* () {
-    const startBackgroundServices = options.startBackgroundServices ?? true;
+    const startBackgroundServices = options.startBackgroundServices ?? false;
     // Build a runtime from the AppLayer once, reuse for all requests
     const scope = yield* Scope.make();
     const runtime = yield* Layer.toRuntime(appLayer).pipe(
@@ -530,6 +566,7 @@ export const createHttpServerWithLayer = (
       Runtime.runPromise(runtime)(effect as Effect.Effect<A, never, never>);
 
     const configService = yield* Effect.promise(() => runWithRuntime(ConfigService));
+    const runtimePlan = cutoverRuntimePlan(configService.config.cutover);
     const rateLimitConfig = configService.config.http ?? {
       rateLimitEnabled: true,
       rateLimitWindowMs: 60_000,
@@ -537,6 +574,7 @@ export const createHttpServerWithLayer = (
       rateLimitTrustProxy: false,
     };
     const checkRateLimit = createRateLimiter(rateLimitConfig);
+    let stopPaperlessFirstScanner: (() => Promise<void>) | null = null;
 
     // Helper to run stream and pipe to SSE response
     const handleSSEStream = async (
@@ -882,6 +920,16 @@ export const createHttpServerWithLayer = (
         return;
       }
 
+      if (!mutationModeRequestAllowed(runtimePlan.mutationMode, req.method, url.pathname)) {
+        requestLogger.warn("mutation_mode_request_blocked", {
+          mutationMode: runtimePlan.mutationMode,
+        });
+        res.setHeader("Content-Type", "application/json");
+        res.writeHead(409);
+        res.end(JSON.stringify(mutationModeRejection(requestId)));
+        return;
+      }
+
       if (url.pathname === "/api/docs" && req.method === "GET") {
         if (isApiDocsEnabled()) {
           writeApiDocsResponse(res);
@@ -896,6 +944,8 @@ export const createHttpServerWithLayer = (
       const sseMatch = url.pathname.match(SSE_STREAM_PATTERN);
       const caseStreamMatch = url.pathname.match(CASE_STREAM_PATTERN);
       const catalogStreamMatch = url.pathname.match(CATALOG_STREAM_PATTERN);
+      const analysisProgressMatch = url.pathname.match(ANALYSIS_PROGRESS_PATTERN);
+      const catalogEpochEventsMatch = url.pathname.match(CATALOG_EPOCH_EVENTS_PATTERN);
       if (sseMatch && req.method === "GET") {
         const docId = parseDocumentIdString(sseMatch[1] ?? "");
         if (docId === null) {
@@ -1081,10 +1131,131 @@ export const createHttpServerWithLayer = (
         }
         return;
       }
+      if (analysisProgressMatch && req.method === "GET") {
+        const runId = decodeURIComponent(analysisProgressMatch[1] ?? "");
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.writeHead(200);
+        const { signal, cleanup } = createSseCloseSignal(req, res);
+        try {
+          while (!signal.aborted) {
+            const payload = await runEffectWithAbort(
+              runtime,
+              Effect.gen(function* () {
+                const ledger = yield* OperationalLedgerService;
+                const snapshot = yield* ledger.getSnapshot();
+                return {
+                  event: "analysis.run.state",
+                  runId,
+                  run: snapshot.analysisRuns[runId] ?? null,
+                  timestamp: new Date().toISOString(),
+                };
+              }).pipe(
+                Effect.tap(() => annotateHttpSpan(res.statusCode, Date.now() - startedAt)),
+                Effect.tapError((error) =>
+                  annotateHttpSpan(res.statusCode, Date.now() - startedAt, error),
+                ),
+                withServerSpan("http.sse.analysis", {
+                  "request.id": requestId,
+                  "http.request.method": req.method?.toUpperCase() ?? "UNKNOWN",
+                  "http.route": "/api/analysis/runs/:runId/progress",
+                  "url.path": "/api/analysis/runs/:runId/progress",
+                  "paperless.stream.kind": "analysis",
+                  "paperless.analysis.run_id.length": runId.length,
+                }),
+              ),
+              signal,
+            );
+            if (signal.aborted) break;
+            writeSseData(res, signal, payload);
+            writeSseKeepAlive(res, signal);
+            await abortableDelay(2000, signal);
+          }
+        } catch (error) {
+          if (!signal.aborted) {
+            writeSseData(res, signal, {
+              event: "analysis.failure",
+              runId,
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+        } finally {
+          cleanup();
+          endSseResponse(res);
+        }
+        return;
+      }
+      if (catalogEpochEventsMatch && req.method === "GET") {
+        const epochId = decodeURIComponent(catalogEpochEventsMatch[1] ?? "");
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.writeHead(200);
+        const { signal, cleanup } = createSseCloseSignal(req, res);
+        try {
+          while (!signal.aborted) {
+            const payload = await runEffectWithAbort(
+              runtime,
+              Effect.gen(function* () {
+                const ledger = yield* OperationalLedgerService;
+                const snapshot = yield* ledger.getSnapshot();
+                return {
+                  event: "catalog.epoch.state",
+                  epochId,
+                  epoch: snapshot.catalogEpochs[epochId] ?? null,
+                  timestamp: new Date().toISOString(),
+                };
+              }).pipe(
+                Effect.tap(() => annotateHttpSpan(res.statusCode, Date.now() - startedAt)),
+                Effect.tapError((error) =>
+                  annotateHttpSpan(res.statusCode, Date.now() - startedAt, error),
+                ),
+                withServerSpan("http.sse.catalog_epoch", {
+                  "request.id": requestId,
+                  "http.request.method": req.method?.toUpperCase() ?? "UNKNOWN",
+                  "http.route": "/api/catalog/epochs/:epochId/events",
+                  "url.path": "/api/catalog/epochs/:epochId/events",
+                  "paperless.stream.kind": "catalog_epoch",
+                  "paperless.catalog.epoch_id.length": epochId.length,
+                }),
+              ),
+              signal,
+            );
+            if (signal.aborted) break;
+            writeSseData(res, signal, payload);
+            writeSseKeepAlive(res, signal);
+            await abortableDelay(2000, signal);
+          }
+        } catch (error) {
+          if (!signal.aborted) {
+            writeSseData(res, signal, {
+              event: "catalog.failure",
+              epochId,
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+        } finally {
+          cleanup();
+          endSseResponse(res);
+        }
+        return;
+      }
 
       try {
         const body = await parseBody(req);
-
+        if (
+          isCatalogApplyPath(req.method, url.pathname) &&
+          !catalogApplyRequestAllowed(runtimePlan.mutationMode, body)
+        ) {
+          requestLogger.warn("mutation_mode_catalog_apply_body_blocked", {
+            mutationMode: runtimePlan.mutationMode,
+          });
+          res.setHeader("Content-Type", "application/json");
+          res.writeHead(409);
+          res.end(JSON.stringify(mutationModeRejection(requestId)));
+          return;
+        }
         const effect = pipe(
           handleRequest(req, res, body),
           Effect.either,
@@ -1210,21 +1381,53 @@ export const createHttpServerWithLayer = (
         serverLogger.warn("qdrant_service_initialization_failed", { error: e });
       });
 
-      // Start Auto Processing Service on startup
-      runWithRuntime(
-        Effect.gen(function* () {
-          const autoProcessing = yield* AutoProcessingService;
-          yield* autoProcessing.start().pipe(
-            Effect.tap(() => Effect.sync(() => serverLogger.info("auto_processing_initialized"))),
-            Effect.catchAll((e) => {
-              serverLogger.warn("auto_processing_initialization_failed", { error: e });
-              return Effect.void;
-            }),
-          );
-        }),
-      ).catch((e) => {
-        serverLogger.warn("auto_processing_service_initialization_failed", { error: e });
-      });
+      if (runtimePlan.startLegacyWorker) {
+        runWithRuntime(
+          Effect.gen(function* () {
+            const autoProcessing = yield* AutoProcessingService;
+            yield* autoProcessing.start().pipe(
+              Effect.tap(() => Effect.sync(() => serverLogger.info("auto_processing_initialized"))),
+              Effect.catchAll((e) => {
+                serverLogger.warn("auto_processing_initialization_failed", { error: e });
+                return Effect.void;
+              }),
+            );
+          }),
+        ).catch((e) => {
+          serverLogger.warn("auto_processing_service_initialization_failed", { error: e });
+        });
+      } else {
+        serverLogger.info("auto_processing_initialization_skipped_mutation_mode", {
+          mutationMode: runtimePlan.mutationMode,
+        });
+      }
+
+      if (runtimePlan.startPaperlessFirstScanner) {
+        runWithRuntime(
+          Effect.gen(function* () {
+            const currentConfig = yield* ConfigService;
+            const scanner = yield* makeAiAnalyseAutomationScanner(
+              scannerOptionsFromConfig(currentConfig.config.cutover, {
+                configuredCustomFieldIds: [],
+                systemTagIds: [],
+                parentTagIds: [],
+                workflowTagIds: [],
+                aiAnalyseTagId: currentConfig.config.cutover.scanner.aiAnalyseTagId,
+              }),
+            );
+            yield* scanner.start();
+            stopPaperlessFirstScanner = () =>
+              runWithRuntime(scanner.stop() as Effect.Effect<void, unknown, unknown>);
+          }),
+        ).catch((e) => {
+          serverLogger.warn("ai_analyse_scanner_initialization_failed", { error: e });
+        });
+      } else {
+        serverLogger.info("ai_analyse_scanner_initialization_skipped_mutation_mode", {
+          mutationMode: runtimePlan.mutationMode,
+          scannerScope: runtimePlan.scannerScope,
+        });
+      }
     }
 
     server.listen(port, host, () => {
@@ -1242,9 +1445,12 @@ export const createHttpServerWithLayer = (
       ).catch(() => {
         // Ignore errors during shutdown
       });
+      stopPaperlessFirstScanner?.().catch(() => {
+        // Ignore errors during shutdown
+      });
       server.close();
     };
   });
 
 export const createHttpServer = (port: number, host = "127.0.0.1") =>
-  createHttpServerWithLayer(port, host);
+  createHttpServerWithLayer(port, host, AppLayer, { startBackgroundServices: true });

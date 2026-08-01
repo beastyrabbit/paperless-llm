@@ -1,7 +1,73 @@
 import { JSONSchema, type Schema } from "effect";
 import {
-  BlockSuggestionBodySchema,
+  AnalysisActionAcceptedSchema,
+  AnalysisAvailableProposalProjectionSchema,
+  AnalysisAvailableProposalSchema,
+  AnalysisCancelBodySchema,
+  AnalysisDecisionBodySchema,
+  AnalysisExpiredProposalSchema,
+  AnalysisFailureQueuePageSchema,
+  AnalysisForceOcrBodySchema,
+  AnalysisProposalApplyAcceptedSchema,
+  AnalysisProposalApplyBodySchema,
+  AnalysisProposalPageSchema,
+  AnalysisRetryBodySchema,
+  AnalysisReviewQueuePageSchema,
+  AnalysisRunAcceptedSchema,
+  AnalysisRunListQuerySchema,
+  AnalysisRunPageSchema,
+  AnalysisRunSchema,
+  AnalysisRunStartBodySchema,
+  AnalysisSseEventSchema,
+  RandomCycleResetBodySchema,
+  RandomCycleSelectAcceptedSchema,
+  RandomCycleSelectBodySchema,
+} from "./analysis-contracts.js";
+import {
+  ApplyJournalSchema,
+  CatalogActionAcceptedSchema,
+  CatalogApplyAcceptedSchema,
+  CatalogApplyBodySchema,
+  CatalogCancelBodySchema,
+  CatalogCandidatePageSchema,
+  CatalogCurrentHashSchema,
+  CatalogEpochAcceptedSchema,
+  CatalogEpochListQuerySchema,
+  CatalogEpochPageSchema,
+  CatalogEpochSchema,
+  CatalogEpochStartBodySchema,
+  CatalogProposalApplyProjectionSchema,
+  CatalogProposalDecisionBodySchema,
+  CatalogProposalDecisionProjectionSchema,
+  CatalogProposalEvidenceAvailableSchema,
+  CatalogProposalEvidenceExpiredSchema,
+  CatalogProposalPageSchema,
+  CatalogSseEventSchema,
+  CompactChairDecisionLedgerContractSchema,
+  CouncilEvidencePageSchema,
+} from "./catalog-contracts.js";
+import {
+  ApiErrorSchema,
+  ApiValidationIssueSchema,
+  ProviderMalformedErrorSchema,
+  StalePreconditionErrorSchema,
+  TypedApiErrorSchema,
+  UnavailableErrorSchema,
+} from "./errors.js";
+import { HealthResponseSchema } from "./health-schemas.js";
+import {
+  PaperlessBulkOperationRequestSchema,
+  PaperlessCapabilityDescriptorSchema,
+  PaperlessContentRefSchema,
+  PaperlessDocumentPageSchema,
+  PaperlessDocumentSnapshotSchema,
+  PaperlessMutationRereadSchema,
+  PaperlessNoteRefSchema,
+  PaperlessTaskSchema,
+} from "./paperless-capability-contract.js";
+import {
   ApprovePendingBodySchema,
+  BlockSuggestionBodySchema,
   BootstrapSkipBodySchema,
   BootstrapStartBodySchema,
   BulkIngestBodySchema,
@@ -9,16 +75,16 @@ import {
   BulkPendingBodySchema,
   CaseAnswerBodySchema,
   CaseRunBodySchema,
-  CatalogDecisionBodySchema,
   CatalogRunBodySchema,
   ChatBodySchema,
   CleanupApproveBodySchema,
   CleanupTagsBodySchema,
   CustomFieldBulkUpdateBodySchema,
   CustomFieldUpdateBodySchema,
+  CatalogDecisionBodySchema as LegacyCatalogDecisionBodySchema,
+  LockReleaseBodySchema,
   MergePendingBodySchema,
   PendingBlockedSuggestionBodySchema,
-  LockReleaseBodySchema,
   ProcessingCancelBodySchema,
   ProcessingStartBodySchema,
   RejectPendingBodySchema,
@@ -37,13 +103,23 @@ import {
   TranslationClearBodySchema,
   WorkflowTagsBodySchema,
 } from "./request-schemas.js";
-import { ApiErrorSchema, ApiValidationIssueSchema } from "./errors.js";
-import { HealthResponseSchema } from "./health-schemas.js";
+import { StorageArtifactEnvelopeSchema, StorageLedgerEntrySchema } from "./storage-contracts.js";
+import {
+  CodexChairStructuredOutputSchema,
+  CodexDocumentStructuredOutputSchema,
+  CodexReviewerStructuredOutputSchema,
+} from "./structured-output-contracts.js";
+import { SystemReadinessSchema } from "./system-contracts.js";
 
 export const apiContractSchemas = {
   ApiValidationIssue: ApiValidationIssueSchema,
   ApiError: ApiErrorSchema,
+  TypedApiError: TypedApiErrorSchema,
+  StalePreconditionError: StalePreconditionErrorSchema,
+  ProviderMalformedError: ProviderMalformedErrorSchema,
+  UnavailableError: UnavailableErrorSchema,
   HealthResponse: HealthResponseSchema,
+  SystemReadiness: SystemReadinessSchema,
   SettingsUpdateBody: SettingsUpdateBodySchema,
   WorkflowTagsBody: WorkflowTagsBodySchema,
   MergePendingBody: MergePendingBodySchema,
@@ -68,7 +144,7 @@ export const apiContractSchemas = {
   CaseRunBody: CaseRunBodySchema,
   CaseAnswerBody: CaseAnswerBodySchema,
   CatalogRunBody: CatalogRunBodySchema,
-  CatalogDecisionBody: CatalogDecisionBodySchema,
+  CatalogDecisionBody: LegacyCatalogDecisionBodySchema,
   TagUpdateBody: TagUpdateBodySchema,
   TagBulkUpdateBody: TagBulkUpdateBodySchema,
   TagTranslationBody: TagTranslationBodySchema,
@@ -80,6 +156,62 @@ export const apiContractSchemas = {
   TranslateBody: TranslateBodySchema,
   TranslationClearBody: TranslationClearBodySchema,
   ChatBody: ChatBodySchema,
+  AnalysisRunStartBody: AnalysisRunStartBodySchema,
+  AnalysisRunAccepted: AnalysisRunAcceptedSchema,
+  AnalysisRun: AnalysisRunSchema,
+  AnalysisRunListQuery: AnalysisRunListQuerySchema,
+  AnalysisRunPage: AnalysisRunPageSchema,
+  AnalysisAvailableProposal: AnalysisAvailableProposalSchema,
+  AnalysisAvailableProposalProjection: AnalysisAvailableProposalProjectionSchema,
+  AnalysisExpiredProposal: AnalysisExpiredProposalSchema,
+  AnalysisProposalPage: AnalysisProposalPageSchema,
+  AnalysisReviewQueuePage: AnalysisReviewQueuePageSchema,
+  AnalysisFailureQueuePage: AnalysisFailureQueuePageSchema,
+  AnalysisDecisionBody: AnalysisDecisionBodySchema,
+  AnalysisRetryBody: AnalysisRetryBodySchema,
+  AnalysisCancelBody: AnalysisCancelBodySchema,
+  AnalysisForceOcrBody: AnalysisForceOcrBodySchema,
+  AnalysisActionAccepted: AnalysisActionAcceptedSchema,
+  AnalysisProposalApplyBody: AnalysisProposalApplyBodySchema,
+  AnalysisProposalApplyAccepted: AnalysisProposalApplyAcceptedSchema,
+  AnalysisSseEvent: AnalysisSseEventSchema,
+  RandomCycleSelectBody: RandomCycleSelectBodySchema,
+  RandomCycleResetBody: RandomCycleResetBodySchema,
+  RandomCycleSelectAccepted: RandomCycleSelectAcceptedSchema,
+  CatalogEpochStartBody: CatalogEpochStartBodySchema,
+  CatalogEpochAccepted: CatalogEpochAcceptedSchema,
+  CatalogEpoch: CatalogEpochSchema,
+  CatalogEpochListQuery: CatalogEpochListQuerySchema,
+  CatalogEpochPage: CatalogEpochPageSchema,
+  CatalogCurrentHash: CatalogCurrentHashSchema,
+  CatalogCandidatePage: CatalogCandidatePageSchema,
+  CouncilEvidencePage: CouncilEvidencePageSchema,
+  CompactChairDecisionLedgerContract: CompactChairDecisionLedgerContractSchema,
+  CatalogProposalEvidenceAvailable: CatalogProposalEvidenceAvailableSchema,
+  CatalogProposalEvidenceExpired: CatalogProposalEvidenceExpiredSchema,
+  CatalogProposalDecisionProjection: CatalogProposalDecisionProjectionSchema,
+  CatalogProposalApplyProjection: CatalogProposalApplyProjectionSchema,
+  CatalogProposalPage: CatalogProposalPageSchema,
+  CatalogProposalDecisionBody: CatalogProposalDecisionBodySchema,
+  CatalogCancelBody: CatalogCancelBodySchema,
+  CatalogApplyBody: CatalogApplyBodySchema,
+  CatalogActionAccepted: CatalogActionAcceptedSchema,
+  CatalogApplyAccepted: CatalogApplyAcceptedSchema,
+  ApplyJournal: ApplyJournalSchema,
+  CatalogSseEvent: CatalogSseEventSchema,
+  StorageArtifactEnvelope: StorageArtifactEnvelopeSchema,
+  StorageLedgerEntry: StorageLedgerEntrySchema,
+  PaperlessCapabilityDescriptor: PaperlessCapabilityDescriptorSchema,
+  PaperlessDocumentSnapshot: PaperlessDocumentSnapshotSchema,
+  PaperlessDocumentPage: PaperlessDocumentPageSchema,
+  PaperlessContentRef: PaperlessContentRefSchema,
+  PaperlessBulkOperationRequest: PaperlessBulkOperationRequestSchema,
+  PaperlessTask: PaperlessTaskSchema,
+  PaperlessNoteRef: PaperlessNoteRefSchema,
+  PaperlessMutationReread: PaperlessMutationRereadSchema,
+  CodexDocumentStructuredOutput: CodexDocumentStructuredOutputSchema,
+  CodexReviewerStructuredOutput: CodexReviewerStructuredOutputSchema,
+  CodexChairStructuredOutput: CodexChairStructuredOutputSchema,
 } as const;
 
 export type ApiContractSchemaName = keyof typeof apiContractSchemas;
@@ -99,12 +231,32 @@ export interface ApiRouteContract {
   requestBody?: ApiContractSchemaName;
   responseBody?: ApiContractSchemaName;
   response?: string;
-  additionalResponses?: Record<number, { description: string; responseBody?: ApiContractSchemaName }>;
+  successStatus?: 200 | 202;
+  responseContentType?: "application/json" | "text/event-stream";
+  additionalResponses?: Record<
+    number,
+    { description: string; responseBody?: ApiContractSchemaName }
+  >;
   summary?: string;
   tags?: string[];
   operationId?: string;
   queryParameters?: ApiRouteParameter[];
 }
+
+const paperlessFirstErrorResponses = {
+  409: {
+    description: "Stale hash precondition or conflicting compare-and-set state transition",
+    responseBody: "StalePreconditionError",
+  },
+  502: {
+    description: "Provider returned malformed structured output or failed after retries",
+    responseBody: "ProviderMalformedError",
+  },
+  503: {
+    description: "Paperless, storage, or provider dependency unavailable",
+    responseBody: "UnavailableError",
+  },
+} as const satisfies ApiRouteContract["additionalResponses"];
 
 export const apiRouteContracts: ApiRouteContract[] = [
   { method: "GET", path: "/", summary: "Backend service metadata", tags: ["system"] },
@@ -121,6 +273,13 @@ export const apiRouteContracts: ApiRouteContract[] = [
         responseBody: "HealthResponse",
       },
     },
+  },
+  {
+    method: "GET",
+    path: "/api/system/readiness",
+    summary: "Describe Paperless-first runtime and local tool readiness",
+    tags: ["system"],
+    responseBody: "SystemReadiness",
   },
   { method: "GET", path: "/openapi.json", summary: "Generated OpenAPI document", tags: ["system"] },
   { method: "GET", path: "/api/settings", summary: "Get settings", tags: ["settings"] },
@@ -444,6 +603,20 @@ export const apiRouteContracts: ApiRouteContract[] = [
   },
   {
     method: "GET",
+    path: "/api/documents",
+    summary: "List current Paperless documents",
+    tags: ["documents"],
+    queryParameters: [
+      {
+        name: "limit",
+        in: "query",
+        required: false,
+        schema: { type: "integer", minimum: 1, maximum: 250 },
+      },
+    ],
+  },
+  {
+    method: "GET",
     path: "/api/documents/pending",
     summary: "Get documents pending",
     tags: ["documents"],
@@ -469,6 +642,81 @@ export const apiRouteContracts: ApiRouteContract[] = [
     path: "/api/documents/{id}/pdf",
     summary: "Get documents id pdf",
     tags: ["documents"],
+  },
+  {
+    method: "GET",
+    path: "/api/paperless/capabilities",
+    summary: "Describe required Paperless integration capabilities",
+    tags: ["paperless"],
+    responseBody: "PaperlessCapabilityDescriptor",
+  },
+  {
+    method: "GET",
+    path: "/api/paperless/documents",
+    summary: "List Paperless document snapshots with full cursor pagination",
+    tags: ["paperless"],
+    responseBody: "PaperlessDocumentPage",
+    queryParameters: [
+      {
+        name: "cursor",
+        in: "query",
+        required: false,
+        schema: { type: "string" },
+        description: "Opaque pagination cursor",
+      },
+      {
+        name: "limit",
+        in: "query",
+        required: false,
+        schema: { type: "integer", minimum: 1, maximum: 250 },
+        description: "Maximum documents to return",
+      },
+    ],
+  },
+  {
+    method: "GET",
+    path: "/api/paperless/documents/{docId}/snapshot",
+    summary: "Reread a Paperless document state snapshot after mutations",
+    tags: ["paperless"],
+    responseBody: "PaperlessDocumentSnapshot",
+  },
+  {
+    method: "GET",
+    path: "/api/paperless/documents/{docId}/original",
+    summary: "Fetch content-addressed original document content reference",
+    tags: ["paperless"],
+    responseBody: "PaperlessContentRef",
+  },
+  {
+    method: "GET",
+    path: "/api/paperless/documents/{docId}/versions/{versionId}/content",
+    summary: "Fetch content-addressed version document content reference",
+    tags: ["paperless"],
+    responseBody: "PaperlessContentRef",
+  },
+  {
+    method: "POST",
+    path: "/api/paperless/bulk-operations",
+    requestBody: "PaperlessBulkOperationRequest",
+    responseBody: "PaperlessTask",
+    successStatus: 202,
+    summary: "Submit a conditional Paperless bulk operation",
+    tags: ["paperless"],
+    additionalResponses: paperlessFirstErrorResponses,
+  },
+  {
+    method: "GET",
+    path: "/api/paperless/tasks/{taskId}",
+    summary: "Poll a Paperless task",
+    tags: ["paperless"],
+    responseBody: "PaperlessTask",
+  },
+  {
+    method: "GET",
+    path: "/api/paperless/documents/{docId}/notes/{noteId}",
+    summary: "Fetch content-addressed Paperless note reference",
+    tags: ["paperless"],
+    responseBody: "PaperlessNoteRef",
   },
   {
     method: "POST",
@@ -547,6 +795,167 @@ export const apiRouteContracts: ApiRouteContract[] = [
     tags: ["processing"],
   },
   {
+    method: "POST",
+    path: "/api/analysis/runs",
+    requestBody: "AnalysisRunStartBody",
+    responseBody: "AnalysisRunAccepted",
+    successStatus: 202,
+    summary: "Start a Paperless-first document analysis run",
+    tags: ["analysis"],
+    additionalResponses: paperlessFirstErrorResponses,
+  },
+  {
+    method: "GET",
+    path: "/api/analysis/runs",
+    responseBody: "AnalysisRunPage",
+    summary: "List document analysis runs",
+    tags: ["analysis"],
+    queryParameters: [
+      { name: "cursor", in: "query", required: false, schema: { type: "string" } },
+      {
+        name: "limit",
+        in: "query",
+        required: false,
+        schema: { type: "integer", minimum: 1, maximum: 250 },
+      },
+      { name: "state", in: "query", required: false, schema: { type: "string" } },
+      { name: "documentId", in: "query", required: false, schema: { type: "integer", minimum: 1 } },
+    ],
+  },
+  {
+    method: "GET",
+    path: "/api/analysis/runs/{runId}",
+    responseBody: "AnalysisRun",
+    summary: "Get a document analysis run",
+    tags: ["analysis"],
+  },
+  {
+    method: "GET",
+    path: "/api/analysis/runs/{runId}/progress",
+    responseBody: "AnalysisSseEvent",
+    responseContentType: "text/event-stream",
+    summary: "Stream document analysis run progress",
+    tags: ["analysis"],
+  },
+  {
+    method: "GET",
+    path: "/api/analysis/runs/{runId}/proposals",
+    responseBody: "AnalysisProposalPage",
+    summary: "List proposals for a document analysis run",
+    tags: ["analysis"],
+    queryParameters: [
+      { name: "cursor", in: "query", required: false, schema: { type: "string" } },
+      {
+        name: "limit",
+        in: "query",
+        required: false,
+        schema: { type: "integer", minimum: 1, maximum: 250 },
+      },
+    ],
+  },
+  {
+    method: "POST",
+    path: "/api/analysis/runs/{runId}/apply",
+    requestBody: "AnalysisProposalApplyBody",
+    responseBody: "AnalysisProposalApplyAccepted",
+    successStatus: 202,
+    summary: "Apply the whole-bundle analysis proposal",
+    tags: ["analysis"],
+    additionalResponses: paperlessFirstErrorResponses,
+  },
+  {
+    method: "POST",
+    path: "/api/analysis/runs/{runId}/reject",
+    requestBody: "AnalysisDecisionBody",
+    responseBody: "AnalysisActionAccepted",
+    successStatus: 202,
+    summary: "Reject a whole-bundle analysis proposal",
+    tags: ["analysis"],
+    additionalResponses: paperlessFirstErrorResponses,
+  },
+  {
+    method: "POST",
+    path: "/api/analysis/runs/{runId}/retry",
+    requestBody: "AnalysisRetryBody",
+    responseBody: "AnalysisActionAccepted",
+    successStatus: 202,
+    summary: "Retry a document analysis run",
+    tags: ["analysis"],
+    additionalResponses: paperlessFirstErrorResponses,
+  },
+  {
+    method: "POST",
+    path: "/api/analysis/runs/{runId}/cancel",
+    requestBody: "AnalysisCancelBody",
+    responseBody: "AnalysisActionAccepted",
+    successStatus: 202,
+    summary: "Cancel a document analysis run",
+    tags: ["analysis"],
+    additionalResponses: paperlessFirstErrorResponses,
+  },
+  {
+    method: "POST",
+    path: "/api/analysis/runs/{runId}/force-ocr",
+    requestBody: "AnalysisForceOcrBody",
+    responseBody: "AnalysisActionAccepted",
+    successStatus: 202,
+    summary: "Request forced OCR for a document analysis run",
+    tags: ["analysis"],
+    additionalResponses: paperlessFirstErrorResponses,
+  },
+  {
+    method: "GET",
+    path: "/api/analysis/review",
+    responseBody: "AnalysisReviewQueuePage",
+    summary: "List analysis proposals waiting for review",
+    tags: ["analysis"],
+    queryParameters: [
+      { name: "cursor", in: "query", required: false, schema: { type: "string" } },
+      {
+        name: "limit",
+        in: "query",
+        required: false,
+        schema: { type: "integer", minimum: 1, maximum: 250 },
+      },
+    ],
+  },
+  {
+    method: "GET",
+    path: "/api/analysis/failed",
+    responseBody: "AnalysisFailureQueuePage",
+    summary: "List failed analysis runs",
+    tags: ["analysis"],
+    queryParameters: [
+      { name: "cursor", in: "query", required: false, schema: { type: "string" } },
+      {
+        name: "limit",
+        in: "query",
+        required: false,
+        schema: { type: "integer", minimum: 1, maximum: 250 },
+      },
+    ],
+  },
+  {
+    method: "POST",
+    path: "/api/analysis/random-cycle/select",
+    requestBody: "RandomCycleSelectBody",
+    responseBody: "RandomCycleSelectAccepted",
+    successStatus: 202,
+    summary: "Select a document from a random analysis cycle",
+    tags: ["analysis"],
+    additionalResponses: paperlessFirstErrorResponses,
+  },
+  {
+    method: "POST",
+    path: "/api/analysis/random-cycle/reset",
+    requestBody: "RandomCycleResetBody",
+    responseBody: "AnalysisActionAccepted",
+    successStatus: 202,
+    summary: "Reset a random analysis cycle",
+    tags: ["analysis"],
+    additionalResponses: paperlessFirstErrorResponses,
+  },
+  {
     method: "GET",
     path: "/api/cases",
     summary: "Get cases",
@@ -595,6 +1004,155 @@ export const apiRouteContracts: ApiRouteContract[] = [
     summary: "Create or run catalog runs",
     tags: ["catalog"],
   },
+  {
+    method: "POST",
+    path: "/api/catalog/epochs",
+    requestBody: "CatalogEpochStartBody",
+    responseBody: "CatalogEpochAccepted",
+    successStatus: 202,
+    summary: "Start a Paperless catalog epoch",
+    tags: ["catalog"],
+    additionalResponses: paperlessFirstErrorResponses,
+  },
+  {
+    method: "GET",
+    path: "/api/catalog/epochs",
+    responseBody: "CatalogEpochPage",
+    summary: "List Paperless catalog epochs",
+    tags: ["catalog"],
+    queryParameters: [
+      { name: "cursor", in: "query", required: false, schema: { type: "string" } },
+      {
+        name: "limit",
+        in: "query",
+        required: false,
+        schema: { type: "integer", minimum: 1, maximum: 250 },
+      },
+      { name: "state", in: "query", required: false, schema: { type: "string" } },
+      { name: "kind", in: "query", required: false, schema: { type: "string" } },
+    ],
+  },
+  {
+    method: "GET",
+    path: "/api/catalog/current-hash",
+    responseBody: "CatalogCurrentHash",
+    summary: "Observe the current Paperless catalog precondition hash (first-run epoch start)",
+    tags: ["catalog"],
+    queryParameters: [
+      { name: "kind", in: "query", required: true, schema: { type: "string" } },
+    ],
+    additionalResponses: paperlessFirstErrorResponses,
+  },
+  {
+    method: "GET",
+    path: "/api/catalog/epochs/{epochId}",
+    responseBody: "CatalogEpoch",
+    summary: "Get a Paperless catalog epoch",
+    tags: ["catalog"],
+  },
+  {
+    method: "POST",
+    path: "/api/catalog/epochs/{epochId}/cancel",
+    requestBody: "CatalogCancelBody",
+    responseBody: "CatalogActionAccepted",
+    successStatus: 202,
+    summary: "Cancel a Paperless catalog epoch",
+    tags: ["catalog"],
+    additionalResponses: paperlessFirstErrorResponses,
+  },
+  {
+    method: "GET",
+    path: "/api/catalog/epochs/{epochId}/events",
+    responseBody: "CatalogSseEvent",
+    responseContentType: "text/event-stream",
+    summary: "Stream catalog epoch events",
+    tags: ["catalog"],
+  },
+  {
+    method: "GET",
+    path: "/api/catalog/epochs/{epochId}/candidates",
+    responseBody: "CatalogCandidatePage",
+    summary: "List catalog candidates for an epoch",
+    tags: ["catalog"],
+    queryParameters: [
+      { name: "cursor", in: "query", required: false, schema: { type: "string" } },
+      {
+        name: "limit",
+        in: "query",
+        required: false,
+        schema: { type: "integer", minimum: 1, maximum: 250 },
+      },
+    ],
+  },
+  {
+    method: "GET",
+    path: "/api/catalog/epochs/{epochId}/evidence",
+    responseBody: "CouncilEvidencePage",
+    summary: "List council evidence for a catalog epoch",
+    tags: ["catalog"],
+    queryParameters: [
+      { name: "cursor", in: "query", required: false, schema: { type: "string" } },
+      {
+        name: "limit",
+        in: "query",
+        required: false,
+        schema: { type: "integer", minimum: 1, maximum: 250 },
+      },
+    ],
+  },
+  {
+    method: "GET",
+    path: "/api/catalog/epochs/{epochId}/proposals",
+    responseBody: "CatalogProposalPage",
+    summary: "List catalog proposals for an epoch",
+    tags: ["catalog"],
+    queryParameters: [
+      { name: "cursor", in: "query", required: false, schema: { type: "string" } },
+      {
+        name: "limit",
+        in: "query",
+        required: false,
+        schema: { type: "integer", minimum: 1, maximum: 250 },
+      },
+    ],
+  },
+  {
+    method: "POST",
+    path: "/api/catalog/proposals/{proposalId}/approve",
+    requestBody: "CatalogProposalDecisionBody",
+    responseBody: "CatalogActionAccepted",
+    successStatus: 202,
+    summary: "Approve a catalog proposal",
+    tags: ["catalog"],
+    additionalResponses: paperlessFirstErrorResponses,
+  },
+  {
+    method: "POST",
+    path: "/api/catalog/proposals/{proposalId}/reject",
+    requestBody: "CatalogProposalDecisionBody",
+    responseBody: "CatalogActionAccepted",
+    successStatus: 202,
+    summary: "Reject a catalog proposal",
+    tags: ["catalog"],
+    additionalResponses: paperlessFirstErrorResponses,
+  },
+  {
+    method: "POST",
+    path: "/api/catalog/proposals/{proposalId}/apply",
+    requestBody: "CatalogApplyBody",
+    responseBody: "CatalogApplyAccepted",
+    successStatus: 202,
+    summary: "Apply an approved catalog proposal",
+    tags: ["catalog"],
+    additionalResponses: paperlessFirstErrorResponses,
+  },
+  {
+    method: "GET",
+    path: "/api/catalog/proposals/{proposalId}/apply-journal",
+    responseBody: "ApplyJournal",
+    summary: "Get the apply journal for a catalog proposal",
+    tags: ["catalog"],
+  },
   { method: "GET", path: "/api/catalog/runs", summary: "Get catalog runs", tags: ["catalog"] },
   {
     method: "GET",
@@ -627,8 +1185,12 @@ export const apiRouteContracts: ApiRouteContract[] = [
   {
     method: "POST",
     path: "/api/catalog/proposals/{proposalId}/apply",
-    summary: "Create or run catalog proposals proposalId apply",
+    requestBody: "CatalogApplyBody",
+    responseBody: "CatalogApplyAccepted",
+    successStatus: 202,
+    summary: "Apply an approved catalog proposal",
     tags: ["catalog"],
+    additionalResponses: paperlessFirstErrorResponses,
   },
   {
     method: "GET",
@@ -888,7 +1450,10 @@ const numericPathParameterNames = new Set(["docId", "tagId", "fieldId", "blockId
 
 const pathParameterSchema = (path: string, name: string): Record<string, unknown> => {
   if (numericPathParameterNames.has(name)) return positiveSafeIntegerParameterSchema;
-  if (name === "id" && (path.startsWith("/api/documents/{id}") || path === "/api/schema/blocked/{id}")) {
+  if (
+    name === "id" &&
+    (path.startsWith("/api/documents/{id}") || path === "/api/schema/blocked/{id}")
+  ) {
     return positiveSafeIntegerParameterSchema;
   }
   return { type: "string" };
@@ -932,10 +1497,12 @@ export const generateOpenApiDocument = (options: GenerateOpenApiDocumentOptions 
     const responseSchema = route.responseBody
       ? { $ref: `#/components/schemas/${route.responseBody}` }
       : {};
+    const successStatus = route.successStatus ?? 200;
+    const responseContentType = route.responseContentType ?? "application/json";
     const responses: Record<number, unknown> = {
-      200: {
+      [successStatus]: {
         description: route.response ?? "Successful response",
-        content: { "application/json": { schema: responseSchema } },
+        content: { [responseContentType]: { schema: responseSchema } },
       },
       400: {
         description: "Validation error",

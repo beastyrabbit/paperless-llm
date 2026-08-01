@@ -20,6 +20,7 @@ const dependencyLabels: Record<DependencyName, string> = {
 
 const checkDependency = (
   name: DependencyName,
+  required: boolean,
   run: Effect.Effect<boolean, unknown, unknown>,
 ): Effect.Effect<HealthDependency, never, unknown> =>
   Effect.gen(function* () {
@@ -38,7 +39,7 @@ const checkDependency = (
 
     return {
       status: ok ? "up" : "down",
-      required: true,
+      required,
       durationMs: Date.now() - started,
       ...(ok ? {} : { message: `${dependencyLabels[name]} health check failed` }),
     };
@@ -53,16 +54,18 @@ export const getHealth: Effect.Effect<HealthResponse, never, unknown> = Effect.g
 
   const [paperless, ollama, qdrant, mistral] = yield* Effect.all(
     [
-      checkDependency("paperless", paperlessService.testConnection()),
-      checkDependency("ollama", ollamaService.testConnection()),
-      checkDependency("qdrant", qdrantService.testConnection()),
-      checkDependency("mistral", mistralService.testConnection()),
+      checkDependency("paperless", true, paperlessService.testConnection()),
+      checkDependency("ollama", false, ollamaService.testConnection()),
+      checkDependency("qdrant", false, qdrantService.testConnection()),
+      checkDependency("mistral", true, mistralService.testConnection()),
     ],
     { concurrency: "unbounded" },
   );
 
   const services = { paperless, ollama, qdrant, mistral };
-  const healthy = Object.values(services).every((service) => service.status === "up");
+  const healthy = Object.values(services).every(
+    (service) => !service.required || service.status === "up",
+  );
 
   return {
     status: healthy ? 200 : 503,

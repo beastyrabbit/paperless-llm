@@ -4,21 +4,20 @@
 
 paperless:
   url: "https://paperless.example.com"
-  token: "replace-with-production-paperless-token"
 
 mistral:
-  api_key: "replace-with-production-mistral-key"
   model: "mistral-ocr-latest"
   api_base_url: "https://api.mistral.ai"
 
 ollama:
   url: "http://your-ollama-server:11434"
   model: "gpt-oss:120b"
-  embedding_model: "nomic-embed-text"
+  embedding_model: "qwen3-embedding:8b"
 
 qdrant:
   url: "http://your-qdrant-server:6333"
   collection: "paperless-documents"
+  embedding_dimension: 4096
 
 # Keep this false for every production read-only run.
 auto_processing:

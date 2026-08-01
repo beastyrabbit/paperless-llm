@@ -18,7 +18,6 @@ import {
   metrics,
   observeDuration,
 } from "./MetricsService.js";
-import { TinyBaseService } from "./TinyBaseService.js";
 
 // ===========================================================================
 // Types
@@ -113,11 +112,10 @@ export const MistralServiceLive = Layer.effect(
   MistralService,
   Effect.gen(function* () {
     const configService = yield* ConfigService;
-    const tinybaseService = yield* TinyBaseService;
     const concurrency = yield* ConcurrencyLimitService;
     const { mistral: configMistral } = configService.config;
 
-    // Helper to get current config from TinyBase with fallback to ConfigService
+    // Provider credentials and endpoints are immutable deployment configuration.
     const getConfig = (): Effect.Effect<
       {
         apiKey: string;
@@ -129,43 +127,19 @@ export const MistralServiceLive = Layer.effect(
       },
       never
     > =>
-      pipe(
-        tinybaseService.getAllSettings(),
-        Effect.map((dbSettings) => ({
-          apiKey: dbSettings["mistral.api_key"] ?? configMistral.apiKey,
-          model: dbSettings["mistral.model"] ?? configMistral.model,
-          apiBaseUrl: normalizeBaseUrl(
-            dbSettings["mistral.api_base_url"] ??
-              dbSettings["mistral.apiBaseUrl"] ??
-              configMistral.apiBaseUrl ??
-              "https://api.mistral.ai",
-          ),
-          requestTimeoutMs: configService.config.http?.requestTimeoutMs ?? 120_000,
-          retryAttempts: Math.max(1, configService.config.http?.mistralRetryAttempts ?? 3),
-          retryBaseDelayMs: Math.max(
-            1,
-            configService.config.http?.mistralRetryBaseDelayMs ?? 5_000,
-          ),
-        })),
-        Effect.catchAll(() =>
-          Effect.succeed({
-            apiKey: configMistral.apiKey,
-            model: configMistral.model,
-            apiBaseUrl: normalizeBaseUrl(configMistral.apiBaseUrl ?? "https://api.mistral.ai"),
-            requestTimeoutMs: configService.config.http?.requestTimeoutMs ?? 120_000,
-            retryAttempts: Math.max(1, configService.config.http?.mistralRetryAttempts ?? 3),
-            retryBaseDelayMs: Math.max(
-              1,
-              configService.config.http?.mistralRetryBaseDelayMs ?? 5_000,
-            ),
-          }),
-        ),
-      );
+      Effect.succeed({
+        apiKey: configMistral.apiKey,
+        model: configMistral.model,
+        apiBaseUrl: normalizeBaseUrl(configMistral.apiBaseUrl ?? "https://api.mistral.ai"),
+        requestTimeoutMs: configService.config.http?.requestTimeoutMs ?? 120_000,
+        retryAttempts: Math.max(1, configService.config.http?.mistralRetryAttempts ?? 3),
+        retryBaseDelayMs: Math.max(1, configService.config.http?.mistralRetryBaseDelayMs ?? 5_000),
+      });
 
     const isRetryableMistralError = (error: MistralError): boolean =>
       error.statusCode === undefined || isTransientHttpStatus(error.statusCode);
 
-    // Helper for making requests - reads config dynamically
+    // Helper for making requests using the startup-resolved provider config.
     const request = <T>(
       method: string,
       path: string,

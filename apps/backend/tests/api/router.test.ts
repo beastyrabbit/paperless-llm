@@ -14,7 +14,7 @@ import {
   apiRouteContracts,
 } from "@repo/api-contracts";
 import { Effect, Layer } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getRegisteredRoutes, handleRequest } from "../../src/api/index.js";
 import {
   MistralService,
@@ -101,8 +101,8 @@ describe("API Router", () => {
         health: "healthy",
         services: {
           paperless: { status: "up", required: true },
-          ollama: { status: "up", required: true },
-          qdrant: { status: "up", required: true },
+          ollama: { status: "up", required: false },
+          qdrant: { status: "up", required: false },
           mistral: { status: "up", required: true },
         },
       });
@@ -115,7 +115,7 @@ describe("API Router", () => {
       }
     });
 
-    it("reports unhealthy while preserving all dependency statuses", async () => {
+    it("reports optional dependency failures without failing readiness", async () => {
       const req = createMockRequest("GET", "/health");
       const res = createMockResponse();
       const layer = createHealthLayer({ qdrant: () => Effect.succeed(false) });
@@ -123,12 +123,16 @@ describe("API Router", () => {
       const result = await runWithHealthLayer(handleRequest(req, res, null), layer);
 
       expect(result).toMatchObject({
-        status: 503,
-        health: "unhealthy",
+        status: 200,
+        health: "healthy",
         services: {
           paperless: { status: "up" },
           ollama: { status: "up" },
-          qdrant: { status: "down", message: "Qdrant health check failed" },
+          qdrant: {
+            status: "down",
+            required: false,
+            message: "Qdrant health check failed",
+          },
           mistral: { status: "up" },
         },
       });
@@ -223,6 +227,72 @@ describe("API Router", () => {
       expect(normalizedRegisteredRoutes.filter((route) => !documentedRoutes.has(route))).toEqual(
         [],
       );
+    });
+
+    it("registers Paperless-first integration endpoints", () => {
+      const registered = new Set(
+        getRegisteredRoutes().map((route) => `${route.method} ${route.path}`),
+      );
+
+      expect([...registered]).toEqual(
+        expect.arrayContaining([
+          "GET /api/paperless/capabilities",
+          "POST /api/analysis/runs",
+          "GET /api/analysis/runs/:runId/progress",
+          "POST /api/catalog/epochs",
+          "GET /api/catalog/epochs/:epochId/events",
+          "POST /api/catalog/proposals/:proposalId/apply",
+        ]),
+      );
+    });
+
+    it("serves Paperless capabilities without mutating provider state", async () => {
+      const descriptor = {
+        supportsOriginalContent: true,
+        supportsVersionContent: true,
+        supportsFullPagination: true,
+        supportsBulkOperations: true,
+        supportsTaskPolling: true,
+        supportsNotes: true,
+        supportsMutationRereads: true,
+        supportsConditionalPreconditions: true,
+      };
+      const req = createMockRequest("GET", "/api/paperless/capabilities");
+      const res = createMockResponse();
+      const layer = Layer.succeed(PaperlessService, {
+        capability: { descriptor },
+      } as unknown as PaperlessServiceType);
+
+      const result = await Effect.runPromise(Effect.provide(handleRequest(req, res, null), layer));
+
+      expect(result).toEqual(descriptor);
+    });
+
+    it("hydrates custom-field labels from the live Paperless catalog", async () => {
+      const getCustomFields = vi.fn(() =>
+        Effect.succeed([
+          { id: 36, name: "Echter Korrespondent", data_type: "string" },
+          { id: 38, name: "Gesamtbetrag", data_type: "monetary" },
+        ]),
+      );
+      const req = createMockRequest("GET", "/api/metadata/custom-fields");
+      const res = createMockResponse();
+      const layer = Layer.succeed(PaperlessService, {
+        getCustomFields,
+      } as unknown as PaperlessServiceType);
+
+      const result = await Effect.runPromise(Effect.provide(handleRequest(req, res, null), layer));
+
+      expect(result).toEqual([
+        {
+          id: 36,
+          name: "Echter Korrespondent",
+          data_type: "string",
+          extra_data: null,
+        },
+        { id: 38, name: "Gesamtbetrag", data_type: "monetary", extra_data: null },
+      ]);
+      expect(getCustomFields).toHaveBeenCalledTimes(1);
     });
   });
 

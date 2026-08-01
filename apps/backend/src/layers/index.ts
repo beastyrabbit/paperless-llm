@@ -1,7 +1,8 @@
 /**
  * Layer composition for the application.
  */
-import { Layer } from "effect";
+import { canonicalSha256 } from "@repo/api-contracts";
+import { Effect, Layer, Option } from "effect";
 import {
   OCRAgentServiceLive,
   PiConsolidationAgentServiceLive,
@@ -20,13 +21,26 @@ import { TracingLayer } from "../observability/tracing.js";
 import {
   AutoProcessingServiceLive,
   CatalogAgentServiceLive,
+  CatalogApplyLedgerPort,
+  CatalogApplyMutationPort,
+  type CatalogApplySupportedKind,
+  CatalogApplyServiceLive,
+  CatalogCouncilServiceLive,
+  CatalogEvidenceServiceLive,
   ConcurrencyLimitServiceLive,
+  CodexRuntimeServiceLive,
   DocumentAuthorizationServiceLive,
+  DocumentAnalysisOrchestratorLive,
   DocumentCaseServiceLive,
   LockServiceLive,
+  makeCatalogEvidenceReadPortFromPaperlessLive,
   MistralServiceLive,
+  MistralOcrServiceLive,
   OcrUsageServiceLive,
   OllamaServiceLive,
+  OperationalLedgerService,
+  OperationalLedgerServiceLive,
+  PaperlessService,
   PaperlessServiceLive,
   QdrantServiceLive,
   TagCacheServiceLive,
@@ -84,6 +98,141 @@ const CoreServicesLayer = Layer.provideMerge(
   Layer.mergeAll(CoreServicesWithAuthorizationLayer, CoreServicesWithUsageLayer),
 );
 
+const notFoundish = (error: unknown): boolean =>
+  (error as { _tag?: string })?._tag === "NotFoundError" ||
+  (error instanceof Error && error.name === "NotFoundError");
+
+const entityToCatalogState = (
+  kind: CatalogApplySupportedKind,
+  entity: { readonly id: number; readonly name: string; readonly document_count?: number },
+) => ({
+  kind,
+  entityId: entity.id,
+  exists: true,
+  name: entity.name,
+  dependencyHash: canonicalSha256({
+    kind: "catalog_apply_entity_state",
+    entityKind: kind,
+    entityId: entity.id,
+    name: entity.name,
+    documentCount: entity.document_count ?? null,
+  }),
+  blockedReasons: [],
+});
+
+const CatalogApplyMutationPortFromPaperlessLive = Layer.effect(
+  CatalogApplyMutationPort,
+  Effect.gen(function* () {
+    const paperless = yield* PaperlessService;
+    const readEntity = (kind: CatalogApplySupportedKind, entityId: number) =>
+      Effect.gen(function* () {
+        const entity = yield* Effect.either(
+          kind === "tag"
+            ? paperless.getTag(entityId)
+            : kind === "correspondent"
+              ? paperless.getCorrespondent(entityId)
+              : paperless.getDocumentType(entityId),
+        );
+        if (entity._tag === "Left") {
+          if (notFoundish(entity.left)) return null;
+          return yield* Effect.fail(entity.left);
+        }
+        return entityToCatalogState(kind, entity.right);
+      });
+
+    const findEntityByName = (kind: CatalogApplySupportedKind, name: string) =>
+      Effect.gen(function* () {
+        const entity =
+          kind === "tag"
+            ? yield* paperless.getTagByName(name)
+            : kind === "correspondent"
+              ? yield* paperless.getCorrespondentByName(name)
+              : yield* paperless.getDocumentTypeByName(name);
+        return Option.match(entity, {
+          onNone: () => null,
+          onSome: (value) => entityToCatalogState(kind, value),
+        });
+      });
+
+    const readAssignmentReceipt = (kind: CatalogApplySupportedKind, entityId: number) => {
+      if (kind === "tag") return paperless.readTagAssignmentReceipt(entityId);
+      if (kind === "correspondent") {
+        return paperless.readCorrespondentAssignmentReceipt(entityId);
+      }
+      return paperless.readDocumentTypeAssignmentReceipt(entityId);
+    };
+
+    return {
+      readEntity,
+      findEntityByName,
+      readAssignmentReceipt,
+      readDocumentMutationState: (kind, documentId, sourceEntityId, targetEntityId) =>
+        Effect.gen(function* () {
+          const document = yield* paperless.getDocument(documentId);
+          const tagIds = new Set(document.tags);
+          const hasSourceAssignment =
+            kind === "tag"
+              ? tagIds.has(sourceEntityId)
+              : kind === "correspondent"
+                ? document.correspondent === sourceEntityId
+                : document.document_type === sourceEntityId;
+          const hasTargetAssignment =
+            targetEntityId !== null &&
+            (kind === "tag"
+              ? tagIds.has(targetEntityId)
+              : kind === "correspondent"
+                ? document.correspondent === targetEntityId
+                : document.document_type === targetEntityId);
+          return {
+            documentId,
+            hasSourceAssignment,
+            hasTargetAssignment,
+            assignmentHash: canonicalSha256({
+              kind: "catalog_apply_document_mutation_state",
+              entityKind: kind,
+              documentId,
+              modified: document.modified,
+              sourceEntityId,
+              targetEntityId,
+              correspondent: document.correspondent,
+              documentType: document.document_type,
+              tags: [...document.tags].sort((left, right) => left - right),
+            }),
+          };
+        }),
+      submitAssignmentBatch: (request) =>
+        paperless.submitBulkOperation(request as Parameters<typeof paperless.submitBulkOperation>[0]),
+      pollTask: (taskId, options) => paperless.pollTask(taskId, options),
+      deleteEntity: (kind, entityId) => {
+        if (kind === "tag") return paperless.deleteTag(entityId);
+        if (kind === "correspondent") return paperless.deleteCorrespondent(entityId);
+        return paperless.deleteDocumentType(entityId);
+      },
+      renameEntity: (kind, entityId, name) => {
+        if (kind === "tag") return paperless.renameTag(entityId, name);
+        if (kind === "correspondent") return paperless.renameCorrespondent(entityId, name);
+        return paperless.renameDocumentType(entityId, name);
+      },
+      invalidateCatalogCache: () => Effect.void,
+    };
+  }),
+);
+
+const CatalogApplyLedgerPortFromOperationalLedgerLive = Layer.effect(
+  CatalogApplyLedgerPort,
+  Effect.gen(function* () {
+    const ledger = yield* OperationalLedgerService;
+    return {
+      getSnapshot: ledger.getSnapshot,
+      recordApplyJournal: ledger.recordApplyJournal,
+      acquireLease: ledger.acquireLease,
+      heartbeatLease: ledger.heartbeatLease,
+      releaseLease: ledger.releaseLease,
+      recordProposalDecision: ledger.recordProposalDecision,
+    };
+  }),
+);
+
 /**
  * Agents layer - all document processing agents.
  */
@@ -123,6 +272,40 @@ const CaseCatalogLayer = Layer.provideMerge(
 );
 
 /**
+ * Paperless-first analysis/catalog services. Command handlers schedule work
+ * but these layers keep mutation ports backed by real Paperless and the durable
+ * operational ledger.
+ */
+const MistralOcrLayer = Layer.provideMerge(
+  MistralOcrServiceLive,
+  Layer.mergeAll(ConfigLayer, ConcurrencyLayer),
+);
+const CatalogEvidenceLayer = Layer.provideMerge(
+  CatalogEvidenceServiceLive,
+  makeCatalogEvidenceReadPortFromPaperlessLive({}),
+);
+const CatalogApplyLedgerPortLayer = Layer.provideMerge(
+  CatalogApplyLedgerPortFromOperationalLedgerLive,
+  OperationalLedgerServiceLive,
+);
+const PaperlessFirstBaseLayer = Layer.mergeAll(
+  OperationalLedgerServiceLive,
+  MistralOcrLayer,
+  CodexRuntimeServiceLive(),
+  CatalogEvidenceLayer,
+  CatalogApplyMutationPortFromPaperlessLive,
+  CatalogApplyLedgerPortLayer,
+);
+const PaperlessFirstServicesLayer = Layer.provideMerge(
+  Layer.mergeAll(
+    CatalogCouncilServiceLive,
+    CatalogApplyServiceLive,
+    DocumentAnalysisOrchestratorLive(),
+  ),
+  PaperlessFirstBaseLayer,
+);
+
+/**
  * Full application layer with all services including jobs and agents.
  * AutoProcessingServiceLive depends on ProcessingPipelineService, so it must be
  * provided after PipelineLayer is resolved.
@@ -130,7 +313,7 @@ const CaseCatalogLayer = Layer.provideMerge(
 const ServicesAppLayer = Layer.provideMerge(
   AutoProcessingServiceLive,
   Layer.provideMerge(
-    Layer.mergeAll(JobsLayer, PipelineLayer, CaseCatalogLayer),
+    Layer.mergeAll(JobsLayer, PipelineLayer, CaseCatalogLayer, PaperlessFirstServicesLayer),
     Layer.provideMerge(CoreServicesLayer, Layer.mergeAll(ConfigLayer, ConcurrencyLayer)),
   ),
 );

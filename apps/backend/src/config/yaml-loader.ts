@@ -160,6 +160,27 @@ const normalizeYamlConfig = (raw: Record<string, unknown>): AppConfig => {
     source["http"] = section;
   }
 
+  const cutover = source["cutover"];
+  if (cutover && typeof cutover === "object" && !Array.isArray(cutover)) {
+    const section = { ...(cutover as Record<string, unknown>) };
+    section["mutationMode"] ??= section["mutation_mode"];
+    const scanner = section["scanner"];
+    if (scanner && typeof scanner === "object" && !Array.isArray(scanner)) {
+      const scannerSection = { ...(scanner as Record<string, unknown>) };
+      scannerSection["canaryDocumentIds"] ??= scannerSection["canary_document_ids"];
+      scannerSection["aiAnalyseTagId"] ??= scannerSection["ai_analyse_tag_id"];
+      delete scannerSection["canary_document_ids"];
+      delete scannerSection["ai_analyse_tag_id"];
+      delete scannerSection["configured_custom_field_ids"];
+      delete scannerSection["system_tag_ids"];
+      delete scannerSection["parent_tag_ids"];
+      delete scannerSection["workflow_tag_ids"];
+      section["scanner"] = scannerSection;
+    }
+    delete section["mutation_mode"];
+    source["cutover"] = section;
+  }
+
   const tags = source["tags"];
   if (tags && typeof tags === "object" && !Array.isArray(tags)) {
     const section = { ...(tags as Record<string, unknown>) };
@@ -209,6 +230,29 @@ const parseEnvBoolean = (value: string | undefined): boolean | undefined => {
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
   if (["0", "false", "no", "off"].includes(normalized)) return false;
   return undefined;
+};
+
+const parseEnvIntegerList = (value: string | undefined): number[] | undefined => {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return [];
+  return trimmed.split(",").map((entry) => Number(entry.trim()));
+};
+
+const parseMutationMode = (
+  value: string | undefined,
+): NonNullable<AppConfig["cutover"]>["mutationMode"] | undefined => {
+  if (value === undefined) return undefined;
+  if (value === "disabled" || value === "legacy" || value === "paperless_first") return value;
+  return value as never;
+};
+
+const parseScannerScope = (
+  value: string | undefined,
+): NonNullable<NonNullable<AppConfig["cutover"]>["scanner"]>["scope"] | undefined => {
+  if (value === undefined) return undefined;
+  if (value === "disabled" || value === "canary" || value === "all") return value;
+  return value as never;
 };
 
 const stripUndefined = <T>(value: T): T => {
@@ -291,7 +335,18 @@ export const loadYamlConfig = (configPath?: string): Effect.Effect<AppConfig, Co
 
         const content = fs.readFileSync(absolutePath, "utf-8");
         const parsed = parseYaml(content) as Record<string, unknown> | null;
-        return normalizeYamlConfig(parsed ?? {});
+        const normalized = normalizeYamlConfig(parsed ?? {});
+        // Credentials are environment-only so local, container, and production
+        // startup all use the same Infisical-friendly bootstrap contract.
+        const paperless = normalized.paperless ? { ...normalized.paperless } : undefined;
+        const mistral = normalized.mistral ? { ...normalized.mistral } : undefined;
+        if (paperless) delete (paperless as { token?: string }).token;
+        if (mistral) delete (mistral as { apiKey?: string }).apiKey;
+        return {
+          ...normalized,
+          ...(paperless ? { paperless } : {}),
+          ...(mistral ? { mistral } : {}),
+        };
       },
       catch: (error) =>
         error instanceof ConfigLoadError
@@ -326,6 +381,7 @@ export const loadEnvConfig = (): Effect.Effect<Partial<AppConfig>, never> =>
       qdrant: {
         url: process.env["QDRANT_URL"],
         collectionName: process.env["QDRANT_COLLECTION"],
+        embeddingDimension: parseEnvNumber(process.env["QDRANT_EMBEDDING_DIMENSION"]),
       },
       ocrBudget: {
         dailyPageLimit: parseEnvOcrBudgetLimit(process.env["PAPERLESS_LLM_OCR_DAILY_PAGE_LIMIT"]),
@@ -362,6 +418,16 @@ export const loadEnvConfig = (): Effect.Effect<Partial<AppConfig>, never> =>
         rateLimitWindowMs: parseEnvNumber(process.env["PAPERLESS_LLM_RATE_LIMIT_WINDOW_MS"]),
         rateLimitMaxRequests: parseEnvNumber(process.env["PAPERLESS_LLM_RATE_LIMIT_MAX_REQUESTS"]),
         rateLimitTrustProxy: parseEnvBoolean(process.env["PAPERLESS_LLM_RATE_LIMIT_TRUST_PROXY"]),
+      },
+      cutover: {
+        mutationMode: parseMutationMode(process.env["PAPERLESS_LLM_MUTATION_MODE"]),
+        scanner: {
+          scope: parseScannerScope(process.env["PAPERLESS_LLM_AI_ANALYSE_SCANNER_SCOPE"]),
+          canaryDocumentIds: parseEnvIntegerList(
+            process.env["PAPERLESS_LLM_AI_ANALYSE_CANARY_DOCUMENT_IDS"],
+          ),
+          aiAnalyseTagId: parseEnvNumber(process.env["PAPERLESS_LLM_AI_ANALYSE_TAG_ID"]),
+        },
       },
       language: process.env["LANGUAGE"],
       debug: process.env["DEBUG"] === undefined ? undefined : process.env["DEBUG"] === "true",

@@ -109,6 +109,37 @@ export const getQueueStats = Effect.gen(function* () {
 // Pending Documents
 // ===========================================================================
 
+export const listDocuments = (limit = 50) =>
+  Effect.gen(function* () {
+    const paperless = yield* PaperlessService;
+    const boundedLimit = Math.min(Math.max(Math.trunc(limit), 1), 250);
+    const [documents, tags, correspondents] = yield* Effect.all(
+      [
+        paperless.getDocuments({ page: 1, pageSize: boundedLimit }),
+        paperless.getTags(),
+        paperless.getCorrespondents(),
+      ],
+      { concurrency: "unbounded" },
+    );
+    const tagNames = new Map(tags.map((tag) => [tag.id, tag.name]));
+    const correspondentNames = new Map(
+      correspondents.map((correspondent) => [correspondent.id, correspondent.name]),
+    );
+    return documents.map((document) => ({
+      id: document.id,
+      title: document.title,
+      correspondent:
+        document.correspondent === null
+          ? null
+          : (correspondentNames.get(document.correspondent) ?? null),
+      created: document.created,
+      tags: document.tags
+        .map((tagId) => tagNames.get(tagId))
+        .filter((name): name is string => name !== undefined),
+      processing_status: null,
+    }));
+  });
+
 export const getPendingDocuments = (tag?: string, limit = 50) =>
   Effect.gen(function* () {
     const paperless = yield* PaperlessService;

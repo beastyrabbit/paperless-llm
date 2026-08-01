@@ -5,7 +5,7 @@ export const OverallHealthSchema = Schema.Literal("healthy", "unhealthy");
 
 export const HealthDependencySchema = Schema.Struct({
   status: HealthDependencyStatusSchema,
-  required: Schema.Literal(true),
+  required: Schema.Boolean,
   durationMs: Schema.Number,
   message: Schema.optional(Schema.String),
 });
