@@ -346,4 +346,4 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 The live dashboard shows document totals, pipeline stages, review queues, and connected AI services.
 
-![Paperless Local LLM dashboard](https://schaffa.dev/f/RlyQZUqbAxWkmN7Dj3YANQ.webp)
+![Paperless Local LLM dashboard](https://schaffa.dev/f/j76dX_KLVXPQwJRndau2rQ.webp)
