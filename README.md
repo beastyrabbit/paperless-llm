@@ -17,6 +17,13 @@
 
 </div>
 
+
+## At a glance
+
+A local service that adds AI-assisted metadata extraction to Paperless-ngx.
+
+![Paperless Local LLM dashboard](docs/images/dashboard.png)
+
 ---
 
 ## Features
