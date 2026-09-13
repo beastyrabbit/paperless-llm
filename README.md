@@ -341,3 +341,9 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 **[Report Bug](https://github.com/beastyrabbit/paperless-llm/issues)** · **[Request Feature](https://github.com/beastyrabbit/paperless-llm/issues)**
 
 </div>
+
+## Live preview
+
+The live dashboard shows document totals, pipeline stages, review queues, and connected AI services.
+
+![Paperless Local LLM dashboard](https://schaffa.dev/f/RlyQZUqbAxWkmN7Dj3YANQ.webp)
