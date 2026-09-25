@@ -13,7 +13,7 @@ Paperless Local LLM is an AI-powered document analysis system for Paperless-ngx.
 pnpm install         # Install dependencies (from root)
 pnpm run dev:web     # Development server
 pnpm run build       # Production build
-pnpm run lint        # ESLint
+pnpm run lint        # Biome
 pnpm run typecheck   # TypeScript check
 ```
 
@@ -35,22 +35,14 @@ docker compose down            # Stop services
 
 ### Pre-Commit Hooks
 
-Git hooks are automatically active (located in `.git/hooks/pre-commit`).
+Git hooks are managed by lefthook (`lefthook.yml`; run `lefthook install` once).
 
 ```bash
 # Run checks manually
 pnpm run precommit
 ```
 
-**Active Checks:**
-- **gitleaks**: Detects accidentally committed secrets/API keys
-- **TypeScript**: `tsc --noEmit` type checking
-- **ESLint**: JavaScript/TypeScript linting
-- **Large files**: Blocks files >1MB
-- **Merge conflicts**: Detects conflict markers
-- **Private keys**: Detects private key content
-
-On errors, the commit is aborted.
+**Active Checks:** gitleaks, merge-conflict markers, files >1MB, private keys, typecheck, Biome lint. On errors, the commit is aborted.
 
 **Note:** Pre-commit hooks run typecheck + lint via turborepo and can take 5-10s (cached) or 30s+ (uncached). Use 600s timeout for `git commit` in automation.
 
@@ -71,7 +63,7 @@ On errors, the commit is aborted.
 - `src/server.ts` - HTTP server with CORS and request handling
 - `src/api/` - API route handlers (settings, documents, processing, cases, catalog, pending, jobs)
 - `src/services/` - External service clients (PaperlessService, OllamaService, MistralService, TinyBaseService)
-- `src/agents/` - Document processing agents (TitleAgent, CorrespondentAgent, TagAgent, etc.)
+- `src/agents/` - Document processing agents and `ProcessingPipeline.ts`
 - `src/config/` - Configuration management with Effect layers
 - `src/layers/` - Effect dependency injection layers
 - `tests/` - Vitest test suites
@@ -92,12 +84,7 @@ On errors, the commit is aborted.
 
 ## Processing Pipeline
 
-Documents flow through tag-based states:
-1. `llm-pending` → OCR (Mistral) → `llm-ocr-done`
-2. → Title generation (Ollama large) → `llm-title-done`
-3. → Correspondent assignment → `llm-correspondent-done`
-4. → Tag assignment → `llm-tags-done`
-5. → `llm-processed` (complete)
+Workflow tag names and pipeline settings are configured in `config.example.yaml` (`tags`, `pipeline`).
 
 The confirmation loop uses: Large Model analysis -> Small Model verification -> large-model revision or actionable case failure; metadata is auto-applied only when confirmed.
 
@@ -123,23 +110,6 @@ Pi agent instructions, tools, schemas, and structured placeholders live in TypeS
 reintroduce `PromptService` or file-backed prompt loading paths. When adding or changing document
 agent behavior, keep the instruction text next to the typed tool/schema definitions and make the
 placeholder contract explicit in TypeScript.
-
-### Pipeline Steps
-
-When adding a new pipeline step in `ProcessingPipeline.ts`:
-
-1. **Add an enable flag** in the pipeline config (e.g., `enableNewStep`)
-2. **Add skip handling** - When the step is disabled, advance the state:
-   ```typescript
-   if (currentState === 'previous_done' && pipelineConfig.enableNewStep) {
-     // ... run the step
-     currentState = 'new_step_done';
-   } else if (currentState === 'previous_done' && !pipelineConfig.enableNewStep) {
-     // Skip disabled step but advance state
-     currentState = 'new_step_done';
-   }
-   ```
-3. **Add settings UI** in the Pipeline tab for users to enable/disable
 
 ### Mistral OCR Code Paths
 
