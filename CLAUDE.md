@@ -84,7 +84,7 @@ pnpm run precommit
 
 ## Processing Pipeline
 
-Tag names and step order are configured in `config.example.yaml` (`tags`, `pipeline`).
+Workflow tag names come from `tags` in `config.example.yaml`; `pipeline` only enables or disables steps. The step order is fixed in `apps/backend/src/agents/ProcessingPipeline.ts`.
 
 The confirmation loop uses: Large Model analysis -> Small Model verification -> large-model revision or actionable case failure; metadata is auto-applied only when confirmed.
 
