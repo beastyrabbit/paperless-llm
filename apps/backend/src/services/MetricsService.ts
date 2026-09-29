@@ -31,7 +31,7 @@ const escapeLabelValue = (value: LabelValue): string =>
 
 const formatNumber = (value: number): string => {
   if (value === Number.POSITIVE_INFINITY) return "+Inf";
-  return Number.isInteger(value) ? String(value) : String(value);
+  return String(value);
 };
 
 const keyFor = (labelNames: readonly string[], labels: MetricLabels): string =>

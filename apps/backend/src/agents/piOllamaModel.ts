@@ -112,6 +112,17 @@ const resolveWatchdogCheckIntervalMs = (timeoutMs: number, configured?: number):
   );
 };
 
+const checkWatchdogActivity = async (
+  options: PromptActivityWatchdogOptions,
+): Promise<Pick<PromptActivityWatchdogStatus, "stillRunning" | "checkError">> => {
+  if (!options.checkStillRunning) return { stillRunning: false };
+  try {
+    return { stillRunning: await options.checkStillRunning() };
+  } catch (checkError) {
+    return { stillRunning: false, ...(checkError ? { checkError } : {}) };
+  }
+};
+
 export const runWithPromptActivityWatchdog = async <T>(
   run: (controller: PromptActivityWatchdogController) => Promise<T>,
   options: PromptActivityWatchdogOptions,
@@ -148,16 +159,8 @@ export const runWithPromptActivityWatchdog = async <T>(
       throw result.error;
     }
 
-    let stillRunning = false;
-    let checkError: unknown;
-    if (options.checkStillRunning) {
-      try {
-        stillRunning = await options.checkStillRunning();
-      } catch (error) {
-        checkError = error;
-      }
-    }
-    if (stillRunning) {
+    const activity = await checkWatchdogActivity(options);
+    if (activity.stillRunning) {
       markActivity("ollama_model_running");
     }
 
@@ -165,9 +168,8 @@ export const runWithPromptActivityWatchdog = async <T>(
     const status: PromptActivityWatchdogStatus = {
       elapsedMs: now - startedAt,
       idleMs: now - lastActivityAt,
-      stillRunning,
       lastActivityReason,
-      ...(checkError ? { checkError } : {}),
+      ...activity,
     };
     await options.onHeartbeat?.(status);
 

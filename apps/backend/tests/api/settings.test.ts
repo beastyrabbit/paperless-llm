@@ -285,6 +285,24 @@ describe("Settings Handlers", () => {
   });
 
   describe("updateSettings", () => {
+    it("stores nested tags without overwriting omitted values", async () => {
+      const { layer: mockTinyBase, mocks } = createMockTinyBase();
+      const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);
+
+      await Effect.runPromise(
+        settingsHandlers
+          .updateSettings({
+            tags: { pending: "inbox", ocr_done: "", title_done: undefined, tags_done: null },
+          } as unknown as Parameters<typeof settingsHandlers.updateSettings>[0])
+          .pipe(Effect.provide(TestLayer)),
+      );
+
+      expect(mocks.setSetting.mock.calls).toEqual([
+        ["tags.pending", "inbox"],
+        ["tags.ocr_done", ""],
+      ]);
+    });
+
     it("should store settings in TinyBase", async () => {
       const { layer: mockTinyBase, mocks } = createMockTinyBase();
       const TestLayer = Layer.mergeAll(createMockConfig(), mockTinyBase);

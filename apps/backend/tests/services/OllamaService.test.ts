@@ -2,7 +2,11 @@ import { Effect, Layer, Stream } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConfigService } from "../../src/config/index.js";
 import { ConcurrencyLimitServiceLive } from "../../src/services/ConcurrencyLimitService.js";
-import { OllamaService, OllamaServiceLive } from "../../src/services/OllamaService.js";
+import {
+  type OllamaChatOptions,
+  OllamaService,
+  OllamaServiceLive,
+} from "../../src/services/OllamaService.js";
 import { TinyBaseService } from "../../src/services/TinyBaseService.js";
 
 const createConfigLayer = (requestTimeoutMs = 1_000) =>
@@ -46,6 +50,118 @@ const sleep = () => new Promise((resolve) => setTimeout(resolve, 0));
 describe("OllamaService streams", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  describe.each(["chat", "generate"] as const)("%s streaming", (operation) => {
+    const encodeChunk = (content: string, done = false) =>
+      JSON.stringify(
+        operation === "chat"
+          ? { model: "llama", message: { role: "assistant", content }, done }
+          : { response: content, done },
+      );
+
+    const collect = (options?: OllamaChatOptions) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const ollama = yield* OllamaService;
+          const stream =
+            operation === "chat"
+              ? ollama
+                  .chatStream("llama", [{ role: "user", content: "Hello" }], options)
+                  .pipe(Stream.map((chunk) => chunk.message.content))
+              : ollama.generateStream("llama", "Hello", options);
+          return yield* Effect.either(Stream.runCollect(stream));
+        }).pipe(Effect.provide(createTestLayer())),
+      );
+
+    const mockBody = (parts: Uint8Array[]) => {
+      const fetchMock = vi.fn(async (_input: unknown, _init?: RequestInit) => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (const part of parts) controller.enqueue(part);
+            controller.close();
+          },
+        });
+        return new Response(body, { status: 200 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      return fetchMock;
+    };
+
+    it("decodes fragmented UTF-8, blank lines and an unterminated final chunk", async () => {
+      const bytes = new TextEncoder().encode(
+        ` \n${encodeChunk("Grüße")}\n\n${encodeChunk("!", true)}`,
+      );
+      const fetchMock = mockBody(Array.from(bytes, (byte) => Uint8Array.of(byte)));
+
+      const result = await collect({ format: "json", think: false, temperature: 0, num_ctx: 4096 });
+
+      expect(result._tag).toBe("Right");
+      if (result._tag === "Right") expect(Array.from(result.right)).toEqual(["Grüße", "!"]);
+      expect(fetchMock.mock.calls[0]?.[0]).toBe(`http://ollama.test/api/${operation}`);
+      const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+      expect(body).toMatchObject({
+        model: "llama",
+        stream: true,
+        format: "json",
+        think: false,
+        options: { temperature: 0, num_ctx: 4096 },
+      });
+      expect(body.options).not.toHaveProperty("format");
+      expect(body.options).not.toHaveProperty("think");
+      if (operation === "chat") {
+        expect(body.messages).toEqual([{ role: "user", content: "Hello" }]);
+      } else {
+        expect(body.prompt).toBe("Hello");
+      }
+    });
+
+    it("stops on a done chunk before parsing additional data", async () => {
+      mockBody([new TextEncoder().encode(`${encodeChunk("Done", true)}\n{invalid}\n`)]);
+
+      const result = await collect();
+
+      expect(result._tag).toBe("Right");
+      if (result._tag === "Right") expect(Array.from(result.right)).toEqual(["Done"]);
+    });
+
+    it.each(["{invalid}\n", "{invalid}"])("fails malformed input %j", async (invalid) => {
+      mockBody([new TextEncoder().encode(`${encodeChunk("First")}\n${invalid}`)]);
+
+      const result = await collect();
+
+      expect(result._tag).toBe("Left");
+      if (result._tag === "Left") {
+        expect(result.left.message).toContain("Malformed Ollama stream chunk");
+        expect(result.left.model).toBe("llama");
+        expect(result.left.cause).toMatchObject({ line: "{invalid}" });
+      }
+    });
+
+    it("ends on EOF without a done chunk", async () => {
+      mockBody([new TextEncoder().encode(`${encodeChunk("Last")}\n`)]);
+
+      const result = await collect();
+
+      expect(result._tag).toBe("Right");
+      if (result._tag === "Right") expect(Array.from(result.right)).toEqual(["Last"]);
+    });
+
+    it.each([
+      { status: 503, expected: "Ollama API error: 503" },
+      { status: 200, expected: "No response body" },
+    ])("propagates response errors: $expected", async ({ status, expected }) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(null, { status })),
+      );
+
+      const result = await collect();
+
+      expect(result._tag).toBe("Left");
+      if (result._tag === "Left") expect(result.left.message).toContain(expected);
+    });
   });
 
   it("fails chat streams on malformed JSON chunks", async () => {

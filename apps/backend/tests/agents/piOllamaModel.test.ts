@@ -245,6 +245,40 @@ describe("prompt activity watchdog", () => {
     expect(abort).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    false,
+    true,
+  ])("still enforces idle timeout when the activity check fails=%s", async (fails) => {
+    const abort = vi.fn();
+    const onHeartbeat = vi.fn();
+    const checkError = new Error("Ollama status unavailable");
+    const checkStillRunning = fails ? vi.fn().mockRejectedValue(checkError) : undefined;
+
+    await expect(
+      runWithPromptActivityWatchdog(() => new Promise<never>(() => undefined), {
+        label: "Test prompt",
+        timeoutMs: 5,
+        checkIntervalMs: 1,
+        checkStillRunning,
+        onHeartbeat,
+        abort,
+      }),
+    ).rejects.toMatchObject({
+      name: "PromptIdleTimeoutError",
+      lastActivityReason: "started",
+      timeoutMs: 5,
+    });
+
+    expect(abort).toHaveBeenCalledOnce();
+    expect(onHeartbeat).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        stillRunning: false,
+        lastActivityReason: "started",
+        ...(fails ? { checkError } : {}),
+      }),
+    );
+  });
+
   it("matches Ollama running models by explicit and implicit latest tags", () => {
     expect(
       isOllamaModelRunning([{ name: "gpt-oss:120b", model: "gpt-oss:120b" }], "gpt-oss:120b"),

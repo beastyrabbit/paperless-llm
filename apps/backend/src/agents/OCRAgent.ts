@@ -602,6 +602,60 @@ export const OCRAgentServiceLive = Layer.effect(
         ),
       );
 
+    const reuseCachedOcr = (
+      docId: number,
+      pdfBytes: Uint8Array,
+      sourcePdfSha256: string,
+      existingVersions: readonly PaperlessDocumentVersion[],
+    ) =>
+      Effect.gen(function* () {
+        const [memory, cachedOcr] = yield* Effect.all(
+          [
+            tinybase.getDocumentMemory(docId).pipe(Effect.catchAll(() => Effect.succeed(null))),
+            tinybase.getDocumentOcrContent(docId).pipe(Effect.catchAll(() => Effect.succeed(null))),
+          ],
+          { concurrency: "unbounded" },
+        );
+        const storedHash = readStoredOcrHash(memory?.extractedFacts?.["ocr"]);
+        const cachedText = cachedOcr?.content?.trim() ?? "";
+        if (storedHash !== sourcePdfSha256 || cachedText.length === 0) return null;
+
+        const cachedPages =
+          typeof cachedOcr?.pages === "number" && cachedOcr.pages > 0 ? cachedOcr.pages : 1;
+        const versionResult = yield* persistOcrResult(
+          docId,
+          pdfBytes,
+          cachedText,
+          cachedPages,
+          sourcePdfSha256,
+          existingVersions,
+        );
+        const result = {
+          success: versionResult.ocrPersisted,
+          skipped: true,
+          skipReason: "cached_ocr_result",
+          textLength: cachedText.length,
+          pages: cachedPages,
+          ...versionResult,
+        };
+        yield* tinybase.addProcessingLog({
+          docId,
+          timestamp: new Date().toISOString(),
+          step: "ocr",
+          eventType: "result",
+          data: result,
+        });
+        if (!versionResult.ocrPersisted) {
+          return {
+            ...result,
+            docId,
+            error:
+              "Cached OCR text matched the current PDF, but no new Paperless OCR version could be created.",
+          };
+        }
+        return { ...result, docId };
+      });
+
     const process = (input: OCRInput): Effect.Effect<OCRResult, AgentError> =>
       Effect.gen(function* () {
         const { docId, mockMode = false, force = false } = input;
@@ -673,80 +727,13 @@ export const OCRAgentServiceLive = Layer.effect(
         const pdfBytes = yield* paperless.downloadPdf(docId);
         const sourcePdfSha256 = sha256Bytes(pdfBytes);
         if (!force) {
-          const [memory, cachedOcr] = yield* Effect.all(
-            [
-              tinybase.getDocumentMemory(docId).pipe(Effect.catchAll(() => Effect.succeed(null))),
-              tinybase
-                .getDocumentOcrContent(docId)
-                .pipe(Effect.catchAll(() => Effect.succeed(null))),
-            ],
-            { concurrency: "unbounded" },
+          const cachedResult = yield* reuseCachedOcr(
+            docId,
+            pdfBytes,
+            sourcePdfSha256,
+            existingVersions,
           );
-          const storedHash = readStoredOcrHash(memory?.extractedFacts?.["ocr"]);
-          const cachedText = cachedOcr?.content?.trim() ?? "";
-          const cachedPages =
-            typeof cachedOcr?.pages === "number" && cachedOcr.pages > 0 ? cachedOcr.pages : 1;
-          if (storedHash === sourcePdfSha256 && cachedText.length > 0) {
-            const versionResult = yield* persistOcrResult(
-              docId,
-              pdfBytes,
-              cachedText,
-              cachedPages,
-              sourcePdfSha256,
-              existingVersions,
-            );
-            yield* tinybase.addProcessingLog({
-              docId,
-              timestamp: new Date().toISOString(),
-              step: "ocr",
-              eventType: "result",
-              data: {
-                success: versionResult.ocrPersisted,
-                skipped: true,
-                skipReason: "cached_ocr_result",
-                textLength: cachedText.length,
-                pages: cachedPages,
-                sourcePdfSha256,
-                textSha256: versionResult.textSha256,
-                sourceVersionIds: versionResult.sourceVersionIds,
-                ocrVersionId: versionResult.ocrVersionId,
-                searchablePdfUploaded: versionResult.searchablePdfUploaded,
-                ocrPersisted: versionResult.ocrPersisted,
-              },
-            });
-            if (!versionResult.ocrPersisted) {
-              return {
-                success: false,
-                docId,
-                textLength: cachedText.length,
-                pages: cachedPages,
-                skipped: true,
-                skipReason: "cached_ocr_result",
-                sourceVersionIds: versionResult.sourceVersionIds,
-                ocrVersionId: versionResult.ocrVersionId,
-                searchablePdfUploaded: versionResult.searchablePdfUploaded,
-                ocrPersisted: versionResult.ocrPersisted,
-                sourcePdfSha256,
-                textSha256: versionResult.textSha256,
-                error:
-                  "Cached OCR text matched the current PDF, but no new Paperless OCR version could be created.",
-              };
-            }
-            return {
-              success: true,
-              docId,
-              textLength: cachedText.length,
-              pages: cachedPages,
-              skipped: true,
-              skipReason: "cached_ocr_result",
-              sourceVersionIds: versionResult.sourceVersionIds,
-              ocrVersionId: versionResult.ocrVersionId,
-              searchablePdfUploaded: versionResult.searchablePdfUploaded,
-              ocrPersisted: versionResult.ocrPersisted,
-              sourcePdfSha256,
-              textSha256: versionResult.textSha256,
-            };
-          }
+          if (cachedResult) return cachedResult;
         }
         const ocrResult = yield* runMistralOCR(pdfBytes, docId, runId);
         const extractedText = ocrResult.text.trim();

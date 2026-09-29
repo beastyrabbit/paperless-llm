@@ -329,6 +329,27 @@ const SETTINGS_MIRROR_KEYS: Record<string, string[]> = {
   "auto_processing.include_untagged": ["auto_processing_include_untagged"],
 };
 
+const serializeSetting = (key: string, value: unknown): string => {
+  if (key === "tag_language.aliases.de") {
+    return serializeTagLanguageAliasRows(
+      parseTagLanguageAliasRows(
+        value,
+        parseTagLanguageAliasRows(getDefaultTagLanguageAliasesDeJson()),
+      ),
+    );
+  }
+  return String(value);
+};
+
+const updateTagSettings = (tinybase: TinyBaseService, tags: Record<string, unknown>) =>
+  Effect.gen(function* () {
+    for (const [tagKey, tagValue] of Object.entries(tags)) {
+      if (tagValue === undefined || tagValue === null) continue;
+      const dbKey = SETTINGS_KEY_MAP[`tags.${tagKey}`] ?? `tags.${tagKey}`;
+      yield* tinybase.setSetting(dbKey, String(tagValue));
+    }
+  });
+
 export const updateSettings = (updates: SettingsUpdate) =>
   Effect.gen(function* () {
     const tinybase = yield* TinyBaseService;
@@ -338,11 +359,7 @@ export const updateSettings = (updates: SettingsUpdate) =>
       if (value === undefined) continue;
 
       if (key === "tags" && value && typeof value === "object" && !Array.isArray(value)) {
-        for (const [tagKey, tagValue] of Object.entries(value as Record<string, unknown>)) {
-          if (tagValue === undefined || tagValue === null) continue;
-          const dbKey = SETTINGS_KEY_MAP[`tags.${tagKey}`] ?? `tags.${tagKey}`;
-          yield* tinybase.setSetting(dbKey, String(tagValue));
-        }
+        yield* updateTagSettings(tinybase, value as Record<string, unknown>);
         continue;
       }
 
@@ -351,17 +368,7 @@ export const updateSettings = (updates: SettingsUpdate) =>
       if ((dbKey === "paperless.token" || dbKey === "mistral.api_key") && isMaskedSecret(value))
         continue;
 
-      const strValue =
-        dbKey === "tag_language.aliases.de"
-          ? serializeTagLanguageAliasRows(
-              parseTagLanguageAliasRows(
-                value,
-                parseTagLanguageAliasRows(getDefaultTagLanguageAliasesDeJson()),
-              ),
-            )
-          : typeof value === "boolean"
-            ? String(value)
-            : String(value);
+      const strValue = serializeSetting(dbKey, value);
       yield* tinybase.setSetting(dbKey, strValue);
       for (const mirrorKey of SETTINGS_MIRROR_KEYS[dbKey] ?? []) {
         yield* tinybase.setSetting(mirrorKey, strValue);
