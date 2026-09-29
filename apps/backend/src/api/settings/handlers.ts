@@ -341,7 +341,10 @@ const serializeSetting = (key: string, value: unknown): string => {
   return String(value);
 };
 
-const updateTagSettings = (tinybase: TinyBaseService, tags: NonNullable<SettingsUpdate["tags"]>) =>
+const updateTagSettings = (
+  tinybase: TinyBaseService,
+  tags: Readonly<Record<string, string | undefined>>,
+) =>
   Effect.gen(function* () {
     for (const [tagKey, tagValue] of Object.entries(tags)) {
       if (tagValue === undefined || tagValue === null) continue;
