@@ -32,7 +32,9 @@ interface DisplayMessage extends ChatMessage {
   sources?: SearchResult[];
 }
 
-const createMessageId = () => globalThis.crypto.randomUUID();
+let fallbackMessageId = 0;
+const createMessageId = () =>
+  globalThis.crypto?.randomUUID?.() ?? `message-${Date.now()}-${fallbackMessageId++}`;
 
 export default function ChatPage() {
   const t = useTranslations("chat");

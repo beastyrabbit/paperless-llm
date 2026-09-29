@@ -3,6 +3,7 @@
  */
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { constants as fsConstants } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -121,6 +122,29 @@ export interface OCRAgentService extends Agent<OCRInput, OCRResult> {
 
 export const OCRAgentService = Context.GenericTag<OCRAgentService>("OCRAgentService");
 const ocrLogger = logger.child({ component: "ocr_agent" });
+
+const DEFAULT_OCRMYPDF_PATHS = [
+  "/usr/local/bin/ocrmypdf",
+  "/usr/bin/ocrmypdf",
+  "/opt/homebrew/bin/ocrmypdf",
+] as const;
+
+const resolveOcrmypdfPath = async (): Promise<string> => {
+  const configuredPath = nodeEnv["PAPERLESS_LLM_OCRMYPDF_BIN"]?.trim();
+  const candidates = configuredPath ? [configuredPath] : DEFAULT_OCRMYPDF_PATHS;
+  for (const candidate of candidates) {
+    if (!path.isAbsolute(candidate)) continue;
+    try {
+      await fs.access(candidate, fsConstants.X_OK);
+      return candidate;
+    } catch {
+      // Try the next known installation path.
+    }
+  }
+  throw new Error(
+    "ocrmypdf executable not found; set PAPERLESS_LLM_OCRMYPDF_BIN to an absolute executable path",
+  );
+};
 
 export const OCRAgentServiceLive = Layer.effect(
   OCRAgentService,
@@ -351,16 +375,11 @@ export const OCRAgentServiceLive = Layer.effect(
 
               try {
                 await fs.writeFile(inputPath, pdfBytes);
+                const ocrmypdfPath = await resolveOcrmypdfPath();
                 await new Promise<void>((resolve, reject) => {
                   const child = spawn(
-                    "ocrmypdf",
+                    ocrmypdfPath,
                     ["--skip-text", "--deskew", "--rotate-pages", inputPath, outputPath],
-                    {
-                      env: {
-                        ...nodeEnv,
-                        PATH: "/usr/local/bin:/usr/bin:/bin",
-                      },
-                    },
                   );
                   let stderr = "";
                   child.stderr.on("data", (chunk) => {
