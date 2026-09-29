@@ -5,6 +5,7 @@
  * transcript, structured human questions, answers, decisions, run summaries,
  * and memory live here instead of in a detached pending queue.
  */
+import { randomUUID } from "node:crypto";
 import { Context, Effect, Layer } from "effect";
 import { DatabaseError, NotFoundError, ValidationError } from "../errors/index.js";
 import { PaperlessService } from "./PaperlessService.js";
@@ -178,8 +179,7 @@ export const DocumentCaseService = Context.GenericTag<DocumentCaseService>("Docu
 
 const caseIdForDoc = (docId: number): string => `doc-${docId}`;
 const nowIso = (): string => new Date().toISOString();
-const generateId = (prefix: string): string =>
-  `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+const generateId = (prefix: string): string => `${prefix}-${Date.now()}-${randomUUID()}`;
 
 const parseJson = <T>(value: unknown, fallback: T): T => {
   if (typeof value !== "string" || value.length === 0) return fallback;

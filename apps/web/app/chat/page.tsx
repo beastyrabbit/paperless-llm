@@ -1,6 +1,5 @@
 "use client";
 
-import { APP_PAGE_BACKGROUND } from "@/lib/styles";
 import {
   Badge,
   Button,
@@ -26,14 +25,14 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 import { type ChatMessage, chatApi, type SearchResult } from "@/lib/api";
+import { APP_PAGE_BACKGROUND } from "@/lib/styles";
 
 interface DisplayMessage extends ChatMessage {
   id: string;
   sources?: SearchResult[];
 }
 
-const createMessageId = () =>
-  globalThis.crypto?.randomUUID() ?? `message-${Date.now()}-${Math.random()}`;
+const createMessageId = () => globalThis.crypto.randomUUID();
 
 export default function ChatPage() {
   const t = useTranslations("chat");

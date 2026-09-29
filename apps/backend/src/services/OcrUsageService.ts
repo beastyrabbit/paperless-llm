@@ -1,6 +1,7 @@
 /**
  * OCR usage accounting and budget enforcement.
  */
+import { randomUUID } from "node:crypto";
 import { Context, Effect, Layer } from "effect";
 import { ConfigService } from "../config/index.js";
 import { TinyBaseService } from "./TinyBaseService.js";
@@ -218,7 +219,7 @@ export const OcrUsageServiceLive = Layer.effect(
           if (exceeded) return yield* Effect.fail(exceeded);
 
           const reservation: OcrUsageReservation = {
-            id: `ocr-usage-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            id: `ocr-usage-${Date.now()}-${randomUUID()}`,
             runId: request.runId,
             docId: request.docId,
             source: request.source,

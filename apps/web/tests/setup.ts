@@ -14,7 +14,9 @@ class MockEventSource {
     this.url = url;
   }
 
-  close() {}
+  close() {
+    // The test double has no connection to close.
+  }
 }
 
 vi.stubGlobal("EventSource", MockEventSource);

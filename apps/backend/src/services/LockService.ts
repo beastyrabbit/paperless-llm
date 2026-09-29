@@ -1,6 +1,7 @@
 /**
  * Durable processing locks backed by TinyBase.
  */
+import { randomUUID } from "node:crypto";
 import { Context, Effect, Layer } from "effect";
 import { DatabaseError } from "../errors/index.js";
 import { TinyBaseService } from "./TinyBaseService.js";
@@ -67,7 +68,7 @@ const lockId = (scope: LockScope, resourceId: string | number): string =>
   `${scope}:${String(resourceId)}`;
 
 const generateRunId = (scope: LockScope, resourceId: string | number): string =>
-  `${scope}-${String(resourceId)}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  `${scope}-${String(resourceId)}-${Date.now()}-${randomUUID()}`;
 
 const parseJsonObject = (value: unknown): Record<string, unknown> => {
   if (typeof value !== "string" || value.length === 0) return {};

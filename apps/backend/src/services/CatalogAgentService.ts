@@ -5,6 +5,7 @@
  * does not mutate Paperless during analysis; proposals must be explicitly
  * approved and applied.
  */
+import { randomUUID } from "node:crypto";
 import { Context, Effect, Layer } from "effect";
 import {
   type ConsolidationProposal,
@@ -77,8 +78,7 @@ export interface CatalogAgentService {
 export const CatalogAgentService = Context.GenericTag<CatalogAgentService>("CatalogAgentService");
 
 const nowIso = (): string => new Date().toISOString();
-const generateId = (prefix: string): string =>
-  `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+const generateId = (prefix: string): string => `${prefix}-${Date.now()}-${randomUUID()}`;
 
 const parseJson = <T>(value: unknown, fallback: T): T => {
   if (typeof value !== "string" || value.length === 0) return fallback;

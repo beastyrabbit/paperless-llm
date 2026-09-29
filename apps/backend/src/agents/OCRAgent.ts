@@ -6,19 +6,22 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { env as nodeEnv } from "node:process";
 import { Context, Effect, Layer, pipe, Stream } from "effect";
 import { AgentError, MistralError } from "../errors/index.js";
+import { annotateSpan, withClientSpan, withInternalSpan } from "../observability/tracing.js";
 import {
   ConcurrencyLimitService,
   ConfigService,
-  PaperlessService,
   classifyMetricsErrorOutcome,
   metricReasonFromError,
   metrics,
-  observeDuration,
-  TinyBaseService,
   OcrUsageService,
+  observeDuration,
+  PaperlessService,
+  TinyBaseService,
 } from "../services/index.js";
+import type { PaperlessDocumentVersion } from "../services/paperless/types.js";
 import {
   fetchWithTimeout,
   getRetryAfterMs,
@@ -26,8 +29,6 @@ import {
   normalizeBaseUrl,
 } from "../utils/http.js";
 import { logger } from "../utils/logger.js";
-import { annotateSpan, withClientSpan, withInternalSpan } from "../observability/tracing.js";
-import type { PaperlessDocumentVersion } from "../services/paperless/types.js";
 import {
   type Agent,
   emitAnalyzing,
@@ -351,13 +352,16 @@ export const OCRAgentServiceLive = Layer.effect(
               try {
                 await fs.writeFile(inputPath, pdfBytes);
                 await new Promise<void>((resolve, reject) => {
-                  const child = spawn("ocrmypdf", [
-                    "--skip-text",
-                    "--deskew",
-                    "--rotate-pages",
-                    inputPath,
-                    outputPath,
-                  ]);
+                  const child = spawn(
+                    "ocrmypdf",
+                    ["--skip-text", "--deskew", "--rotate-pages", inputPath, outputPath],
+                    {
+                      env: {
+                        ...nodeEnv,
+                        PATH: "/usr/local/bin:/usr/bin:/bin",
+                      },
+                    },
+                  );
                   let stderr = "";
                   child.stderr.on("data", (chunk) => {
                     stderr += String(chunk);
