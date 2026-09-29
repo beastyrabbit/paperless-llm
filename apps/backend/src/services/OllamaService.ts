@@ -113,6 +113,12 @@ export interface OllamaService {
 
 export const OllamaService = Context.GenericTag<OllamaService>("OllamaService");
 
+const generatedTextEmitter = (emit: StreamEmit.Emit<never, OllamaError, string, void>) => ({
+  single: (chunk: { response: string; done: boolean }) => emit.single(chunk.response),
+  fail: (error: OllamaError) => emit.fail(error),
+  end: () => emit.end(),
+});
+
 const consumeOllamaStream = async <T extends { done: boolean }>(
   response: Response,
   model: string,
@@ -479,11 +485,7 @@ export const OllamaServiceLive = Layer.effect(
                       response,
                       model,
                       controller,
-                      {
-                        single: (chunk) => emit.single(chunk.response),
-                        fail: (error) => emit.fail(error),
-                        end: () => emit.end(),
-                      },
+                      generatedTextEmitter(emit),
                     );
                   },
                   catch: (error) =>

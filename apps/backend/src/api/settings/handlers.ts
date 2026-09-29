@@ -341,7 +341,7 @@ const serializeSetting = (key: string, value: unknown): string => {
   return String(value);
 };
 
-const updateTagSettings = (tinybase: TinyBaseService, tags: Record<string, unknown>) =>
+const updateTagSettings = (tinybase: TinyBaseService, tags: NonNullable<SettingsUpdate["tags"]>) =>
   Effect.gen(function* () {
     for (const [tagKey, tagValue] of Object.entries(tags)) {
       if (tagValue === undefined || tagValue === null) continue;
@@ -359,7 +359,7 @@ export const updateSettings = (updates: SettingsUpdate) =>
       if (value === undefined) continue;
 
       if (key === "tags" && value && typeof value === "object" && !Array.isArray(value)) {
-        yield* updateTagSettings(tinybase, value as Record<string, unknown>);
+        yield* updateTagSettings(tinybase, value as NonNullable<SettingsUpdate["tags"]>);
         continue;
       }
 
