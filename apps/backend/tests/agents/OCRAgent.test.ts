@@ -39,7 +39,11 @@ const createConfigLayer = () =>
   } as unknown as ConfigService);
 
 describe("OCRAgentService", () => {
-  it("runs Mistral for PDFs that only have generic Paperless content", async () => {
+  it.each([
+    { cache: "missing", force: false },
+    { cache: "different_pdf", force: false },
+    { cache: "matching_pdf", force: true },
+  ])("runs Mistral with $cache cached content and force=$force", async ({ cache, force }) => {
     const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
     const mistralText = "Fresh Mistral OCR text from the PDF.";
     vi.mocked(fetch).mockResolvedValue(
@@ -76,8 +80,23 @@ describe("OCRAgentService", () => {
     };
     const tinybaseMocks = {
       getAllSettings: vi.fn(() => Effect.succeed({})),
-      getDocumentMemory: vi.fn(() => Effect.succeed(null)),
-      getDocumentOcrContent: vi.fn(() => Effect.succeed(null)),
+      getDocumentMemory: vi.fn(() =>
+        Effect.succeed(
+          cache === "missing"
+            ? null
+            : {
+                extractedFacts: {
+                  ocr: {
+                    sourcePdfSha256:
+                      cache === "matching_pdf" ? sha256Bytes(pdfBytes) : "different-pdf-hash",
+                  },
+                },
+              },
+        ),
+      ),
+      getDocumentOcrContent: vi.fn(() =>
+        Effect.succeed(cache === "missing" ? null : { content: "Cached OCR text", pages: 2 }),
+      ),
       setDocumentOcrContent: vi.fn(() => Effect.succeed(undefined)),
       patchDocumentMemory: vi.fn(() => Effect.succeed({})),
       appendRunSummary: vi.fn(() => Effect.succeed(undefined)),
@@ -126,7 +145,7 @@ describe("OCRAgentService", () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const ocr = yield* OCRAgentService;
-        return yield* ocr.process({ docId: 42 });
+        return yield* ocr.process({ docId: 42, force });
       }).pipe(Effect.provide(TestLayer)),
     );
 
@@ -144,6 +163,8 @@ describe("OCRAgentService", () => {
     );
     expect(paperlessMocks.downloadPdf).toHaveBeenCalledWith(42);
     expect(paperlessMocks.patchVersionContent).toHaveBeenCalledWith(42, 77, mistralText);
+    expect(ocrUsageMocks.reserve).toHaveBeenCalledOnce();
+    expect(tinybaseMocks.getDocumentMemory).toHaveBeenCalledTimes(force ? 0 : 1);
   });
 
   it("skips OCR when the current Paperless version is already labeled as Mistral OCR", async () => {
@@ -232,7 +253,15 @@ describe("OCRAgentService", () => {
     expect(ocrUsageMocks.reserve).not.toHaveBeenCalled();
   });
 
-  it("reuses cached OCR text when the source PDF hash matches", async () => {
+  it.each([
+    { cachedPages: 2, persisted: true, expectedPages: 2 },
+    { cachedPages: 0, persisted: true, expectedPages: 1 },
+    { cachedPages: 2, persisted: false, expectedPages: 2 },
+  ])("reuses matching cached OCR with pages=$cachedPages and persisted=$persisted", async ({
+    cachedPages,
+    persisted,
+    expectedPages,
+  }) => {
     const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
     const sourcePdfSha256 = sha256Bytes(pdfBytes);
     const paperlessMocks = {
@@ -252,7 +281,9 @@ describe("OCRAgentService", () => {
       getDocumentVersions: vi.fn(() => Effect.succeed([])),
       uploadOcrPdfVersion: vi.fn(() => Effect.succeed({ id: 77 })),
       pollVersionCreation: vi.fn(() => Effect.succeed(null)),
-      patchVersionContent: vi.fn(() => Effect.succeed(undefined)),
+      patchVersionContent: vi.fn(() =>
+        persisted ? Effect.void : Effect.fail(new Error("Paperless patch unavailable")),
+      ),
       transitionDocumentTag: vi.fn(() => Effect.succeed(undefined)),
     };
     const tinybaseMocks = {
@@ -264,8 +295,8 @@ describe("OCRAgentService", () => {
       ),
       getDocumentOcrContent: vi.fn(() =>
         Effect.succeed({
-          content: "Cached OCR text",
-          pages: 2,
+          content: "  Cached OCR text  ",
+          pages: cachedPages,
           source: "mistral",
           createdAt: "2026-05-15T10:00:00.000Z",
           updatedAt: "2026-05-15T10:00:00.000Z",
@@ -324,15 +355,31 @@ describe("OCRAgentService", () => {
     );
 
     expect(result).toMatchObject({
-      success: true,
+      success: persisted,
       skipped: true,
       skipReason: "cached_ocr_result",
       textLength: "Cached OCR text".length,
-      pages: 2,
+      pages: expectedPages,
       sourcePdfSha256,
+      ocrPersisted: persisted,
     });
     expect(tinybaseMocks.getDocumentOcrContent).toHaveBeenCalledWith(42);
     expect(paperlessMocks.patchVersionContent).toHaveBeenCalledWith(42, 77, "Cached OCR text");
     expect(ocrUsageMocks.reserve).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(result.error).toBe(
+      persisted
+        ? undefined
+        : "Cached OCR text matched the current PDF, but no new Paperless OCR version could be created.",
+    );
+    expect(tinybaseMocks.addProcessingLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          success: persisted,
+          skipReason: "cached_ocr_result",
+          pages: expectedPages,
+        }),
+      }),
+    );
   });
 });

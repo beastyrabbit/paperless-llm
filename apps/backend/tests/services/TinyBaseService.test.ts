@@ -422,6 +422,48 @@ describe("TinyBaseService", () => {
   // Blocked Suggestions Tests
   // =========================================================================
 
+  it("counts every pending review category and keeps unknown rows in totals", async () => {
+    const types = [
+      "correspondent",
+      "document_type",
+      "tag",
+      "title",
+      "human_decision",
+      "consolidation",
+      "schema_correspondent",
+      "schema_document_type",
+      "schema_tag",
+      "schema_custom_field",
+      "schema_merge",
+      "schema_delete",
+      "schema_cleanup",
+      "metadata_description",
+    ];
+    const result = await runEffect(
+      Effect.gen(function* () {
+        const service = yield* TinyBaseService;
+        for (const [index, type] of [
+          ...types,
+          "schema_future",
+          "unknown",
+          "constructor",
+          "schema",
+          "total",
+        ].entries()) {
+          service.store.setRow("pendingReviews", String(index), { type });
+        }
+        service.store.setRow("pendingReviews", "missing-type", { docId: 999 });
+        return yield* service.getPendingCounts();
+      }),
+    );
+
+    expect(result).toEqual({
+      ...Object.fromEntries(types.map((type) => [type, 1])),
+      schema: 8,
+      total: 20,
+    });
+  });
+
   describe("Blocked Suggestions", () => {
     it("should add and check blocked suggestions", async () => {
       const result = await runEffect(

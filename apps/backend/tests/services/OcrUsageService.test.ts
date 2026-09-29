@@ -37,7 +37,11 @@ describe("OcrUsageService", () => {
     const snapshot = await run(
       Effect.gen(function* () {
         const usage = yield* OcrUsageService;
-        const reservation = yield* usage.reserve({ runId: "run-a", source: "bulk_ocr", estimatedPages: 3 });
+        const reservation = yield* usage.reserve({
+          runId: "run-a",
+          source: "bulk_ocr",
+          estimatedPages: 3,
+        });
         yield* usage.commit(reservation, { pages: 3, tokens: 9 });
         return yield* usage.getSnapshot("run-a");
       }),
@@ -151,6 +155,54 @@ describe("OcrUsageService", () => {
     expect(estimate).toBeGreaterThan(200);
   });
 
+  it("counts reserved and committed usage while ignoring released and old rows", async () => {
+    useTempStore();
+    const layer = Layer.merge(makeTestLayer(), TinyBaseServiceLive);
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const tinybase = yield* TinyBaseService;
+        const date = new Date().toISOString().slice(0, 10);
+        tinybase.store.setTable("ocrUsageEvents", {
+          reserved: {
+            date,
+            runId: "run-a",
+            status: "reserved",
+            estimatedPages: 2,
+            estimatedTokens: 10,
+            pages: 99,
+          },
+          committed: {
+            date,
+            runId: "run-a",
+            status: "committed",
+            pages: 3,
+            tokens: 20,
+            estimatedPages: 99,
+          },
+          other: { date, runId: "run-b", status: "committed", pages: 4, tokens: 30 },
+          invalid: {
+            date,
+            runId: "run-a",
+            status: "committed",
+            pages: "invalid",
+            tokens: "Infinity",
+          },
+          released: { date, runId: "run-a", status: "released", estimatedPages: 99 },
+          old: { date: "2000-01-01", runId: "run-a", status: "committed", pages: 99 },
+        });
+        const usage = yield* OcrUsageService;
+        return yield* usage.getSnapshot("run-a");
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(result).toMatchObject({
+      dailyPagesUsed: 9,
+      dailyTokensUsed: 60,
+      runPagesUsed: 5,
+      runTokensUsed: 30,
+    });
+  });
+
   it("releases reserved pages back to the budget", async () => {
     useTempStore();
     process.env["PAPERLESS_LLM_OCR_DAILY_PAGE_LIMIT"] = "2";
@@ -158,9 +210,17 @@ describe("OcrUsageService", () => {
     const result = await run(
       Effect.gen(function* () {
         const usage = yield* OcrUsageService;
-        const first = yield* usage.reserve({ runId: "run-a", source: "bulk_ocr", estimatedPages: 2 });
+        const first = yield* usage.reserve({
+          runId: "run-a",
+          source: "bulk_ocr",
+          estimatedPages: 2,
+        });
         yield* usage.release(first, "test");
-        const second = yield* usage.reserve({ runId: "run-b", source: "bulk_ocr", estimatedPages: 2 });
+        const second = yield* usage.reserve({
+          runId: "run-b",
+          source: "bulk_ocr",
+          estimatedPages: 2,
+        });
         yield* usage.commit(second, { pages: 2 });
         return yield* usage.getSnapshot("run-b");
       }),

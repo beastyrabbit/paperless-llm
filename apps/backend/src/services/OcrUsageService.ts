@@ -113,6 +113,11 @@ export const estimatePdfPages = (pdfBytes: Uint8Array): number => {
   return Math.max(1, matches?.length ?? 1);
 };
 
+const finiteUsage = (value: unknown): number => {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 export const OcrUsageServiceLive = Layer.effect(
   OcrUsageService,
   Effect.gen(function* () {
@@ -159,13 +164,13 @@ export const OcrUsageServiceLive = Layer.effect(
         if (row["date"] !== date) continue;
         const status = row["status"];
         if (status !== "reserved" && status !== "committed") continue;
-        const pages = Number(row[status === "reserved" ? "estimatedPages" : "pages"] ?? 0);
-        const tokens = Number(row[status === "reserved" ? "estimatedTokens" : "tokens"] ?? 0);
-        dailyPagesUsed += Number.isFinite(pages) ? pages : 0;
-        dailyTokensUsed += Number.isFinite(tokens) ? tokens : 0;
+        const pages = finiteUsage(row[status === "reserved" ? "estimatedPages" : "pages"]);
+        const tokens = finiteUsage(row[status === "reserved" ? "estimatedTokens" : "tokens"]);
+        dailyPagesUsed += pages;
+        dailyTokensUsed += tokens;
         if (row["runId"] === runId) {
-          runPagesUsed += Number.isFinite(pages) ? pages : 0;
-          runTokensUsed += Number.isFinite(tokens) ? tokens : 0;
+          runPagesUsed += pages;
+          runTokensUsed += tokens;
         }
       }
       return { dailyPagesUsed, dailyTokensUsed, runPagesUsed, runTokensUsed };

@@ -717,7 +717,7 @@ const migrateCanonicalSettings = (store: Store): boolean => {
 
 export const TinyBaseServiceLive = Layer.effect(
   TinyBaseService,
-  Effect.gen(function* () {
+  Effect.sync(() => {
     const store = createStore();
     let nextBlockedId = 1;
     let nextTagMetaId = 1;
@@ -1048,59 +1048,35 @@ export const TinyBaseServiceLive = Layer.effect(
             const table = store.getTable("pendingReviews") ?? {};
             const rows = Object.values(table);
 
-            let correspondent = 0;
-            let document_type = 0;
-            let tag = 0;
-            let title = 0;
-            let human_decision = 0;
-            let consolidation = 0;
-            let schema_correspondent = 0;
-            let schema_document_type = 0;
-            let schema_tag = 0;
-            let schema_custom_field = 0;
-            let schema_merge = 0;
-            let schema_delete = 0;
-            let schema_cleanup = 0;
-            let metadata_description = 0;
+            const counts = {
+              correspondent: 0,
+              document_type: 0,
+              tag: 0,
+              title: 0,
+              human_decision: 0,
+              consolidation: 0,
+              schema_correspondent: 0,
+              schema_document_type: 0,
+              schema_tag: 0,
+              schema_custom_field: 0,
+              schema_merge: 0,
+              schema_delete: 0,
+              schema_cleanup: 0,
+              metadata_description: 0,
+            };
             let schema = 0;
             let total = 0;
 
             for (const row of rows) {
               const rowType = row?.["type"] as string;
-              if (rowType === "correspondent") correspondent++;
-              else if (rowType === "document_type") document_type++;
-              else if (rowType === "tag") tag++;
-              else if (rowType === "title") title++;
-              else if (rowType === "human_decision") human_decision++;
-              else if (rowType === "consolidation") consolidation++;
-              else if (rowType === "schema_correspondent") schema_correspondent++;
-              else if (rowType === "schema_document_type") schema_document_type++;
-              else if (rowType === "schema_tag") schema_tag++;
-              else if (rowType === "schema_custom_field") schema_custom_field++;
-              else if (rowType === "schema_merge") schema_merge++;
-              else if (rowType === "schema_delete") schema_delete++;
-              else if (rowType === "schema_cleanup") schema_cleanup++;
-              else if (rowType === "metadata_description") metadata_description++;
+              if (Object.hasOwn(counts, rowType)) counts[rowType as keyof typeof counts]++;
               if (rowType?.startsWith("schema_")) schema++;
               // Note: documentlink items are no longer queued for review
               total++;
             }
 
             return {
-              correspondent,
-              document_type,
-              tag,
-              title,
-              human_decision,
-              consolidation,
-              schema_correspondent,
-              schema_document_type,
-              schema_tag,
-              schema_custom_field,
-              schema_merge,
-              schema_delete,
-              schema_cleanup,
-              metadata_description,
+              ...counts,
               schema,
               total,
             };

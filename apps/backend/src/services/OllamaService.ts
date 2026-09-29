@@ -1,7 +1,7 @@
 /**
  * Ollama LLM service for local model inference.
  */
-import { Context, Effect, Layer, pipe, Stream } from "effect";
+import { Context, Effect, Layer, pipe, Stream, type StreamEmit } from "effect";
 import { ConfigService } from "../config/index.js";
 import { OllamaError } from "../errors/index.js";
 import { withClientSpan } from "../observability/tracing.js";
@@ -112,6 +112,70 @@ export interface OllamaService {
 // ===========================================================================
 
 export const OllamaService = Context.GenericTag<OllamaService>("OllamaService");
+
+const generatedTextEmitter = (emit: StreamEmit.Emit<never, OllamaError, string, void>) => ({
+  single: (chunk: { response: string; done: boolean }) => emit.single(chunk.response),
+  fail: (error: OllamaError) => emit.fail(error),
+  end: () => emit.end(),
+});
+
+const consumeOllamaStream = async <T extends { done: boolean }>(
+  response: Response,
+  model: string,
+  controller: AbortController,
+  emit: Pick<StreamEmit.Emit<never, OllamaError, T, void>, "single" | "fail" | "end">,
+): Promise<void> => {
+  if (!response.ok) {
+    throw new Error(`Ollama API error: ${response.status}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("No response body");
+
+  // Return true when the caller must stop reading, including malformed input.
+  const emitLine = (line: string): boolean => {
+    if (!line.trim()) return false;
+
+    let chunk: T;
+    try {
+      chunk = JSON.parse(line) as T;
+    } catch (error) {
+      emit.fail(
+        new OllamaError({
+          message: `Malformed Ollama stream chunk: ${String(error)}`,
+          model,
+          cause: { line, error },
+        }),
+      );
+      controller.abort();
+      return true;
+    }
+
+    emit.single(chunk);
+    if (chunk.done) {
+      emit.end();
+      return true;
+    }
+    return false;
+  };
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (emitLine(line)) return;
+    }
+  }
+
+  if (!emitLine(buffer)) emit.end();
+};
 
 // ===========================================================================
 // Live Implementation
@@ -316,68 +380,7 @@ export const OllamaServiceLive = Layer.effect(
                       requestTimeoutMs,
                     );
 
-                    if (!response.ok) {
-                      throw new Error(`Ollama API error: ${response.status}`);
-                    }
-
-                    const reader = response.body?.getReader();
-                    if (!reader) throw new Error("No response body");
-
-                    const decoder = new TextDecoder();
-                    let buffer = "";
-
-                    while (true) {
-                      const { done, value } = await reader.read();
-                      if (done) break;
-
-                      buffer += decoder.decode(value, { stream: true });
-                      const lines = buffer.split("\n");
-                      buffer = lines.pop() ?? "";
-
-                      for (const line of lines) {
-                        if (line.trim()) {
-                          let chunk: OllamaStreamChunk;
-                          try {
-                            chunk = JSON.parse(line) as OllamaStreamChunk;
-                          } catch (error) {
-                            emit.fail(
-                              new OllamaError({
-                                message: `Malformed Ollama stream chunk: ${String(error)}`,
-                                model,
-                                cause: { line, error },
-                              }),
-                            );
-                            controller.abort();
-                            return;
-                          }
-                          emit.single(chunk);
-                          if (chunk.done) {
-                            emit.end();
-                            return;
-                          }
-                        }
-                      }
-                    }
-
-                    if (buffer.trim()) {
-                      let chunk: OllamaStreamChunk;
-                      try {
-                        chunk = JSON.parse(buffer) as OllamaStreamChunk;
-                      } catch (error) {
-                        emit.fail(
-                          new OllamaError({
-                            message: `Malformed Ollama stream chunk: ${String(error)}`,
-                            model,
-                            cause: { line: buffer, error },
-                          }),
-                        );
-                        controller.abort();
-                        return;
-                      }
-                      emit.single(chunk);
-                    }
-
-                    emit.end();
+                    await consumeOllamaStream(response, model, controller, emit);
                   },
                   catch: (error) =>
                     error instanceof OllamaError
@@ -478,68 +481,12 @@ export const OllamaServiceLive = Layer.effect(
                       requestTimeoutMs,
                     );
 
-                    if (!response.ok) {
-                      throw new Error(`Ollama API error: ${response.status}`);
-                    }
-
-                    const reader = response.body?.getReader();
-                    if (!reader) throw new Error("No response body");
-
-                    const decoder = new TextDecoder();
-                    let buffer = "";
-
-                    while (true) {
-                      const { done, value } = await reader.read();
-                      if (done) break;
-
-                      buffer += decoder.decode(value, { stream: true });
-                      const lines = buffer.split("\n");
-                      buffer = lines.pop() ?? "";
-
-                      for (const line of lines) {
-                        if (line.trim()) {
-                          let chunk: { response: string; done: boolean };
-                          try {
-                            chunk = JSON.parse(line) as { response: string; done: boolean };
-                          } catch (error) {
-                            emit.fail(
-                              new OllamaError({
-                                message: `Malformed Ollama stream chunk: ${String(error)}`,
-                                model,
-                                cause: { line, error },
-                              }),
-                            );
-                            controller.abort();
-                            return;
-                          }
-                          emit.single(chunk.response);
-                          if (chunk.done) {
-                            emit.end();
-                            return;
-                          }
-                        }
-                      }
-                    }
-
-                    if (buffer.trim()) {
-                      let chunk: { response: string; done: boolean };
-                      try {
-                        chunk = JSON.parse(buffer) as { response: string; done: boolean };
-                      } catch (error) {
-                        emit.fail(
-                          new OllamaError({
-                            message: `Malformed Ollama stream chunk: ${String(error)}`,
-                            model,
-                            cause: { line: buffer, error },
-                          }),
-                        );
-                        controller.abort();
-                        return;
-                      }
-                      emit.single(chunk.response);
-                    }
-
-                    emit.end();
+                    await consumeOllamaStream<{ response: string; done: boolean }>(
+                      response,
+                      model,
+                      controller,
+                      generatedTextEmitter(emit),
+                    );
                   },
                   catch: (error) =>
                     error instanceof OllamaError
