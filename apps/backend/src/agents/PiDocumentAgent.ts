@@ -13,8 +13,8 @@ import {
 import { Context, Effect, Layer, pipe } from "effect";
 import { Type } from "typebox";
 import { AgentError } from "../errors/index.js";
-import { annotateSpan, withInternalSpan } from "../observability/tracing.js";
 import type { CustomField, CustomFieldValue, Document } from "../models/index.js";
+import { annotateSpan, withInternalSpan } from "../observability/tracing.js";
 import {
   ConcurrencyLimitService,
   ConfigService,
@@ -46,11 +46,11 @@ import { PiTagExplorerAgentService } from "./PiTagExplorerAgent.js";
 import {
   buildOllamaModel,
   checkOllamaModelRunning,
+  DEFAULT_OLLAMA_CONTEXT_WINDOW,
+  DEFAULT_OLLAMA_MAX_TOKENS,
   makeGatedOllamaStreamSimple,
   PromptIdleTimeoutError,
   runWithPromptActivityWatchdog,
-  DEFAULT_OLLAMA_CONTEXT_WINDOW,
-  DEFAULT_OLLAMA_MAX_TOKENS,
 } from "./piOllamaModel.js";
 
 export interface DocumentAgentInput {
@@ -590,7 +590,7 @@ const stableStringify = (value: unknown): string => {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
   if (isRecord(value)) {
     return `{${Object.keys(value)
-      .sort()
+      .sort((left, right) => left.localeCompare(right))
       .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
       .join(",")}}`;
   }

@@ -3,22 +3,26 @@
  */
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { constants as fsConstants } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { env as nodeEnv } from "node:process";
 import { Context, Effect, Layer, pipe, Stream } from "effect";
 import { AgentError, MistralError } from "../errors/index.js";
+import { annotateSpan, withClientSpan, withInternalSpan } from "../observability/tracing.js";
 import {
   ConcurrencyLimitService,
   ConfigService,
-  PaperlessService,
   classifyMetricsErrorOutcome,
   metricReasonFromError,
   metrics,
-  observeDuration,
-  TinyBaseService,
   OcrUsageService,
+  observeDuration,
+  PaperlessService,
+  TinyBaseService,
 } from "../services/index.js";
+import type { PaperlessDocumentVersion } from "../services/paperless/types.js";
 import {
   fetchWithTimeout,
   getRetryAfterMs,
@@ -26,8 +30,6 @@ import {
   normalizeBaseUrl,
 } from "../utils/http.js";
 import { logger } from "../utils/logger.js";
-import { annotateSpan, withClientSpan, withInternalSpan } from "../observability/tracing.js";
-import type { PaperlessDocumentVersion } from "../services/paperless/types.js";
 import {
   type Agent,
   emitAnalyzing,
@@ -120,6 +122,29 @@ export interface OCRAgentService extends Agent<OCRInput, OCRResult> {
 
 export const OCRAgentService = Context.GenericTag<OCRAgentService>("OCRAgentService");
 const ocrLogger = logger.child({ component: "ocr_agent" });
+
+const DEFAULT_OCRMYPDF_PATHS = [
+  "/usr/local/bin/ocrmypdf",
+  "/usr/bin/ocrmypdf",
+  "/opt/homebrew/bin/ocrmypdf",
+] as const;
+
+const resolveOcrmypdfPath = async (): Promise<string> => {
+  const configuredPath = nodeEnv["PAPERLESS_LLM_OCRMYPDF_BIN"]?.trim();
+  const candidates = configuredPath ? [configuredPath] : DEFAULT_OCRMYPDF_PATHS;
+  for (const candidate of candidates) {
+    if (!path.isAbsolute(candidate)) continue;
+    try {
+      await fs.access(candidate, fsConstants.X_OK);
+      return candidate;
+    } catch {
+      // Try the next known installation path.
+    }
+  }
+  throw new Error(
+    "ocrmypdf executable not found; set PAPERLESS_LLM_OCRMYPDF_BIN to an absolute executable path",
+  );
+};
 
 export const OCRAgentServiceLive = Layer.effect(
   OCRAgentService,
@@ -350,14 +375,12 @@ export const OCRAgentServiceLive = Layer.effect(
 
               try {
                 await fs.writeFile(inputPath, pdfBytes);
+                const ocrmypdfPath = await resolveOcrmypdfPath();
                 await new Promise<void>((resolve, reject) => {
-                  const child = spawn("ocrmypdf", [
-                    "--skip-text",
-                    "--deskew",
-                    "--rotate-pages",
-                    inputPath,
-                    outputPath,
-                  ]);
+                  const child = spawn(
+                    ocrmypdfPath,
+                    ["--skip-text", "--deskew", "--rotate-pages", inputPath, outputPath],
+                  );
                   let stderr = "";
                   child.stderr.on("data", (chunk) => {
                     stderr += String(chunk);

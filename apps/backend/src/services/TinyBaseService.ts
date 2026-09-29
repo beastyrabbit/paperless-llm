@@ -2,6 +2,7 @@
  * TinyBase database service for local state and sync.
  */
 
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Context, Effect, Layer } from "effect";
@@ -320,7 +321,7 @@ export const TinyBaseService = Context.GenericTag<TinyBaseService>("TinyBaseServ
 // ===========================================================================
 
 const generateId = (): string => {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  return `${Date.now()}-${randomUUID()}`;
 };
 
 const normalizeString = (str: string): string => {
@@ -1717,7 +1718,7 @@ export const TinyBaseServiceLive = Layer.effect(
             const timestamps = rows
               .map((row) => row?.["timestamp"] as string)
               .filter(Boolean)
-              .sort();
+              .sort((left, right) => left.localeCompare(right));
 
             return {
               totalLogs: rows.length,

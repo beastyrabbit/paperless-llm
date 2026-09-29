@@ -86,11 +86,17 @@ export class MetricsRegistry {
       lines.push(`# HELP ${metric.name} ${metric.help}`);
       lines.push(`# TYPE ${metric.name} ${metric.kind}`);
       if (metric.kind === "counter") {
-        for (const [key, value] of [...metric.values.entries()].sort()) {
-          lines.push(`${metric.name}${renderLabels(metric.labelNames, labelsFromKey(metric.labelNames, key))} ${formatNumber(value)}`);
+        for (const [key, value] of [...metric.values.entries()].sort(
+          ([left], [right]) => left.localeCompare(right),
+        )) {
+          lines.push(
+            `${metric.name}${renderLabels(metric.labelNames, labelsFromKey(metric.labelNames, key))} ${formatNumber(value)}`,
+          );
         }
       } else {
-        for (const [key, value] of [...metric.values.entries()].sort()) {
+        for (const [key, value] of [...metric.values.entries()].sort(
+          ([left], [right]) => left.localeCompare(right),
+        )) {
           const labels = labelsFromKey(metric.labelNames, key);
           for (let index = 0; index < metric.buckets.length; index++) {
             lines.push(`${metric.name}_bucket${renderLabels([...metric.labelNames, "le"], { ...labels, le: metric.buckets[index] ?? "" })} ${value.buckets[index] ?? 0}`);
