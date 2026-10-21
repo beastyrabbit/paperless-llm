@@ -229,7 +229,7 @@ export const privacyDocuments: Record<LegalLocale, LegalDocument> = {
           {
             type: "paragraph",
             content: [
-              "Wenn die Texterkennung (OCR) aktiviert ist, wird die vollständige Dokumentdatei (PDF) zur Texterkennung an Mistral AI SAS, 15 rue des Halles, 75001 Paris, Frankreich, übermittelt. OCR ist derzeit aktiviert. Die Übermittlung erfolgt im Rahmen der im Abschnitt „Verarbeitung von Dokumenten“ beschriebenen Verarbeitung zu ausschließlich persönlichen oder familiären Zwecken des Verantwortlichen (Art. 2 Abs. 2 lit. c DSGVO).",
+              "Wenn die Texterkennung (OCR) aktiviert ist, wird die vollständige Dokumentdatei (PDF) zur Texterkennung an Mistral AI SAS, 15 rue des Halles, 75001 Paris, Frankreich, übermittelt. Mistral AI hat seinen Sitz in der EU. Soweit Dienstleister von Mistral AI personenbezogene Daten außerhalb der EU verarbeiten, verwendet Mistral AI nach eigenen Angaben Standardvertragsklauseln der EU-Kommission (Art. 46 Abs. 2 lit. c DSGVO). OCR ist derzeit aktiviert. Die Übermittlung erfolgt im Rahmen der im Abschnitt „Verarbeitung von Dokumenten“ beschriebenen Verarbeitung zu ausschließlich persönlichen oder familiären Zwecken des Verantwortlichen (Art. 2 Abs. 2 lit. c DSGVO).",
             ],
           },
           {
@@ -313,6 +313,13 @@ export const privacyDocuments: Record<LegalLocale, LegalDocument> = {
                 "Speichert die gewählte Sprache (en/de); wird erst bei einem Sprachwechsel in den Einstellungen gesetzt.",
                 "1 Jahr",
                 "Für die gewünschte Sprachfunktion erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG).",
+              ],
+              [
+                "p_session_token",
+                "Pangolin, pangolin.heerlab.com",
+                "Hält die Anmeldung beim Anmeldedienst Pangolin während der SSO-Anmeldung; HttpOnly, Secure, SameSite=Lax.",
+                "30 Tage",
+                "Für die Anmeldung erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG).",
               ],
               [
                 "p_session_token_s.<Zeitstempel>",
@@ -642,7 +649,7 @@ export const privacyDocuments: Record<LegalLocale, LegalDocument> = {
           {
             type: "paragraph",
             content: [
-              'When text recognition (OCR) is enabled, the complete document file (PDF) is sent to Mistral AI SAS, 15 rue des Halles, 75001 Paris, France, for text recognition. OCR is currently enabled. The transfer is part of the processing described in the "Document processing" section for exclusively the controller\'s personal or household purposes (Art. 2(2)(c) GDPR).',
+              "When text recognition (OCR) is enabled, the complete document file (PDF) is sent to Mistral AI SAS, 15 rue des Halles, 75001 Paris, France, for text recognition. Mistral AI is established in the EU. Where Mistral AI's service providers process personal data outside the EU, Mistral AI states that it uses the European Commission's Standard Contractual Clauses (Art. 46(2)(c) GDPR). OCR is currently enabled. The transfer is part of the processing described in the \"Document processing\" section for exclusively the controller's personal or household purposes (Art. 2(2)(c) GDPR).",
             ],
           },
           {
@@ -726,6 +733,13 @@ export const privacyDocuments: Record<LegalLocale, LegalDocument> = {
                 "Stores the selected language (en/de); set only when changing language in Settings.",
                 "1 year",
                 "Required for the requested language function (Section 25(2) no. 2 TDDDG).",
+              ],
+              [
+                "p_session_token",
+                "Pangolin, pangolin.heerlab.com",
+                "Keeps the sign-in at the Pangolin sign-in service during SSO; HttpOnly, Secure, SameSite=Lax.",
+                "30 days",
+                "Required for sign-in (Section 25(2) no. 2 TDDDG).",
               ],
               [
                 "p_session_token_s.<timestamp>",

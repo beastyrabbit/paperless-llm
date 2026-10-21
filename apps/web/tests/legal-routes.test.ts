@@ -118,6 +118,50 @@ describe("standalone legal routes", () => {
     expect(html).not.toContain("Hosting/Backups");
   });
 
+  it.each([
+    {
+      lang: "de",
+      get: getPrivacyDe,
+      mistralTransfer:
+        "Mistral AI hat seinen Sitz in der EU. Soweit Dienstleister von Mistral AI personenbezogene Daten außerhalb der EU verarbeiten, verwendet Mistral AI nach eigenen Angaben Standardvertragsklauseln der EU-Kommission (Art. 46 Abs. 2 lit. c DSGVO).",
+      signInCookie: [
+        "p_session_token",
+        "Pangolin, pangolin.heerlab.com",
+        "Hält die Anmeldung beim Anmeldedienst Pangolin während der SSO-Anmeldung; HttpOnly, Secure, SameSite=Lax.",
+        "30 Tage",
+        "Für die Anmeldung erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG).",
+      ],
+      resourceCookie: "p_session_token_s.<Zeitstempel>",
+    },
+    {
+      lang: "en",
+      get: getPrivacyEn,
+      mistralTransfer:
+        "Mistral AI is established in the EU. Where Mistral AI's service providers process personal data outside the EU, Mistral AI states that it uses the European Commission's Standard Contractual Clauses (Art. 46(2)(c) GDPR).",
+      signInCookie: [
+        "p_session_token",
+        "Pangolin, pangolin.heerlab.com",
+        "Keeps the sign-in at the Pangolin sign-in service during SSO; HttpOnly, Secure, SameSite=Lax.",
+        "30 days",
+        "Required for sign-in (Section 25(2) no. 2 TDDDG).",
+      ],
+      resourceCookie: "p_session_token_s.<timestamp>",
+    },
+  ])("$lang privacy documents Mistral transfer safeguards and both Pangolin cookies", async ({
+    get,
+    mistralTransfer,
+    signInCookie,
+    resourceCookie,
+  }) => {
+    const html = await get().text();
+
+    expect(html).toContain(escapeHtml(mistralTransfer));
+    expect(html).toContain(
+      `<tr>${signInCookie.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`,
+    );
+    expect(html).toContain(`<tr><td>${escapeHtml(resourceCookie)}</td>`);
+  });
+
   it("keeps German and English privacy sections in the same order", () => {
     expect(privacyDocuments.de.sections.map(({ id }) => id)).toEqual(
       privacyDocuments.en.sections.map(({ id }) => id),
