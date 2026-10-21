@@ -61,6 +61,8 @@ jobs:
           LC_ALL: C.UTF-8
           SONAR_SCANNER_JAVA_OPTS: -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8
         with:
+          # Legal prose stored as data trips duplication detection because string literals are normalised.
           args: >
             -Dsonar.projectKey=beastyrabbit_paperless-llm_a0e299a6-8613-4751-8616-62e9177abe32
+            -Dsonar.cpd.exclusions=apps/web/lib/legal/privacy.ts
             ${{ steps.pr.outputs.args }}

@@ -1,4 +1,9 @@
 {
+  "legal": {
+    "navigation": "Legal information",
+    "notice": "Legal notice",
+    "privacy": "Privacy"
+  },
   "common": {
     "loading": "Loading...",
     "save": "Save",
