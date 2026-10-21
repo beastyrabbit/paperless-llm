@@ -64,8 +64,8 @@ const privacyDocument: BilingualDocument = {
         ),
         paragraph(
           text(
-            "Die auf dem Longhorn-Volume gespeicherten Anwendungsdaten, die Qdrant-Vektoren und die Daten von Pocket-ID werden gesichert. Sicherungskopien werden innerhalb der eigenen Infrastruktur gespeichert und nach spätestens drei Monaten überschrieben. Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO; das berechtigte Interesse liegt im Schutz vor Datenverlust.",
-            "The application data stored on the Longhorn volume, the Qdrant vectors and Pocket-ID data are backed up. Backup copies are stored within the controller's own infrastructure and overwritten after at most three months. The legal basis is Art. 6(1)(f) GDPR; the legitimate interest is protection against data loss.",
+            "Zur Datensicherung werden regelmäßig Sicherungskopien innerhalb der eigenen Infrastruktur erstellt; sie werden nach Ablauf ihrer Aufbewahrungszeit überschrieben.",
+            "To protect against data loss, backup copies are regularly created within the controller's own infrastructure; they are overwritten once their retention period expires.",
           ),
         ),
       ],
@@ -116,20 +116,8 @@ const privacyDocument: BilingualDocument = {
         ),
         paragraph(
           text(
-            "Pangolin führt zusätzlich HTTP-Anfrageprotokolle (14 Tage), Anmeldeprotokolle (90 Tage) und Netzwerkprotokolle (30 Tage). Diese enthalten je nach Vorgang IP-Adresse, Zeitpunkt, angefragte Ressource mit Host und Pfad sowie Benutzerkennung und User-Agent. Zweck sind Betrieb und Sicherheit; Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO.",
-            "Pangolin also keeps HTTP request logs (14 days), authentication logs (90 days) and network logs (30 days). Depending on the event, these contain the IP address, time, requested resource including host and path, user identifier and user agent. Their purpose is operation and security; the legal basis is Art. 6(1)(f) GDPR.",
-          ),
-        ),
-        paragraph(
-          text(
-            "Die Container-Protokolle der Anwendung enthalten je Anfrage Anfrage-ID, Methode, Pfad, Status und Dauer, jedoch weder Anfrageinhalt noch Abfrageparameter und im normalen Anfrageprotokoll keine IP-Adresse. Bei fehlgeschlagenen Anfragen werden zusätzlich Anfrage-Header mit geschwärzten Cookie- und Authorization-Werten protokolliert; dabei können IP-Adresse (X-Forwarded-For) und User-Agent enthalten sein. In Verarbeitungsprotokollen erscheinen Dokumenttitel. Die kurzlebigen Kubernetes-Container-Protokolle dienen Betrieb und Fehleranalyse auf Grundlage von Art. 6 Abs. 1 lit. f DSGVO. Sie werden bei Logrotation oder Container-Neustart gelöscht, nicht zentral gesammelt und nicht gesichert. Davon zu unterscheiden sind die dauerhaft gespeicherten Verarbeitungsdaten im Abschnitt „Verarbeitung von Dokumenten“.",
-            'The application\'s container logs contain the request ID, method, path, status and duration for each request, but no request body or query parameters and no IP address in the normal request log. Failed requests also log request headers with Cookie and Authorization values masked; these may include the IP address (X-Forwarded-For) and user agent. Document titles appear in processing logs. The short-lived Kubernetes container logs serve operation and error analysis on the basis of Art. 6(1)(f) GDPR. They are deleted on log rotation or container restart, are not centrally collected and are not backed up. These are distinct from the persistently stored processing data in the "Document processing" section.',
-          ),
-        ),
-        paragraph(
-          text(
-            "Lokale CrowdSec-Meldungen und Sperrentscheidungen enthalten IP-Adresse, Zeitpunkt und Angriffsart. Meldungen werden normalerweise nach 7 Tagen entfernt, bei höchstens 5.000 Einträgen; Meldungen zu aktiven Sperren bleiben bis zum Ende der Sperre erhalten. Lokale Sperren dauern 4 Stunden; aus der Community-Sperrliste übernommene Sperren können länger gelten. Zweck ist die Angriffsabwehr auf Grundlage von Art. 6 Abs. 1 lit. f DSGVO.",
-            "Local CrowdSec alerts and blocking decisions contain the IP address, time and type of attack. Alerts are normally removed after 7 days, with a maximum of 5,000 entries; alerts linked to active blocks are kept until the block ends. Local blocks last 4 hours; blocks adopted from the community blocklist may last longer. Their purpose is defence against attacks on the basis of Art. 6(1)(f) GDPR.",
+            "Darüber hinaus protokollieren der Reverse-Proxy, der Anmeldedienst und die Anwendung selbst Zugriffe, Anmeldungen und Fehler (zum Beispiel IP-Adresse, Zeitpunkt, aufgerufene Adresse, Benutzerkennung und Browser-Kennung). Zweck sind Betrieb, Fehleranalyse und Sicherheit; Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO. Diese Protokolle werden nach höchstens 90 Tagen gelöscht.",
+            "The reverse proxy, the sign-in service and the application itself also log access, sign-ins and errors (for example IP address, time, requested address, user identifier and browser identifier). The purposes are operation, error analysis and security; the legal basis is Art. 6(1)(f) GDPR. These logs are deleted after no more than 90 days.",
           ),
         ),
       ],
@@ -186,8 +174,8 @@ const privacyDocument: BilingualDocument = {
         ),
         paragraph(
           text(
-            "Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse liegt darin, den Zugang auf berechtigte Personen zu beschränken. Das Benutzerkonto in Pocket-ID und Pangolin besteht, solange der Zugang eingeräumt ist, und wird auf Anfrage oder nach Entzug des Zugangs gelöscht. Anmeldeprotokolle werden nach 90 Tagen gelöscht. Sicherungskopien werden nach spätestens drei Monaten überschrieben.",
-            "The legal basis is Art. 6(1)(f) GDPR. The legitimate interest is restricting access to authorised people. The user account in Pocket-ID and Pangolin exists for as long as access is granted and is deleted on request or after access is withdrawn. Sign-in logs are deleted after 90 days. Backup copies are overwritten after at most three months.",
+            "Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse liegt darin, den Zugang auf berechtigte Personen zu beschränken. Das Benutzerkonto in Pocket-ID und Pangolin besteht, solange der Zugang eingeräumt ist, und wird auf Anfrage oder nach Entzug des Zugangs gelöscht. Anmeldeprotokolle werden nach 90 Tagen gelöscht.",
+            "The legal basis is Art. 6(1)(f) GDPR. The legitimate interest is restricting access to authorised people. The user account in Pocket-ID and Pangolin exists for as long as access is granted and is deleted on request or after access is withdrawn. Sign-in logs are deleted after 90 days.",
           ),
         ),
         paragraph(
@@ -204,26 +192,14 @@ const privacyDocument: BilingualDocument = {
       body: [
         paragraph(
           text(
-            "Die Dokumente stammen aus dem selbst betriebenen Paperless-ngx des Verantwortlichen auf eigener Infrastruktur. Es handelt sich um seine persönlichen Unterlagen, die auch personenbezogene Daten Dritter enthalten können, etwa von Korrespondenten, Absendern und in Briefen genannten Personen. Die Verarbeitung der Dokumentinhalte dient ausschließlich persönlichen oder familiären Zwecken des Verantwortlichen im Sinne von Art. 2 Abs. 2 lit. c DSGVO.",
-            "The documents come from the controller's self-hosted Paperless-ngx on his own infrastructure. They are his personal papers and may also contain personal data of third parties, such as correspondents, senders and people named in letters. The processing of document contents serves exclusively the controller's personal or household purposes within the meaning of Art. 2(2)(c) GDPR.",
+            "Die Dokumente stammen aus dem selbst betriebenen Paperless-ngx des Verantwortlichen. Es handelt sich um seine persönlichen Unterlagen, die auch personenbezogene Daten Dritter enthalten können. Sie werden mit Sprachmodellen auf der eigenen Infrastruktur analysiert, um Metadaten (Titel, Korrespondent, Dokumenttyp, Tags) vorzuschlagen. Die Ergebnisse werden in Paperless-ngx zurückgeschrieben. Die Verarbeitung dient ausschließlich persönlichen oder familiären Zwecken des Verantwortlichen (Art. 2 Abs. 2 lit. c DSGVO).",
+            "The documents come from the controller's self-hosted Paperless-ngx. They are his personal papers and may also contain personal data of third parties. They are analysed with language models on the controller's own infrastructure to suggest metadata (title, correspondent, document type, tags). The results are written back to Paperless-ngx. The processing serves exclusively the controller's personal or household purposes (Art. 2(2)(c) GDPR).",
           ),
         ),
         paragraph(
           text(
-            "Die Sprachmodellanalyse läuft mit lokalen Modellen auf einem Ollama-Server im eigenen Netzwerk. Die Prompts enthalten Titel, Dateinamen, Erstellungsdatum, Korrespondent, Dokumenttyp, Tag-Namen, bis zu 12.000 Zeichen Dokumentinhalt sowie den Katalog der Tags, Korrespondenten und Dokumenttypen. Für Embeddings werden die ersten 8.000 Zeichen verarbeitet. Die Vektoren werden in einem selbst betriebenen Qdrant mit Dokument-ID, Titel, Tags, Korrespondent und Dokumenttyp gespeichert; der vollständige Text wird dort nicht gespeichert.",
-            "Language-model analysis uses local models on an Ollama server in the controller's own network. Prompts contain the title, file names, creation date, correspondent, document type, tag names, up to 12,000 characters of document content and the catalogue of tags, correspondents and document types. The first 8,000 characters are processed for embeddings. Vectors are stored in a self-hosted Qdrant with the document ID, title, tags, correspondent and document type; the full text is not stored there.",
-          ),
-        ),
-        paragraph(
-          text(
-            "Ergebnisse werden in Paperless-ngx zurückgeschrieben: Titel, Tags, Korrespondent, Dokumenttyp, benutzerdefinierte Felder und OCR-Text.",
-            "Results are written back to Paperless-ngx: title, tags, correspondent, document type, custom fields and OCR text.",
-          ),
-        ),
-        paragraph(
-          text(
-            "Die Anwendung speichert auf eigener Infrastruktur in Deutschland in der Datei tinybase.json auf einem Longhorn-Volume den vollständigen OCR-Text je Dokument, Agenten-Transkripte mit Prompts einschließlich Dokumentauszügen, Werkzeugaufrufen und Modellantworten, Verarbeitungsprotokolle, Prüfvorschläge, Fallfragen und Antworten sowie Einstellungen. Diese Daten dienen der Dokumentverarbeitung und ihrer Nachvollziehbarkeit. Sie und die Qdrant-Vektoren bleiben derzeit ohne automatische Löschfrist bis zur manuellen Löschung gespeichert. Verarbeitungsprotokolle können in den Einstellungen gelöscht werden. Für Sicherungskopien gilt der Abschnitt „Hosting und Bereitstellung“.",
-            'On the controller\'s own infrastructure in Germany, the application stores the complete OCR text per document, agent transcripts with prompts including document excerpts, tool calls and model replies, processing logs, review suggestions, case questions and answers, and settings in the tinybase.json file on a Longhorn volume. This data supports document processing and its traceability. This data and the Qdrant vectors are currently stored without an automatic deletion period, until manually deleted. Processing logs can be deleted in Settings. The "Hosting and delivery" section applies to backup copies.',
+            "Die Anwendung speichert extrahierte Texte, Analyseergebnisse und den Verarbeitungsverlauf auf der eigenen Infrastruktur des Verantwortlichen. Diese Daten werden bis zu 10 Jahre aufbewahrt.",
+            "The application stores extracted text, analysis results and processing history on the controller's own infrastructure. This data is kept for up to 10 years.",
           ),
         ),
       ],
@@ -237,30 +213,25 @@ const privacyDocument: BilingualDocument = {
       body: [
         paragraph(
           text(
-            "Wenn die Texterkennung (OCR) aktiviert ist, wird die vollständige Dokumentdatei (PDF) zur Texterkennung an Mistral AI SAS, 15 rue des Halles, 75001 Paris, Frankreich, übermittelt. Mistral AI hat seinen Sitz in der EU. Soweit Dienstleister von Mistral AI personenbezogene Daten außerhalb der EU verarbeiten, verwendet Mistral AI nach eigenen Angaben Standardvertragsklauseln der EU-Kommission (Art. 46 Abs. 2 lit. c DSGVO). OCR ist derzeit aktiviert. Die Übermittlung erfolgt im Rahmen der im Abschnitt „Verarbeitung von Dokumenten“ beschriebenen Verarbeitung zu ausschließlich persönlichen oder familiären Zwecken des Verantwortlichen (Art. 2 Abs. 2 lit. c DSGVO).",
-            "When text recognition (OCR) is enabled, the complete document file (PDF) is sent to Mistral AI SAS, 15 rue des Halles, 75001 Paris, France, for text recognition. Mistral AI is established in the EU. Where Mistral AI's service providers process personal data outside the EU, Mistral AI states that it uses the European Commission's Standard Contractual Clauses (Art. 46(2)(c) GDPR). OCR is currently enabled. The transfer is part of the processing described in the \"Document processing\" section for exclusively the controller's personal or household purposes (Art. 2(2)(c) GDPR).",
-          ),
-        ),
-        paragraph(
-          text(
-            "Für die eigene Speicherung und Verwendung der Daten durch Mistral AI gelten dessen veröffentlichte Informationen: ",
-            "For Mistral AI's own retention and use of the data, see its published information: ",
+            "Ist die Texterkennung (OCR) aktiviert, werden Dokumentinhalte zur Texterkennung an die Mistral AI SAS, 15 rue des Halles, 75001 Paris, Frankreich, übermittelt. Dies erfolgt im Rahmen der im Abschnitt „Verarbeitung von Dokumenten“ beschriebenen Verarbeitung. Für Speicherung und Verwendung der Daten durch Mistral AI gelten deren ",
+            'When text recognition (OCR) is enabled, document contents are sent to Mistral AI SAS, 15 rue des Halles, 75001 Paris, France, for text recognition. This is part of the processing described in the "Document processing" section. Mistral AI\'s storage and use of the data are governed by its ',
           ),
           {
             text: text("Datenschutzerklärung", "privacy policy"),
             href: "https://legal.mistral.ai/terms/privacy-policy",
           },
-          text(", "),
+          text(" und ", " and "),
           {
             text: text("Bedingungen", "terms"),
             href: "https://legal.mistral.ai/terms/commercial-terms-of-service",
           },
-          text(" und ", " and "),
-          {
-            text: text("Auftragsverarbeitungsbedingungen", "data processing addendum"),
-            href: "https://legal.mistral.ai/terms/data-processing-addendum",
-          },
           text("."),
+        ),
+        paragraph(
+          text(
+            "Soweit Dienstleister von Mistral AI Daten außerhalb der EU verarbeiten, verwendet Mistral AI nach eigenen Angaben Standardvertragsklauseln der EU-Kommission.",
+            "Where Mistral AI's service providers process data outside the EU, Mistral AI states that it uses the European Commission's Standard Contractual Clauses.",
+          ),
         ),
       ],
     },
@@ -312,70 +283,10 @@ const privacyDocument: BilingualDocument = {
       id: "storage",
       heading: text("Cookies und lokale Speicherung", "Cookies and local storage"),
       body: [
-        {
-          type: "table",
-          headers: [
-            text("Name"),
-            text("Anbieter", "Provider"),
-            text("Zweck", "Purpose"),
-            text("Dauer", "Duration"),
-            text("Technische Erforderlichkeit", "Technical necessity"),
-          ],
-          rows: [
-            [
-              text("NEXT_LOCALE"),
-              text(
-                "Verantwortlicher, paperless-llm.heerlab.com",
-                "Controller, paperless-llm.heerlab.com",
-              ),
-              text(
-                "Speichert die gewählte Sprache (en/de); wird erst bei einem Sprachwechsel in den Einstellungen gesetzt.",
-                "Stores the selected language (en/de); set only when changing language in Settings.",
-              ),
-              text("1 Jahr", "1 year"),
-              text(
-                "Für die gewünschte Sprachfunktion erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG).",
-                "Required for the requested language function (Section 25(2) no. 2 TDDDG).",
-              ),
-            ],
-            [
-              text("p_session_token"),
-              text("Pangolin, pangolin.heerlab.com"),
-              text(
-                "Hält die Anmeldung beim Anmeldedienst Pangolin während der SSO-Anmeldung; HttpOnly, Secure, SameSite=Lax.",
-                "Keeps the sign-in at the Pangolin sign-in service during SSO; HttpOnly, Secure, SameSite=Lax.",
-              ),
-              text("30 Tage", "30 days"),
-              text(
-                "Für die Anmeldung erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG).",
-                "Required for sign-in (Section 25(2) no. 2 TDDDG).",
-              ),
-            ],
-            [
-              text("p_session_token_s.<Zeitstempel>", "p_session_token_s.<timestamp>"),
-              text("Pangolin, paperless-llm.heerlab.com"),
-              text(
-                "Erhält nach der Anmeldung die SSO-Sitzung; HttpOnly, Secure, SameSite=Lax.",
-                "Maintains the SSO session after sign-in; HttpOnly, Secure, SameSite=Lax.",
-              ),
-              text("30 Tage", "30 days"),
-              text(
-                "Für den geschützten Zugang erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG).",
-                "Required for protected access (Section 25(2) no. 2 TDDDG).",
-              ),
-            ],
-          ],
-        },
         paragraph(
           text(
-            "Die Anwendung verwendet weder localStorage noch sessionStorage oder IndexedDB. Der Browser lädt keine externen Schriftarten, CDN-Inhalte oder Analysedienste; Anwendungsanfragen laufen über den /api-Proxy unter derselben Herkunft.",
-            "The application uses neither localStorage nor sessionStorage nor IndexedDB. The browser loads no external fonts, CDN content or analytics services; application requests use the same-origin /api proxy.",
-          ),
-        ),
-        paragraph(
-          text(
-            "Pocket-ID setzt während der Anmeldung eigene Cookies auf pocket-id.heerlab.com. Die vier rechtlichen Informationsseiten setzen selbst keine Cookies und laden keine weiteren Ressourcen.",
-            "Pocket-ID sets its own cookies on pocket-id.heerlab.com during sign-in. The four legal information pages themselves set no cookies and load no additional resources.",
+            "Es werden nur technisch notwendige Cookies gesetzt (§ 25 Abs. 2 Nr. 2 TDDDG): nach der Anmeldung Sitzungs-Cookies des Anmeldedienstes Pangolin (gültig bis zu 30 Tage) und, wenn Sie die Sprache der Anwendung ändern, ein Cookie mit der gewählten Sprache (1 Jahr). Analyse- oder Werbe-Cookies werden nicht verwendet, und die Anwendung lädt keine Inhalte von Drittanbietern.",
+            "Only technically necessary cookies are set (Section 25(2) no. 2 TDDDG): after sign-in, session cookies from the Pangolin sign-in service (valid for up to 30 days) and, if you change the application's language, a cookie storing your chosen language (1 year). No analytics or advertising cookies are used, and the application loads no third-party content.",
           ),
         ),
       ],

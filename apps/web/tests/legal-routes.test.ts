@@ -87,8 +87,11 @@ describe("standalone legal routes", () => {
       get: getPrivacyDe,
       retention: "Die Logfiles werden nach 14 Tagen automatisch gelöscht.",
       backupRetention:
-        "Sicherungskopien werden innerhalb der eigenen Infrastruktur gespeichert und nach spätestens drei Monaten überschrieben.",
-      ssoBackupRetention: "Sicherungskopien werden nach spätestens drei Monaten überschrieben.",
+        "Zur Datensicherung werden regelmäßig Sicherungskopien innerhalb der eigenen Infrastruktur erstellt; sie werden nach Ablauf ihrer Aufbewahrungszeit überschrieben.",
+      documentRetention: "Diese Daten werden bis zu 10 Jahre aufbewahrt.",
+      additionalLogRetention: "Diese Protokolle werden nach höchstens 90 Tagen gelöscht.",
+      ssoDeletion:
+        "Das Benutzerkonto in Pocket-ID und Pangolin besteht, solange der Zugang eingeräumt ist, und wird auf Anfrage oder nach Entzug des Zugangs gelöscht. Anmeldeprotokolle werden nach 90 Tagen gelöscht.",
       numberedReference: /Abschnitt\s+\d/i,
     },
     {
@@ -96,8 +99,11 @@ describe("standalone legal routes", () => {
       get: getPrivacyEn,
       retention: "Log files are deleted automatically after 14 days.",
       backupRetention:
-        "Backup copies are stored within the controller's own infrastructure and overwritten after at most three months.",
-      ssoBackupRetention: "Backup copies are overwritten after at most three months.",
+        "To protect against data loss, backup copies are regularly created within the controller's own infrastructure; they are overwritten once their retention period expires.",
+      documentRetention: "This data is kept for up to 10 years.",
+      additionalLogRetention: "These logs are deleted after no more than 90 days.",
+      ssoDeletion:
+        "The user account in Pocket-ID and Pangolin exists for as long as access is granted and is deleted on request or after access is withdrawn. Sign-in logs are deleted after 90 days.",
       // Section 25(2) TDDDG is a statutory citation, not a reference to a page section.
       numberedReference: /\bsection\s+\d+\b(?!\()/i,
     },
@@ -105,15 +111,21 @@ describe("standalone legal routes", () => {
     get,
     retention,
     backupRetention,
-    ssoBackupRetention,
+    documentRetention,
+    additionalLogRetention,
+    ssoDeletion,
     numberedReference,
   }) => {
     const html = await get().text();
 
     expect(html).toContain(retention);
     expect(html).toContain(escapeHtml(backupRetention));
-    expect(html).toContain(ssoBackupRetention);
-    expect(html).not.toMatch(/Hetzner|ohne feste Löschfrist|fixed deletion period/i);
+    expect(html).toContain(documentRetention);
+    expect(html).toContain(additionalLogRetention);
+    expect(html).toContain(ssoDeletion);
+    expect(html).not.toMatch(
+      /Hetzner|ohne feste Löschfrist|automatic deletion period|fixed deletion period|tinybase|Qdrant|Longhorn/i,
+    );
     expect(html).not.toMatch(numberedReference);
     expect(html).not.toContain("Hosting/Backups");
   });
@@ -122,44 +134,46 @@ describe("standalone legal routes", () => {
     {
       lang: "de",
       get: getPrivacyDe,
+      mistralProcessing:
+        "Ist die Texterkennung (OCR) aktiviert, werden Dokumentinhalte zur Texterkennung an die Mistral AI SAS, 15 rue des Halles, 75001 Paris, Frankreich, übermittelt. Dies erfolgt im Rahmen der im Abschnitt „Verarbeitung von Dokumenten“ beschriebenen Verarbeitung. Für Speicherung und Verwendung der Daten durch Mistral AI gelten deren ",
       mistralTransfer:
-        "Mistral AI hat seinen Sitz in der EU. Soweit Dienstleister von Mistral AI personenbezogene Daten außerhalb der EU verarbeiten, verwendet Mistral AI nach eigenen Angaben Standardvertragsklauseln der EU-Kommission (Art. 46 Abs. 2 lit. c DSGVO).",
-      signInCookie: [
-        "p_session_token",
-        "Pangolin, pangolin.heerlab.com",
-        "Hält die Anmeldung beim Anmeldedienst Pangolin während der SSO-Anmeldung; HttpOnly, Secure, SameSite=Lax.",
-        "30 Tage",
-        "Für die Anmeldung erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG).",
-      ],
-      resourceCookie: "p_session_token_s.<Zeitstempel>",
+        "Soweit Dienstleister von Mistral AI Daten außerhalb der EU verarbeiten, verwendet Mistral AI nach eigenen Angaben Standardvertragsklauseln der EU-Kommission.",
+      mistralLinks: ["Datenschutzerklärung", "Bedingungen"],
+      cookies:
+        "Es werden nur technisch notwendige Cookies gesetzt (§ 25 Abs. 2 Nr. 2 TDDDG): nach der Anmeldung Sitzungs-Cookies des Anmeldedienstes Pangolin (gültig bis zu 30 Tage) und, wenn Sie die Sprache der Anwendung ändern, ein Cookie mit der gewählten Sprache (1 Jahr). Analyse- oder Werbe-Cookies werden nicht verwendet, und die Anwendung lädt keine Inhalte von Drittanbietern.",
     },
     {
       lang: "en",
       get: getPrivacyEn,
+      mistralProcessing:
+        'When text recognition (OCR) is enabled, document contents are sent to Mistral AI SAS, 15 rue des Halles, 75001 Paris, France, for text recognition. This is part of the processing described in the "Document processing" section. Mistral AI\'s storage and use of the data are governed by its ',
       mistralTransfer:
-        "Mistral AI is established in the EU. Where Mistral AI's service providers process personal data outside the EU, Mistral AI states that it uses the European Commission's Standard Contractual Clauses (Art. 46(2)(c) GDPR).",
-      signInCookie: [
-        "p_session_token",
-        "Pangolin, pangolin.heerlab.com",
-        "Keeps the sign-in at the Pangolin sign-in service during SSO; HttpOnly, Secure, SameSite=Lax.",
-        "30 days",
-        "Required for sign-in (Section 25(2) no. 2 TDDDG).",
-      ],
-      resourceCookie: "p_session_token_s.<timestamp>",
+        "Where Mistral AI's service providers process data outside the EU, Mistral AI states that it uses the European Commission's Standard Contractual Clauses.",
+      mistralLinks: ["privacy policy", "terms"],
+      cookies:
+        "Only technically necessary cookies are set (Section 25(2) no. 2 TDDDG): after sign-in, session cookies from the Pangolin sign-in service (valid for up to 30 days) and, if you change the application's language, a cookie storing your chosen language (1 year). No analytics or advertising cookies are used, and the application loads no third-party content.",
     },
-  ])("$lang privacy documents Mistral transfer safeguards and both Pangolin cookies", async ({
+  ])("$lang privacy describes optional OCR and necessary cookies in general terms", async ({
     get,
+    mistralProcessing,
     mistralTransfer,
-    signInCookie,
-    resourceCookie,
+    mistralLinks,
+    cookies,
   }) => {
     const html = await get().text();
 
+    expect(html).toContain(escapeHtml(mistralProcessing));
     expect(html).toContain(escapeHtml(mistralTransfer));
     expect(html).toContain(
-      `<tr>${signInCookie.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`,
+      `<a href="https://legal.mistral.ai/terms/privacy-policy">${mistralLinks[0]}</a>`,
     );
-    expect(html).toContain(`<tr><td>${escapeHtml(resourceCookie)}</td>`);
+    expect(html).toContain(
+      `<a href="https://legal.mistral.ai/terms/commercial-terms-of-service">${mistralLinks[1]}</a>`,
+    );
+    expect(html).toContain(escapeHtml(cookies));
+    expect(html).not.toMatch(
+      /<table|p_session_token|NEXT_LOCALE|data-processing-addendum|OCR ist derzeit aktiviert|OCR is currently enabled|vollständige Dokumentdatei|complete document file/i,
+    );
   });
 
   it("keeps German and English privacy sections in the same order", () => {
