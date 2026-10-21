@@ -86,23 +86,34 @@ describe("standalone legal routes", () => {
       lang: "de",
       get: getPrivacyDe,
       retention: "Die Logfiles werden nach 14 Tagen automatisch gelöscht.",
+      backupRetention:
+        "Sicherungskopien werden innerhalb der eigenen Infrastruktur gespeichert und nach spätestens drei Monaten überschrieben.",
+      ssoBackupRetention: "Sicherungskopien werden nach spätestens drei Monaten überschrieben.",
       numberedReference: /Abschnitt\s+\d/i,
     },
     {
       lang: "en",
       get: getPrivacyEn,
       retention: "Log files are deleted automatically after 14 days.",
+      backupRetention:
+        "Backup copies are stored within the controller's own infrastructure and overwritten after at most three months.",
+      ssoBackupRetention: "Backup copies are overwritten after at most three months.",
       // Section 25(2) TDDDG is a statutory citation, not a reference to a page section.
       numberedReference: /\bsection\s+\d+\b(?!\()/i,
     },
   ])("$lang privacy keeps verified retention and heading-based cross-references", async ({
     get,
     retention,
+    backupRetention,
+    ssoBackupRetention,
     numberedReference,
   }) => {
     const html = await get().text();
 
     expect(html).toContain(retention);
+    expect(html).toContain(escapeHtml(backupRetention));
+    expect(html).toContain(ssoBackupRetention);
+    expect(html).not.toMatch(/Hetzner|ohne feste Löschfrist|fixed deletion period/i);
     expect(html).not.toMatch(numberedReference);
     expect(html).not.toContain("Hosting/Backups");
   });

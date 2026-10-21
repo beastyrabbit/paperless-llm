@@ -73,7 +73,7 @@ export const privacyDocuments: Record<LegalLocale, LegalDocument> = {
           {
             type: "paragraph",
             content: [
-              "Die auf dem Longhorn-Volume gespeicherten Anwendungsdaten und die Daten von Pocket-ID werden lokal in der eigenen Infrastruktur gesichert. Sicherungskopien der Pocket-ID-Datenbanken werden zusätzlich in einem Rechenzentrum in Deutschland abgelegt; dort können auch ältere Sicherungskopien der Anwendungsdaten vorhanden sein. Sicherungskopien werden derzeit ohne feste Löschfrist aufbewahrt. Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO; das berechtigte Interesse liegt im Schutz vor Datenverlust.",
+              "Die auf dem Longhorn-Volume gespeicherten Anwendungsdaten, die Qdrant-Vektoren und die Daten von Pocket-ID werden gesichert. Sicherungskopien werden innerhalb der eigenen Infrastruktur gespeichert und nach spätestens drei Monaten überschrieben. Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO; das berechtigte Interesse liegt im Schutz vor Datenverlust.",
             ],
           },
         ],
@@ -183,7 +183,7 @@ export const privacyDocuments: Record<LegalLocale, LegalDocument> = {
           {
             type: "paragraph",
             content: [
-              "Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse liegt darin, den Zugang auf berechtigte Personen zu beschränken. Das Benutzerkonto in Pocket-ID und Pangolin besteht, solange der Zugang eingeräumt ist, und wird auf Anfrage oder nach Entzug des Zugangs gelöscht. Anmeldeprotokolle werden nach 90 Tagen gelöscht. Sicherungskopien der Datenbanken werden derzeit ohne feste Löschfrist aufbewahrt (siehe Abschnitt „Hosting und Bereitstellung“).",
+              "Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO. Das berechtigte Interesse liegt darin, den Zugang auf berechtigte Personen zu beschränken. Das Benutzerkonto in Pocket-ID und Pangolin besteht, solange der Zugang eingeräumt ist, und wird auf Anfrage oder nach Entzug des Zugangs gelöscht. Anmeldeprotokolle werden nach 90 Tagen gelöscht. Sicherungskopien werden nach spätestens drei Monaten überschrieben.",
             ],
           },
           {
@@ -484,7 +484,7 @@ export const privacyDocuments: Record<LegalLocale, LegalDocument> = {
           {
             type: "paragraph",
             content: [
-              "The application data stored on the Longhorn volume and Pocket-ID data are backed up locally on the controller's own infrastructure. Backup copies of the Pocket-ID databases are also stored in a data center in Germany; older backup copies of the application data may also be present there. Backup copies are currently kept without a fixed deletion period. The legal basis is Art. 6(1)(f) GDPR; the legitimate interest is protection against data loss.",
+              "The application data stored on the Longhorn volume, the Qdrant vectors and Pocket-ID data are backed up. Backup copies are stored within the controller's own infrastructure and overwritten after at most three months. The legal basis is Art. 6(1)(f) GDPR; the legitimate interest is protection against data loss.",
             ],
           },
         ],
@@ -596,7 +596,7 @@ export const privacyDocuments: Record<LegalLocale, LegalDocument> = {
           {
             type: "paragraph",
             content: [
-              'The legal basis is Art. 6(1)(f) GDPR. The legitimate interest is restricting access to authorised people. The user account in Pocket-ID and Pangolin exists for as long as access is granted and is deleted on request or after access is withdrawn. Sign-in logs are deleted after 90 days. Database backup copies are currently kept without a fixed deletion period (see the "Hosting and delivery" section).',
+              "The legal basis is Art. 6(1)(f) GDPR. The legitimate interest is restricting access to authorised people. The user account in Pocket-ID and Pangolin exists for as long as access is granted and is deleted on request or after access is withdrawn. Sign-in logs are deleted after 90 days. Backup copies are overwritten after at most three months.",
             ],
           },
           {
