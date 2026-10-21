@@ -1,4 +1,9 @@
 {
+  "legal": {
+    "navigation": "Rechtliche Informationen",
+    "notice": "Impressum",
+    "privacy": "Datenschutz"
+  },
   "common": {
     "loading": "Laden...",
     "save": "Speichern",
