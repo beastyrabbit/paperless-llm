@@ -4,6 +4,7 @@ import {
   type LegalBlock,
   type LegalInline,
   type LegalLocale,
+  type LegalSection,
   legalPaths,
   operator,
   site,
@@ -36,12 +37,28 @@ function renderInline(content: readonly LegalInline[]): string {
     .join("");
 }
 
+function renderListItem(content: readonly LegalInline[]): string {
+  return `<li>${renderInline(content)}</li>`;
+}
+
+function renderTableHeader(header: string): string {
+  return `<th scope="col">${escapeHtml(header)}</th>`;
+}
+
+function renderTableCell(cell: string): string {
+  return `<td>${escapeHtml(cell)}</td>`;
+}
+
+function renderTableRow(row: readonly string[]): string {
+  return `<tr>${row.map(renderTableCell).join("")}</tr>`;
+}
+
 function renderBlock(block: LegalBlock, locale: LegalLocale): string {
   switch (block.type) {
     case "paragraph":
       return `<p>${renderInline(block.content)}</p>`;
     case "list":
-      return `<ul>${block.items.map((item) => `<li>${renderInline(item)}</li>`).join("")}</ul>`;
+      return `<ul>${block.items.map(renderListItem).join("")}</ul>`;
     case "operator":
       return `<address>${[
         operator.name,
@@ -53,12 +70,29 @@ function renderBlock(block: LegalBlock, locale: LegalLocale): string {
         .map(escapeHtml)
         .join("<br>")}</address>`;
     case "table":
-      return `<div class="table-scroll" role="region" aria-label="Cookies" tabindex="0"><table><thead><tr>${block.headers
-        .map((header) => `<th scope="col">${escapeHtml(header)}</th>`)
-        .join("")}</tr></thead><tbody>${block.rows
-        .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
-        .join("")}</tbody></table></div>`;
+      return `<div class="table-scroll" role="region" aria-label="Cookies" tabindex="0"><table><thead><tr>${block.headers.map(renderTableHeader).join("")}</tr></thead><tbody>${block.rows.map(renderTableRow).join("")}</tbody></table></div>`;
   }
+}
+
+function renderSection(
+  section: LegalSection,
+  index: number,
+  locale: LegalLocale,
+  numbered: boolean,
+): string {
+  const prefix = numbered ? `${index + 1}. ` : "";
+  const body = section.body.map((block) => renderBlock(block, locale)).join("");
+  return `<section id="${escapeHtml(section.id)}" aria-labelledby="heading-${escapeHtml(section.id)}"><h2 id="heading-${escapeHtml(section.id)}">${prefix}${escapeHtml(section.heading)}</h2>${body}</section>`;
+}
+
+function renderUpdated(updated: string | undefined, locale: LegalLocale): string {
+  if (!updated) return "";
+  const label = locale === "de" ? "Stand" : "Last updated";
+  return `<p class="updated">${label}: ${escapeHtml(updated)}</p>`;
+}
+
+function emailLink(email: string): string {
+  return link(email, `mailto:${email}`);
 }
 
 // Values and system-font stack from app/globals.css. No asset URLs or font downloads.
@@ -108,17 +142,14 @@ export function legalResponse(locale: LegalLocale, kind: "notice" | "privacy"): 
     },
   }[locale];
   const navigation = `<nav aria-label="${locale === "de" ? "Rechtliche Informationen" : "Legal information"}">${link(labels.back, "/")}${link(labels[siblingKind], legalPaths[locale][siblingKind])}<a href="${legalPaths[otherLocale][kind]}" lang="${otherLocale}" hreflang="${otherLocale}">${otherLocale === "de" ? "Deutsch" : "English"}</a></nav>`;
+  const updated = renderUpdated(document.updated, locale);
+  const sections = document.sections
+    .map((section, index) => renderSection(section, index, locale, kind === "privacy"))
+    .join("");
   const html = `<!doctype html>
 <html lang="${locale}">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${escapeHtml(document.title)} | ${escapeHtml(site.name)}</title><link rel="icon" href="data:,"><style>${styles}</style></head>
-<body><main>${navigation}<h1>${escapeHtml(document.title)}</h1>${document.updated ? `<p class="updated">${locale === "de" ? "Stand" : "Last updated"}: ${escapeHtml(document.updated)}</p>` : ""}${document.sections
-    .map(
-      (section, index) =>
-        `<section id="${escapeHtml(section.id)}" aria-labelledby="heading-${escapeHtml(section.id)}"><h2 id="heading-${escapeHtml(section.id)}">${kind === "privacy" ? `${index + 1}. ` : ""}${escapeHtml(section.heading)}</h2>${section.body.map((block) => renderBlock(block, locale)).join("")}</section>`,
-    )
-    .join(
-      "",
-    )}</main><footer>${navigation}<p>${link(operator.noticeEmail, `mailto:${operator.noticeEmail}`)}<br>${link(operator.privacyEmail, `mailto:${operator.privacyEmail}`)}<br>${link(labels.contact, operator.contactForm)}</p></footer></body></html>`;
+<body><main>${navigation}<h1>${escapeHtml(document.title)}</h1>${updated}${sections}</main><footer>${navigation}<p>${emailLink(operator.noticeEmail)}<br>${emailLink(operator.privacyEmail)}<br>${link(labels.contact, operator.contactForm)}</p></footer></body></html>`;
   return new Response(html, {
     status: 200,
     headers: {

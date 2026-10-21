@@ -74,7 +74,6 @@ for (const viewport of [
           );
           await link.click();
           const response = await navigation;
-          await page.waitForLoadState("networkidle");
 
           expect(response.status()).toBe(200);
           expect(response.headers()["content-type"]).toContain("text/html");
@@ -97,7 +96,7 @@ for (const viewport of [
           await expect(
             page.locator('footer a[href="https://beastyrabbit.com/kontakt?from=paperless-llm"]'),
           ).toBeVisible();
-          expect(await page.locator("script").count()).toBe(0);
+          await expect(page.locator("script")).toHaveCount(0);
           expect(
             await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
           ).toBe(true);
@@ -106,8 +105,10 @@ for (const viewport of [
           const requests: string[] = [];
           const onRequest = (request: { url(): string }) => requests.push(request.url());
           page.on("request", onRequest);
-          await page.reload();
-          await page.waitForLoadState("networkidle");
+          await page.goto(target.path, { waitUntil: "load" });
+          await expect(
+            page.getByRole("heading", { level: 1, name: target.heading, exact: true }),
+          ).toBeVisible();
           page.off("request", onRequest);
           expect(requests.map((url) => new URL(url).pathname)).toEqual([target.path]);
           console.log(
