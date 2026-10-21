@@ -178,12 +178,6 @@ const privacyDocument: BilingualDocument = {
             "The legal basis is Art. 6(1)(f) GDPR. The legitimate interest is restricting access to authorised people. The user account in Pocket-ID and Pangolin exists for as long as access is granted and is deleted on request or after access is withdrawn. Sign-in logs are deleted after 90 days.",
           ),
         ),
-        paragraph(
-          text(
-            "Die rechtlichen Informationsseiten sind ohne Anmeldung zugänglich.",
-            "The legal information pages are accessible without signing in.",
-          ),
-        ),
       ],
     },
     {

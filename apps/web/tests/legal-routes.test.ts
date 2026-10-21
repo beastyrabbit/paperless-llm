@@ -125,6 +125,8 @@ describe("standalone legal routes", () => {
     expect(html).toContain(documentRetention);
     expect(html).toContain(escapeHtml(additionalLogRetention));
     expect(html).toContain(ssoDeletion);
+    expect(html).not.toContain("ohne Anmeldung zugänglich");
+    expect(html).not.toContain("accessible without signing in");
     expect(html).not.toMatch(
       /Hetzner|ohne feste Löschfrist|automatic deletion period|fixed deletion period|tinybase|Qdrant|Longhorn/i,
     );
