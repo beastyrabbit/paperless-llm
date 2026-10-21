@@ -89,7 +89,8 @@ describe("standalone legal routes", () => {
       backupRetention:
         "Zur Datensicherung werden regelmäßig Sicherungskopien innerhalb der eigenen Infrastruktur erstellt; sie werden nach Ablauf ihrer Aufbewahrungszeit überschrieben.",
       documentRetention: "Diese Daten werden bis zu 10 Jahre aufbewahrt.",
-      additionalLogRetention: "Diese Protokolle werden nach höchstens 90 Tagen gelöscht.",
+      additionalLogRetention:
+        "Die Protokolle des Reverse-Proxys und des Anmeldedienstes werden nach höchstens 90 Tagen gelöscht; die Protokolle der Anwendung bestehen nur kurzzeitig und werden bei Logrotation oder Neustart gelöscht.",
       ssoDeletion:
         "Das Benutzerkonto in Pocket-ID und Pangolin besteht, solange der Zugang eingeräumt ist, und wird auf Anfrage oder nach Entzug des Zugangs gelöscht. Anmeldeprotokolle werden nach 90 Tagen gelöscht.",
       numberedReference: /Abschnitt\s+\d/i,
@@ -101,7 +102,8 @@ describe("standalone legal routes", () => {
       backupRetention:
         "To protect against data loss, backup copies are regularly created within the controller's own infrastructure; they are overwritten once their retention period expires.",
       documentRetention: "This data is kept for up to 10 years.",
-      additionalLogRetention: "These logs are deleted after no more than 90 days.",
+      additionalLogRetention:
+        "The reverse proxy and sign-in service logs are deleted after no more than 90 days; the application's logs are short-lived and are deleted on log rotation or restart.",
       ssoDeletion:
         "The user account in Pocket-ID and Pangolin exists for as long as access is granted and is deleted on request or after access is withdrawn. Sign-in logs are deleted after 90 days.",
       // Section 25(2) TDDDG is a statutory citation, not a reference to a page section.
@@ -121,7 +123,7 @@ describe("standalone legal routes", () => {
     expect(html).toContain(retention);
     expect(html).toContain(escapeHtml(backupRetention));
     expect(html).toContain(documentRetention);
-    expect(html).toContain(additionalLogRetention);
+    expect(html).toContain(escapeHtml(additionalLogRetention));
     expect(html).toContain(ssoDeletion);
     expect(html).not.toMatch(
       /Hetzner|ohne feste Löschfrist|automatic deletion period|fixed deletion period|tinybase|Qdrant|Longhorn/i,
@@ -140,7 +142,7 @@ describe("standalone legal routes", () => {
         "Soweit Dienstleister von Mistral AI Daten außerhalb der EU verarbeiten, verwendet Mistral AI nach eigenen Angaben Standardvertragsklauseln der EU-Kommission.",
       mistralLinks: ["Datenschutzerklärung", "Bedingungen"],
       cookies:
-        "Es werden nur technisch notwendige Cookies gesetzt (§ 25 Abs. 2 Nr. 2 TDDDG): nach der Anmeldung Sitzungs-Cookies des Anmeldedienstes Pangolin (gültig bis zu 30 Tage) und, wenn Sie die Sprache der Anwendung ändern, ein Cookie mit der gewählten Sprache (1 Jahr). Analyse- oder Werbe-Cookies werden nicht verwendet, und die Anwendung lädt keine Inhalte von Drittanbietern.",
+        "Es werden nur technisch notwendige Cookies gesetzt (§ 25 Abs. 2 Nr. 2 TDDDG): bei der Anmeldung Cookies des Anmeldedienstes Pocket-ID, nach der Anmeldung Sitzungs-Cookies des Anmeldedienstes Pangolin (gültig bis zu 30 Tage) und, wenn Sie die Sprache der Anwendung ändern, ein Cookie mit der gewählten Sprache (1 Jahr). Analyse- oder Werbe-Cookies werden nicht verwendet, und die Anwendung lädt keine Inhalte von Drittanbietern.",
     },
     {
       lang: "en",
@@ -151,7 +153,7 @@ describe("standalone legal routes", () => {
         "Where Mistral AI's service providers process data outside the EU, Mistral AI states that it uses the European Commission's Standard Contractual Clauses.",
       mistralLinks: ["privacy policy", "terms"],
       cookies:
-        "Only technically necessary cookies are set (Section 25(2) no. 2 TDDDG): after sign-in, session cookies from the Pangolin sign-in service (valid for up to 30 days) and, if you change the application's language, a cookie storing your chosen language (1 year). No analytics or advertising cookies are used, and the application loads no third-party content.",
+        "Only technically necessary cookies are set (Section 25(2) no. 2 TDDDG): during sign-in, cookies from the Pocket-ID sign-in service; after sign-in, session cookies from the Pangolin sign-in service (valid for up to 30 days); and, if you change the application's language, a cookie storing your chosen language (1 year). No analytics or advertising cookies are used, and the application loads no third-party content.",
     },
   ])("$lang privacy describes optional OCR and necessary cookies in general terms", async ({
     get,

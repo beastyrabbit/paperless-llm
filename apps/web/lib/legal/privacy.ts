@@ -116,8 +116,8 @@ const privacyDocument: BilingualDocument = {
         ),
         paragraph(
           text(
-            "Darüber hinaus protokollieren der Reverse-Proxy, der Anmeldedienst und die Anwendung selbst Zugriffe, Anmeldungen und Fehler (zum Beispiel IP-Adresse, Zeitpunkt, aufgerufene Adresse, Benutzerkennung und Browser-Kennung). Zweck sind Betrieb, Fehleranalyse und Sicherheit; Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO. Diese Protokolle werden nach höchstens 90 Tagen gelöscht.",
-            "The reverse proxy, the sign-in service and the application itself also log access, sign-ins and errors (for example IP address, time, requested address, user identifier and browser identifier). The purposes are operation, error analysis and security; the legal basis is Art. 6(1)(f) GDPR. These logs are deleted after no more than 90 days.",
+            "Darüber hinaus protokollieren der Reverse-Proxy, der Anmeldedienst und die Anwendung selbst Zugriffe, Anmeldungen und Fehler (zum Beispiel IP-Adresse, Zeitpunkt, aufgerufene Adresse, Benutzerkennung und Browser-Kennung). Zweck sind Betrieb, Fehleranalyse und Sicherheit; Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO. Die Protokolle des Reverse-Proxys und des Anmeldedienstes werden nach höchstens 90 Tagen gelöscht; die Protokolle der Anwendung bestehen nur kurzzeitig und werden bei Logrotation oder Neustart gelöscht.",
+            "The reverse proxy, the sign-in service and the application itself also log access, sign-ins and errors (for example IP address, time, requested address, user identifier and browser identifier). The purposes are operation, error analysis and security; the legal basis is Art. 6(1)(f) GDPR. The reverse proxy and sign-in service logs are deleted after no more than 90 days; the application's logs are short-lived and are deleted on log rotation or restart.",
           ),
         ),
       ],
@@ -285,8 +285,8 @@ const privacyDocument: BilingualDocument = {
       body: [
         paragraph(
           text(
-            "Es werden nur technisch notwendige Cookies gesetzt (§ 25 Abs. 2 Nr. 2 TDDDG): nach der Anmeldung Sitzungs-Cookies des Anmeldedienstes Pangolin (gültig bis zu 30 Tage) und, wenn Sie die Sprache der Anwendung ändern, ein Cookie mit der gewählten Sprache (1 Jahr). Analyse- oder Werbe-Cookies werden nicht verwendet, und die Anwendung lädt keine Inhalte von Drittanbietern.",
-            "Only technically necessary cookies are set (Section 25(2) no. 2 TDDDG): after sign-in, session cookies from the Pangolin sign-in service (valid for up to 30 days) and, if you change the application's language, a cookie storing your chosen language (1 year). No analytics or advertising cookies are used, and the application loads no third-party content.",
+            "Es werden nur technisch notwendige Cookies gesetzt (§ 25 Abs. 2 Nr. 2 TDDDG): bei der Anmeldung Cookies des Anmeldedienstes Pocket-ID, nach der Anmeldung Sitzungs-Cookies des Anmeldedienstes Pangolin (gültig bis zu 30 Tage) und, wenn Sie die Sprache der Anwendung ändern, ein Cookie mit der gewählten Sprache (1 Jahr). Analyse- oder Werbe-Cookies werden nicht verwendet, und die Anwendung lädt keine Inhalte von Drittanbietern.",
+            "Only technically necessary cookies are set (Section 25(2) no. 2 TDDDG): during sign-in, cookies from the Pocket-ID sign-in service; after sign-in, session cookies from the Pangolin sign-in service (valid for up to 30 days); and, if you change the application's language, a cookie storing your chosen language (1 year). No analytics or advertising cookies are used, and the application loads no third-party content.",
           ),
         ),
       ],
