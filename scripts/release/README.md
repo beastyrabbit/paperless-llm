@@ -15,8 +15,9 @@ backend metadata. Both responses use `Cache-Control: no-store`.
 After both images publish, the tag workflow runs on `arc-paperless-llm` and checks
 `http://paperless-local-llm.documents.svc.cluster.local:3765`. The Service exposes
 only port 3765, so `/api/version` reaches the backend through the frontend proxy.
-The job checks Service reachability, then polls for both version and revision
-matches for up to 25 minutes. A higher stable version ends the check as
+The job retries Service reachability for up to five minutes to allow Recreate
+rollouts, then polls for both version and revision matches. Both phases share a
+25-minute deadline. A higher stable version ends the check as
 `superseded`, with no claim that this release deployed. After a match, it requests
 the standalone `/privacy` HTML page. All requests are GETs. The check never starts
 document processing or inference.

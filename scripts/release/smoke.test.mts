@@ -126,18 +126,80 @@ test("page failure fails the smoke check", async () => {
   await assert.rejects(smoke([[expected, expected]], 500).result, /privacy: HTTP 500/);
 });
 
-test("unreachable Service fails before polling", async () => {
+test("retries temporary Service outages during a Recreate rollout", async () => {
+  let time = 0;
+  let attempts = 0;
+  const paths: string[] = [];
+  const result = await pollDeployment({
+    baseUrl: "http://service",
+    expected,
+    timeoutMs: 40,
+    intervalMs: 10,
+    now: () => time,
+    sleep: async (ms) => {
+      time += ms;
+    },
+    log: () => {},
+    request: async (input) => {
+      const path = new URL(String(input)).pathname;
+      paths.push(path);
+      if (path === "/" && ++attempts === 1) throw new Error("connection refused");
+      if (path === "/" && attempts === 2) return new Response(null, { status: 503 });
+      if (path === "/version" || path === "/api/version") return Response.json(expected);
+      return new Response("<html><body>Privacy</body></html>", {
+        headers: { "Content-Type": "text/html" },
+      });
+    },
+  });
+  assert.equal(result, "deployed");
+  assert.deepEqual(paths.slice(0, 3), ["/", "/", "/"]);
+  assert.equal(paths.at(-1), "/privacy");
+});
+
+test("permanently unreachable Service fails within the overall deadline before polling", async () => {
+  let time = 0;
   let calls = 0;
   await assert.rejects(
     pollDeployment({
       baseUrl: "http://service",
       expected,
+      timeoutMs: 30,
+      intervalMs: 10,
+      now: () => time,
+      sleep: async (ms) => {
+        time += ms;
+      },
+      log: () => {},
       request: async () => {
         calls++;
         throw new Error("unreachable");
       },
     }),
-    /unreachable/,
+    /Timed out waiting for Service reachability/,
   );
-  assert.equal(calls, 1);
+  assert.equal(calls, 3);
+  assert.equal(time, 30);
+});
+
+test("reachability attempts stop after five minutes even with a longer deployment deadline", async () => {
+  let time = 0;
+  let calls = 0;
+  await assert.rejects(
+    pollDeployment({
+      baseUrl: "http://service",
+      expected,
+      now: () => time,
+      sleep: async (ms) => {
+        time += ms;
+      },
+      log: () => {},
+      request: async () => {
+        calls++;
+        throw new Error("unreachable");
+      },
+    }),
+    /Timed out waiting for Service reachability/,
+  );
+  assert.equal(time, 5 * 60_000);
+  assert.equal(calls, 20);
 });

@@ -55,21 +55,39 @@ export async function pollDeployment({
     throw new Error("Smoke check requires a stable version and full commit revision.");
   }
   const deadline = now() + timeoutMs;
-  const get = async (path: string) => {
+  const get = async (path: string, requestDeadline = deadline) => {
     const response = await request(new URL(path, baseUrl), {
       method: "GET",
       headers: { "Cache-Control": "no-cache, no-store" },
       redirect: "error",
-      signal: AbortSignal.timeout(Math.max(1, Math.min(10_000, deadline - now()))),
+      signal: AbortSignal.timeout(Math.max(1, Math.min(10_000, requestDeadline - now()))),
     });
-    if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error(`${path}: HTTP ${response.status}`);
+    }
     return response;
   };
 
   // This Service exposes only the frontend port. /api/version proxies to the backend.
-  // Check network reachability before waiting for new endpoints on an older deployment.
-  const reachable = await get("/");
-  await reachable.body?.cancel();
+  // Recreate rollouts temporarily remove all Service endpoints. Allow that outage
+  // before polling versions, within the same overall deployment deadline.
+  const reachabilityDeadline = Math.min(deadline, now() + 5 * 60_000);
+  let reachable = false;
+  while (now() < reachabilityDeadline) {
+    try {
+      const response = await get("/", reachabilityDeadline);
+      await response.body?.cancel();
+      reachable = true;
+      break;
+    } catch (error) {
+      log(
+        `Waiting for Service reachability: ${error instanceof Error ? error.message : "request failed"}`,
+      );
+    }
+    await sleep(Math.min(intervalMs, Math.max(0, reachabilityDeadline - now())));
+  }
+  if (!reachable) throw new Error(`Timed out waiting for Service reachability: ${baseUrl}`);
   log(`Service reachable: ${baseUrl}`);
 
   while (now() < deadline) {
