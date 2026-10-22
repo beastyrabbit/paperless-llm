@@ -26,6 +26,7 @@ jobs:
       revision: ${{ steps.quality.outputs.revision }}
     steps:
       - uses: actions/checkout@v6
+        id: checkout
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -33,6 +34,7 @@ jobs:
         id: quality
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_REVISION: ${{ steps.checkout.outputs.commit }}
         run: node --experimental-strip-types scripts/release/gate.mts
 
   images:

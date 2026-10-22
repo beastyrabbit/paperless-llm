@@ -1,8 +1,28 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { listQualityRuns, releaseVersion, type WorkflowRun, waitForQuality } from "./gate.mts";
 
 const sha = "a".repeat(40);
+
+test("gate entry point requires the full checked-out revision before any API call", () => {
+  for (const revision of ["", "main", "a".repeat(39), sha]) {
+    const result = spawnSync(
+      process.execPath,
+      ["--experimental-strip-types", fileURLToPath(new URL("./gate.mts", import.meta.url))],
+      {
+        encoding: "utf8",
+        env: { GITHUB_REF: "refs/tags/v1.2.3", RELEASE_REVISION: revision },
+      },
+    );
+    assert.equal(result.status, 1);
+    assert.match(
+      result.stderr,
+      revision === sha ? /Missing GitHub gate environment/ : /Missing full checked-out commit revision/,
+    );
+  }
+});
 const run = (overrides: Partial<WorkflowRun> = {}): WorkflowRun => ({
   id: 1,
   run_number: 1,

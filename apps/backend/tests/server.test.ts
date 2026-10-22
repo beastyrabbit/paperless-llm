@@ -236,6 +236,10 @@ describe("server security helpers", () => {
       expect(response.statusCode).toBe(200);
       expect(response.headers["cache-control"]).toBe("no-store");
       expect(JSON.parse(response.body)).toEqual({ version: "1.2.3", revision: "a".repeat(40) });
+      const root = await requestGet(port, "/");
+      expect(root.statusCode).toBe(200);
+      expect(root.headers["cache-control"]).toBe("no-store");
+      expect(JSON.parse(root.body)).toMatchObject({ version: "1.2.3", revision: "a".repeat(40) });
       expect(global.fetch).not.toHaveBeenCalled();
     } finally {
       shutdown();

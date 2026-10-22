@@ -44,7 +44,7 @@ function createMockRequest(
 }
 
 function createMockResponse(): ServerResponse {
-  return { setHeader: vi.fn() } as unknown as ServerResponse;
+  return {} as ServerResponse;
 }
 
 const createHealthLayer = (overrides: {
@@ -90,7 +90,6 @@ describe("API Router", () => {
         revision: process.env["APP_REVISION"] ?? "unknown",
         status: "running",
       });
-      expect(res.setHeader).toHaveBeenCalledWith("Cache-Control", "no-store");
     });
 
     it("returns release metadata without any service calls", async () => {
@@ -99,7 +98,6 @@ describe("API Router", () => {
       const res = createMockResponse();
       const result = await Effect.runPromise(handleRequest(createMockRequest("GET", "/api/version"), res, null));
       expect(result).toEqual({ version: "1.2.3", revision: "a".repeat(40) });
-      expect(res.setHeader).toHaveBeenCalledWith("Cache-Control", "no-store");
       expect(global.fetch).not.toHaveBeenCalled();
     });
 

@@ -833,10 +833,6 @@ export const handleRequest = (
   const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
   const path = url.pathname;
 
-  if (method === "GET" && (path === "/api/version" || path === "/")) {
-    _res.setHeader("Cache-Control", "no-store");
-  }
-
   // Add query params handling
   const queryType = url.searchParams.get("type");
 

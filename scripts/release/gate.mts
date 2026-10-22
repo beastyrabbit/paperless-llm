@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -97,7 +96,8 @@ export async function listQualityRuns({
 
 async function main() {
   const version = releaseVersion(process.env.GITHUB_REF ?? "");
-  const sha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const sha = process.env.RELEASE_REVISION ?? "";
+  if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error("Missing full checked-out commit revision.");
   const token = process.env.GITHUB_TOKEN;
   const repository = process.env.GITHUB_REPOSITORY;
   const output = process.env.GITHUB_OUTPUT;
@@ -116,8 +116,10 @@ async function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error: Error) => {
-    console.error(error.message);
+  try {
+    await main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : "Release gate failed.");
     process.exitCode = 1;
-  });
+  }
 }

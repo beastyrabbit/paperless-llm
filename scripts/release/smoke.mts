@@ -72,69 +72,71 @@ export async function pollDeployment({
   // This Service exposes only the frontend port. /api/version proxies to the backend.
   // Recreate rollouts temporarily remove all Service endpoints. Allow that outage
   // before polling versions, within the same overall deployment deadline.
-  const reachabilityDeadline = Math.min(deadline, now() + 5 * 60_000);
-  let reachable = false;
-  while (now() < reachabilityDeadline) {
-    try {
-      const response = await get("/", reachabilityDeadline);
-      await response.body?.cancel();
-      reachable = true;
-      break;
-    } catch (error) {
-      log(
-        `Waiting for Service reachability: ${error instanceof Error ? error.message : "request failed"}`,
-      );
-    }
-    await sleep(Math.min(intervalMs, Math.max(0, reachabilityDeadline - now())));
-  }
-  if (!reachable) throw new Error(`Timed out waiting for Service reachability: ${baseUrl}`);
-  log(`Service reachable: ${baseUrl}`);
-
-  while (now() < deadline) {
-    let state: ReturnType<typeof deploymentState> = "waiting";
-    try {
-      const results = await Promise.allSettled(
-        ["/version", "/api/version"].map(async (path) => {
-          const value: unknown = await (await get(path)).json();
-          if (
-            !value ||
-            typeof value !== "object" ||
-            !("version" in value) ||
-            typeof value.version !== "string" ||
-            !("revision" in value) ||
-            typeof value.revision !== "string"
-          )
-            throw new Error(`${path}: invalid version metadata`);
-          return { version: value.version, revision: value.revision };
-        }),
-      );
-      const versions = results.flatMap((result) =>
-        result.status === "fulfilled" ? [result.value] : [],
-      );
-      for (const result of results) {
-        if (result.status === "rejected") {
-          log(
-            `Waiting for version endpoint: ${result.reason instanceof Error ? result.reason.message : "request failed"}`,
-          );
-        }
+  async function waitForService() {
+    const reachabilityDeadline = Math.min(deadline, now() + 5 * 60_000);
+    while (now() < reachabilityDeadline) {
+      try {
+        const response = await get("/", reachabilityDeadline);
+        await response.body?.cancel();
+        log(`Service reachable: ${baseUrl}`);
+        return;
+      } catch (error) {
+        log(
+          `Waiting for Service reachability: ${error instanceof Error ? error.message : "request failed"}`,
+        );
       }
-      state = deploymentState(versions, expected);
-      log(
-        `Versions: ${versions.map((value) => `${value.version}@${value.revision}`).join(", ")}; ${state}`,
-      );
-    } catch (error) {
-      log(
-        `Waiting for version endpoints: ${error instanceof Error ? error.message : "request failed"}`,
-      );
+      await sleep(Math.min(intervalMs, Math.max(0, reachabilityDeadline - now())));
     }
+    throw new Error(`Timed out waiting for Service reachability: ${baseUrl}`);
+  }
+
+  async function readVersion(path: string): Promise<Version> {
+    const value: unknown = await (await get(path)).json();
+    if (
+      !value ||
+      typeof value !== "object" ||
+      !("version" in value) ||
+      typeof value.version !== "string" ||
+      !("revision" in value) ||
+      typeof value.revision !== "string"
+    )
+      throw new Error(`${path}: invalid version metadata`);
+    return { version: value.version, revision: value.revision };
+  }
+
+  async function readDeploymentState() {
+    const results = await Promise.allSettled(["/version", "/api/version"].map(readVersion));
+    const versions = results.flatMap((result) =>
+      result.status === "fulfilled" ? [result.value] : [],
+    );
+    for (const result of results) {
+      if (result.status === "rejected") {
+        log(
+          `Waiting for version endpoint: ${result.reason instanceof Error ? result.reason.message : "request failed"}`,
+        );
+      }
+    }
+    const state = deploymentState(versions, expected);
+    const summary = versions.map((value) => `${value.version}@${value.revision}`).join(", ");
+    log(`Versions: ${summary}; ${state}`);
+    return state;
+  }
+
+  async function checkPage() {
+    const page = await get("/privacy");
+    const html = await page.text();
+    if (!page.headers.get("content-type")?.includes("text/html") || !/<html[\s>]/i.test(html)) {
+      throw new Error("Deployed /privacy did not return an HTML page.");
+    }
+    log("Deployed /privacy page passed.");
+  }
+
+  await waitForService();
+  while (now() < deadline) {
+    const state = await readDeploymentState();
     if (state === "superseded") return state;
     if (state === "deployed") {
-      const page = await get("/privacy");
-      const html = await page.text();
-      if (!page.headers.get("content-type")?.includes("text/html") || !/<html[\s>]/i.test(html)) {
-        throw new Error("Deployed /privacy did not return an HTML page.");
-      }
-      log("Deployed /privacy page passed.");
+      await checkPage();
       return state;
     }
     await sleep(Math.min(intervalMs, Math.max(0, deadline - now())));
@@ -163,8 +165,10 @@ async function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error: Error) => {
-    console.error(error.message);
+  try {
+    await main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : "Deployment smoke check failed.");
     process.exitCode = 1;
-  });
+  }
 }
