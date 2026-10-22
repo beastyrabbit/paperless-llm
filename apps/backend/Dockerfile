@@ -37,6 +37,10 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=8765
+ARG APP_VERSION=dev
+ARG APP_REVISION=unknown
+ENV APP_VERSION=$APP_VERSION
+ENV APP_REVISION=$APP_REVISION
 
 # Security: non-root user
 RUN addgroup --system --gid 1001 nodejs && \

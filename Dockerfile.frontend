@@ -13,6 +13,9 @@ WORKDIR /app
 
 # Pass version to Next.js build (NEXT_PUBLIC_ vars are inlined at build time)
 ARG APP_VERSION=dev
+ARG APP_REVISION=unknown
+ENV APP_VERSION=$APP_VERSION
+ENV APP_REVISION=$APP_REVISION
 ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
 
 # Copy workspace root files

@@ -214,6 +214,7 @@ export const isApiDocsEnabled = (): boolean =>
 const isPublicPath = (path: string): boolean =>
   path === "/" ||
   path === "/health" ||
+  path === "/api/version" ||
   path === "/metrics" ||
   (isApiDocsEnabled() && (path === "/openapi.json" || path === "/api/docs"));
 

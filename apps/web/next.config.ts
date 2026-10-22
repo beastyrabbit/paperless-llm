@@ -5,6 +5,10 @@ const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  env: {
+    APP_VERSION: process.env.APP_VERSION ?? "dev",
+    APP_REVISION: process.env.APP_REVISION ?? "unknown",
+  },
 
   // Hide dev indicators for clean screenshots
   devIndicators: false,

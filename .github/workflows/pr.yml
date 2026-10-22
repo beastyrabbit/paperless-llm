@@ -6,7 +6,8 @@ on:
       - main
   push:
     branches:
-      - document-agent-overhaul
+      - main
+  workflow_dispatch:
 
 # Cancel runs superseded by a newer push to the same PR; push, tag and manual runs keep separate groups.
 concurrency:
@@ -46,7 +47,9 @@ jobs:
         run: pnpm lint
 
       - name: Test
-        run: pnpm test
+        run: |
+          node --experimental-strip-types --test scripts/release/*.test.mts
+          pnpm test
 
       - name: Build artifacts for reference guard
         run: pnpm build
