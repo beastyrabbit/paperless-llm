@@ -26,6 +26,7 @@ import {
 } from "./services/index.js";
 import { logger } from "./utils/logger.js";
 import { getProcessingStateFromDocumentTags } from "./utils/tagState.js";
+import { setVersionCacheHeaders } from "./version.js";
 
 // ===========================================================================
 // Security Configuration
@@ -214,6 +215,7 @@ export const isApiDocsEnabled = (): boolean =>
 const isPublicPath = (path: string): boolean =>
   path === "/" ||
   path === "/health" ||
+  path === "/api/version" ||
   path === "/metrics" ||
   (isApiDocsEnabled() && (path === "/openapi.json" || path === "/api/docs"));
 
@@ -835,6 +837,7 @@ export const createHttpServerWithLayer = (
       });
 
       setCorsHeaders(req, res);
+      setVersionCacheHeaders(req.method, url.pathname, res);
 
       // Handle preflight requests
       if (req.method === "OPTIONS") {

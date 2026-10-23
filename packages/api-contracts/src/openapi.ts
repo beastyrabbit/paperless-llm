@@ -108,6 +108,7 @@ export interface ApiRouteContract {
 
 export const apiRouteContracts: ApiRouteContract[] = [
   { method: "GET", path: "/", summary: "Backend service metadata", tags: ["system"] },
+  { method: "GET", path: "/api/version", summary: "Backend release version and revision", tags: ["system"] },
   {
     method: "GET",
     path: "/health",

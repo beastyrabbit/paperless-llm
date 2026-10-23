@@ -14,7 +14,7 @@ import {
   apiRouteContracts,
 } from "@repo/api-contracts";
 import { Effect, Layer } from "effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { getRegisteredRoutes, handleRequest } from "../../src/api/index.js";
 import {
   MistralService,
@@ -76,6 +76,7 @@ const runWithHealthLayer = (effect: Effect.Effect<unknown, unknown, unknown>, la
 // ===========================================================================
 
 describe("API Router", () => {
+  afterEach(() => vi.unstubAllEnvs());
   describe("Health Endpoints", () => {
     it("should handle GET / root endpoint", async () => {
       const req = createMockRequest("GET", "/");
@@ -85,9 +86,19 @@ describe("API Router", () => {
 
       expect(result).toEqual({
         name: "Paperless Local LLM (TypeScript)",
-        version: "0.1.0",
+        version: process.env["APP_VERSION"] ?? "dev",
+        revision: process.env["APP_REVISION"] ?? "unknown",
         status: "running",
       });
+    });
+
+    it("returns release metadata without any service calls", async () => {
+      vi.stubEnv("APP_VERSION", "1.2.3");
+      vi.stubEnv("APP_REVISION", "a".repeat(40));
+      const res = createMockResponse();
+      const result = await Effect.runPromise(handleRequest(createMockRequest("GET", "/api/version"), res, null));
+      expect(result).toEqual({ version: "1.2.3", revision: "a".repeat(40) });
+      expect(global.fetch).not.toHaveBeenCalled();
     });
 
     it("should handle GET /health endpoint with all dependencies up", async () => {

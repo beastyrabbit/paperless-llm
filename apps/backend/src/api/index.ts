@@ -49,6 +49,7 @@ import {
 } from "@repo/api-contracts";
 import { Effect, Either, type ParseResult, Schema } from "effect";
 import { ValidationError } from "../errors/index.js";
+import { getVersion } from "../version.js";
 import * as casesHandlers from "./cases/handlers.js";
 import * as catalogHandlers from "./catalog/handlers.js";
 import * as chatHandlers from "./chat/handlers.js";
@@ -229,14 +230,16 @@ export const getRegisteredRoutes = () => routes.map(({ method, path }) => ({ met
 // ===========================================================================
 
 addRoute("GET", "/", () =>
-  Effect.succeed({
+  Effect.sync(() => ({
     name: "Paperless Local LLM (TypeScript)",
-    version: "0.1.0",
+    ...getVersion(),
     status: "running",
-  }),
+  })),
 );
 
 addRoute("GET", "/health", () => healthHandlers.getHealth);
+
+addRoute("GET", "/api/version", () => Effect.sync(getVersion));
 
 addRoute("GET", "/openapi.json", () => Effect.succeed(generateOpenApiDocument()));
 

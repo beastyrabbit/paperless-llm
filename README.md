@@ -304,9 +304,12 @@ Active checks: **gitleaks** (secrets), **TypeScript** (types), **Biome** (lintin
 `gitleaks protect --staged --no-banner`. Install it through your package manager or
 `brew install gitleaks`; CI should keep it as a second gate for protected branches.
 
-The Docker publish workflow uses the self-hosted ARC runner label
-`arc-paperless-local-llm`. Maintainers need that runner online for release images; forks can run
-the same build commands locally with Docker if the runner label is unavailable.
+Release images use the self-hosted ARC runner label `arc-paperless-llm` and require
+successful main push checks for the exact commit before publishing either image.
+Tagged releases also verify that Flux serves both image versions and revisions,
+then check a page through the in-cluster Service. See [release checks](scripts/release/README.md)
+for the gate, rollout timeouts, and operational prerequisites. Forks can build the
+images locally with Docker if that runner is unavailable.
 
 ### Environment Variables
 

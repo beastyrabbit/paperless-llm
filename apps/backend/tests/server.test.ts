@@ -221,6 +221,31 @@ describe("server security helpers", () => {
     ).toBe(false);
   });
 
+  it("serves uncached backend release metadata without authentication or external calls", async () => {
+    process.env["PAPERLESS_LLM_API_TOKEN"] = "test-only";
+    process.env["APP_VERSION"] = "1.2.3";
+    process.env["APP_REVISION"] = "a".repeat(40);
+    const port = await getFreePort();
+    const shutdown = await Effect.runPromise(
+      createHttpServerWithLayer(port, "127.0.0.1", createHealthLayer(), {
+        startBackgroundServices: false,
+      }),
+    );
+    try {
+      const response = await requestGet(port, "/api/version");
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["cache-control"]).toBe("no-store");
+      expect(JSON.parse(response.body)).toEqual({ version: "1.2.3", revision: "a".repeat(40) });
+      const root = await requestGet(port, "/");
+      expect(root.statusCode).toBe(200);
+      expect(root.headers["cache-control"]).toBe("no-store");
+      expect(JSON.parse(root.body)).toMatchObject({ version: "1.2.3", revision: "a".repeat(40) });
+      expect(global.fetch).not.toHaveBeenCalled();
+    } finally {
+      shutdown();
+    }
+  });
+
   it("authorizes bearer and x-api-key headers", () => {
     process.env["PAPERLESS_LLM_API_TOKEN"] = "secret";
 
