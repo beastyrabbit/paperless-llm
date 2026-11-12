@@ -38,7 +38,7 @@ pnpm run dev:web        # web only on 3765
 
 `t3.json` lists the project actions for T3 Code: **Install dependencies** (runs when T3 creates a worktree), **Dev** (`pnpm run dev`), and **Check** (`pnpm run precommit && pnpm test`). T3 Code does not run `t3.json` directly. The actions take effect once they are imported into T3 Code's project settings.
 
-A fresh worktree has no `config.yaml`, because it is gitignored. The backend still starts, but Paperless, Ollama, Qdrant, and Mistral show as unconfigured until you enter settings in the web UI or copy your own `config.yaml` into the worktree. Do not copy `config.example.yaml` unchanged: the backend imports `config.yaml` into its settings store on first start, so the placeholder values would end up saved there.
+A fresh worktree has no `config.yaml`, because it is gitignored. The backend still starts with its defaults: Ollama and Qdrant point at `localhost`, while Paperless and Mistral stay unconfigured until you enter credentials in the web UI or copy your own `config.yaml` into the worktree. Do not copy `config.example.yaml` unchanged: the backend imports `config.yaml` into its settings store on first start, so the placeholder values would end up saved there.
 
 ## Configuration and secrets
 
