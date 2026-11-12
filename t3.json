@@ -1,0 +1,25 @@
+{
+  "$schema": "https://t3.codes/schema/t3.json",
+  "defaultThreadEnvMode": "worktree",
+  "scripts": [
+    {
+      "name": "Install dependencies",
+      "command": "pnpm install --frozen-lockfile",
+      "icon": "configure",
+      "runOnWorktreeCreate": true,
+      "async": false
+    },
+    {
+      "name": "Dev",
+      "command": "pnpm run dev",
+      "icon": "play",
+      "stopOnSettle": true,
+      "previewUrl": "https://paperless-llm-web.localhost:1355"
+    },
+    {
+      "name": "Check",
+      "command": "pnpm run precommit && pnpm test",
+      "icon": "test"
+    }
+  ]
+}
