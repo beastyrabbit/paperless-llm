@@ -197,7 +197,21 @@ export async function reconcileOcrTagRestorations(ctx: Context) {
       });
     };
     try {
-      await serviceTags(ctx, job.doc_id, restoreRequested ? "requested" : "clean");
+      // Only remove the failed tag (and restore ai:requested when previously removed on failure);
+      // never strip an ai:requested or ai:review tag added by a human while OCR was failed.
+      const tags = await ctx.paperless.listEntities("tag");
+      const failedTag = tags.find((tag) => tag.name === ctx.config.tags.failed);
+      let requestedTag = restoreRequested
+        ? tags.find((tag) => tag.name === ctx.config.tags.requested)
+        : undefined;
+      if (restoreRequested && !requestedTag) {
+        requestedTag = await ctx.paperless.createEntity("tag", ctx.config.tags.requested);
+      }
+      const add = requestedTag ? [requestedTag.id] : [];
+      const remove = failedTag ? [failedTag.id] : [];
+      if (add.length || remove.length) {
+        await ctx.paperless.modifyTags(job.doc_id, add, remove);
+      }
       clearFlags();
     } catch (error) {
       let deleted = false;

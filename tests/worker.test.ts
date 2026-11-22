@@ -480,4 +480,40 @@ describe("durable OCR worker recovery", () => {
       reservedPages: 1,
     });
   });
+
+  it("preserves a human-added ai:requested tag when restoring tags after an untagged OCR failure", async () => {
+    fixture = new Fixture((config) => {
+      config.polling.maxAttempts = 1;
+      config.ocr.maxPagesPerDay = 5;
+    });
+    // Document starts without ai:requested (auto-discovered for OCR only).
+    fixture.docs.set(1, document(1, { page_count: 10, tags: [99] }));
+    const worker = new Worker(fixture.ctx);
+    await worker.tick();
+    const ocrJob = fixture.db.prepare("SELECT * FROM jobs WHERE stage='ocr'").get() as {
+      id: string;
+      state: string;
+    };
+    expect(ocrJob.state).toBe("failed");
+    expect(fixture.docs.get(1)?.tags).toEqual([99, 12]);
+    // Human adds ai:requested while OCR is failed, then fixes page count and retries OCR.
+    const doc = fixture.docs.get(1);
+    if (doc) {
+      doc.tags.push(10);
+      doc.page_count = 2;
+    }
+    retryJob(fixture.ctx, ocrJob.id);
+    await worker.tick();
+    expect(getJob(fixture.db, ocrJob.id)?.state).toBe("done");
+    expect(fixture.docs.get(1)?.tags).toContain(10);
+    expect(fixture.docs.get(1)?.tags).not.toContain(12);
+    // Next tick discovers the preserved ai:requested tag and runs metadata.
+    await worker.tick();
+    const metaJob = fixture.db.prepare("SELECT * FROM jobs WHERE stage='metadata'").get() as {
+      id: string;
+      state: string;
+    };
+    expect(metaJob?.state).toBe("done");
+    expect(fixture.docs.get(1)?.correspondent).toBe(1);
+  });
 });
