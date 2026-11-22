@@ -1,352 +1,93 @@
-<div align="center">
-
 # Paperless Local LLM
 
-**AI-powered document analysis system for Paperless-ngx**
+Document OCR and metadata processing for Paperless-ngx 3.5.1. One Node process
+serves the review UI, runs the polling worker, and journals work in SQLite.
 
-*Automatic metadata extraction using Mistral AI for OCR and local Ollama models for intelligent title, correspondent, document type, and tag assignment.*
+Mistral OCR handles PDFs after an explicit date cutoff. TypeSafe Jev classifies
+closed-set metadata. An OpenAI-compatible cloud or local endpoint extracts only
+the applicable open fields. A bounded gate checks source quotes, types, catalog
+duplicates, and selected semantic claims before applying changes.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://typescriptlang.org)
-[![pnpm](https://img.shields.io/badge/pnpm-9+-orange.svg)](https://pnpm.io)
-[![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg)](https://docker.com)
+## Run
 
-<br />
+Use Node 24 LTS and pnpm 9.15:
 
-![Dashboard Preview](docs/images/dashboard.png)
-
-</div>
-
-
-## At a glance
-
-A local service that adds AI-assisted metadata extraction to Paperless-ngx.
-
-![Paperless Local LLM dashboard](docs/images/dashboard.png)
-
----
-
-## Features
-
-- **OCR Processing** — Mistral AI for high-quality text recognition from scanned documents
-- **Automatic Metadata** — Title, correspondent, document type, and tag extraction via local LLM models
-- **Confirmation Loop** — Large model analysis → Small model verification → Retry or manual review queue
-- **Learning Mechanism** — Prevents duplicate suggestions and learns from user feedback
-- **Vector Search** — Find similar documents for context using Qdrant
-- **Tag-based Workflow** — Independent processing steps with state tracking
-- **Live Streaming** — Real-time LLM responses in the frontend
-- **Document Cases** — Durable case state, human questions, and resumable Pi agent runs
-- **Multi-language UI** — English and German interface support
-- **Docker Ready** — Full Docker Compose setup included
-
-## Screenshots
-
-<div align="center">
-<table>
-<tr>
-<td width="50%">
-<img src="docs/images/dashboard.png" alt="Dashboard" />
-<p align="center"><strong>Dashboard</strong><br/>Pipeline visualization, queue statistics, and service connections</p>
-</td>
-<td width="50%">
-<img src="docs/images/documents.png" alt="Documents" />
-<p align="center"><strong>Documents</strong><br/>Document queue with status tracking and processing logs</p>
-</td>
-</tr>
-<tr>
-<td width="50%">
-<img src="docs/images/settings.png" alt="Settings" />
-<p align="center"><strong>Settings</strong><br/>Service configuration and model selection</p>
-</td>
-<td width="50%">
-<img src="docs/images/documents.png" alt="Document cases" />
-<p align="center"><strong>Document Cases</strong><br/>Structured metadata decisions with resumable case state</p>
-</td>
-</tr>
-<tr>
-<td width="50%">
-<img src="docs/images/pending.png" alt="Pending Review" />
-<p align="center"><strong>Pending Review</strong><br/>Manual review queue for correspondents, document types, and tags</p>
-</td>
-<td width="50%">
-</td>
-</tr>
-</table>
-</div>
-
-## Quick Start
-
-### Prerequisites
-
-- [Node.js 20+](https://nodejs.org/) — JavaScript runtime
-- [pnpm](https://pnpm.io/) — Fast, disk space efficient package manager
-- Docker & Docker Compose (optional, for deployment)
-- Running instances of:
-  - [Paperless-ngx](https://github.com/paperless-ngx/paperless-ngx) — Document management system
-  - [Ollama](https://ollama.ai/) — Local LLM inference with your preferred models
-  - [Qdrant](https://qdrant.tech/) — Vector database (or use the included Docker Compose)
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/beastyrabbit/paperless-llm.git
-cd paperless-llm
-
-# Install all dependencies
-pnpm install
-```
-
-### Configuration
-
-1. Copy the example configuration:
-```bash
+```sh
+pnpm install --frozen-lockfile
 cp config.example.yaml config.yaml
+# Edit URLs, document schemas, and the cutoff. Inject secrets into the environment.
+pnpm dev
 ```
 
-2. Edit `config.yaml` with your settings:
-```yaml
-paperless:
-  url: "http://your-paperless-server:8000"
-  token: "your-paperless-api-token"
+The application listens on port 3765. Review documents at `/`, merge candidates
+at `/consolidation`, jobs at `/activity`, and read-only configuration at `/config`.
+Create the configured `ai:requested` tag in Paperless and add it to a document to
+request metadata processing. Configure service tags with native matching disabled.
 
-mistral:
-  api_key: "your-mistral-api-key"
+Production deployments should run behind an authenticated reverse proxy. The UI
+has no built-in login. Docker Compose publishes port 3765 on `127.0.0.1` only.
+An empty `server.allowedHosts` accepts only loopback `Host` headers (`localhost`,
+`127.0.0.1`, `[::1]`) across GET and POST regardless of `server.host` (exempting
+`GET /health` for kubelet probes). Configure `server.allowedHosts`, for example
+`["paperless-llm.example.org", "paperless-local-llm.documents.svc.cluster.local"]`,
+when deploying behind a reverse proxy or cluster Service. Entries can include a
+port for an exact host-and-port match. Same-origin checks apply to every POST.
 
-ollama:
-  url: "http://your-ollama-server:11434"
-  model: "your-generation-model"     # e.g., llama3.2
-  model_large: "your-analysis-model"
-  model_small: "your-verifier-model"
-  embedding_model: "nomic-embed-text"
+TypeSafe Jev can be called directly (`https://api.typesafe.ai/v1/systemone`,
+model `jev-latest`) or through OpenRouter (`https://openrouter.ai/api/v1/systemone`,
+model `typesafe/jev-latest`, with `JEV_API_KEY` set to your OpenRouter key).
 
-qdrant:
-  url: "http://your-qdrant-server:6333"
-  collection: "paperless-documents"
+OCR requests default to a 60-second timeout plus 15 seconds per reserved page,
+with a maximum of 10 minutes. Adjust `ocr.timeoutMs` and `ocr.perPageTimeoutMs`
+for your document sizes. Daily page-budget exhaustion waits until midnight UTC
+without consuming a retry attempt.
+
+Polling and OCR are disabled in the example. Its future cutoff prevents historical
+documents from being sent for paid OCR accidentally. Set both deliberately before
+starting unattended work. Existing non-empty metadata is preserved for review.
+
+Environment secrets are `PAPERLESS_TOKEN`, `MISTRAL_API_KEY`, `JEV_API_KEY`,
+`LLM_API_KEY`, and optional `LOCAL_LLM_API_KEY`. Configuration comes from
+`PAPERLESS_LLM_CONFIG` or `./config.yaml`; the database path comes from
+`PAPERLESS_LLM_DB` or `./data/paperless.db`.
+
+```sh
+pnpm build
+pnpm start
+# Or, with config.yaml and an environment file prepared:
+docker compose up --build
 ```
 
-> **Note:** `config.yaml` is gitignored — your secrets stay local.
-> In production, set `PAPERLESS_LLM_CONFIG=/absolute/path/to/config.yaml` when
-> loading YAML config. The backend will not walk parent directories for
-> `config.yaml` in production.
+See [operation](docs/user/operation.md) for spend controls and review actions,
+and [development](docs/dev/development.md) for architecture and verification.
 
-### Running in Development
+## Commands
 
-**Full stack via Portless:**
-```bash
-pnpm run dev
+```sh
+pnpm cli serve
+pnpm cli reconcile
+pnpm cli calibrate
+pnpm cli consolidate
+pnpm cli undo <batchId>
 ```
 
-The application will be available at `https://paperless-llm-web.localhost:1355`.
-The backend route will be available at `https://paperless-llm-api.localhost:1355`.
-Portless uses the shared proxy port `1355`; service names keep this project separate from other local projects while app ports are assigned automatically.
-If Portless is unavailable, use the direct localhost scripts below.
+`calibrate` reads existing document metadata as a comparison baseline. It calls
+Jev, never Mistral, and does not write Paperless metadata. `consolidate` creates
+review proposals; it does not merge automatically. `consolidate --suggest` adds
+an optional L3 catalog suggestion pass before direct Jev checks.
 
-**Fallback direct ports:**
-```bash
-pnpm run dev:web       # Frontend on http://localhost:3765
-pnpm run dev:backend   # Backend on http://localhost:8765
+## Verification
+
+```sh
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build
+node --experimental-strip-types --test scripts/release/*.test.mts
+pnpm check:ref-artifacts
+pnpm check:artifact
 ```
 
-## Docker Deployment
-
-```bash
-# Set environment variables (or create a .env file)
-export PAPERLESS_URL=http://your-paperless:8000
-export PAPERLESS_TOKEN=your-token
-export MISTRAL_API_KEY=your-key
-export OLLAMA_URL=http://host.docker.internal:11434
-
-# Start all services
-docker compose up -d
-
-# View logs
-docker compose logs -f
-```
-
-> **Tip:** Use `host.docker.internal` to access Ollama running on your host machine. This works on Linux, macOS, and Windows thanks to the `extra_hosts` configuration in `docker-compose.yml`.
-
-## Architecture
-
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Next.js        │────▶│  Effect-TS +    │────▶│  Paperless-ngx  │
-│  Frontend       │     │  Effect Backend │     │                 │
-└─────────────────┘     └────────┬────────┘     └─────────────────┘
-                                 │
-                    ┌────────────┼────────────┐
-                    ▼            ▼            ▼
-              ┌──────────┐ ┌──────────┐ ┌──────────┐
-              │  Ollama  │ │ Mistral  │ │  Qdrant  │
-              │   LLMs   │ │   OCR    │ │ VectorDB │
-              └──────────┘ └──────────┘ └──────────┘
-```
-
-## Processing Pipeline
-
-Documents flow through tag-based states for independent, resumable processing:
-
-| Phase | Input Tag | Output Tag | Description |
-|-------|-----------|------------|-------------|
-| OCR | `llm-pending` | `llm-ocr-done` | Mistral AI OCR extraction |
-| Correspondent | `llm-ocr-done` | `llm-correspondent-done` | Assign correspondent |
-| Document Type | `llm-correspondent-done` | `llm-document-type-done` | Assign document type |
-| Title | `llm-document-type-done` | `llm-title-done` | Generate document title |
-| Tags | `llm-title-done` | `llm-tags-done` | Assign relevant tags |
-| Complete | `llm-tags-done` | `llm-processed` | Processing finished |
-
-## API Reference
-
-### Settings
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/settings` | Get current settings |
-| PATCH | `/api/settings` | Update settings |
-| POST | `/api/settings/test-connection/{service}` | Test service connection |
-
-### Documents
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/documents/queue` | Queue statistics |
-| GET | `/api/documents/pending` | Documents by workflow status |
-| GET | `/api/documents/{id}` | Document details |
-
-### Cases
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/cases` | List document cases |
-| GET | `/api/cases/document/{id}` | Get or create a document case |
-| POST | `/api/cases/document/{id}/run` | Run or resume a document case |
-
-### Processing
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/processing/{id}/start` | Start processing |
-| GET | `/api/processing/{id}/stream` | SSE stream of LLM responses |
-| POST | `/api/processing/{id}/confirm` | Confirm result |
-
-## Project Structure
-
-```
-paperless-local-llm/
-├── apps/
-│   ├── web/                  # Next.js Frontend
-│   │   ├── app/              # App router pages
-│   │   │   ├── page.tsx      # Dashboard
-│   │   │   ├── settings/     # Configuration UI
-│   │   │   ├── documents/    # Document browser
-│   │   │   ├── pending/      # Review queue
-│   │   │   ├── cases/        # Document case queue
-│   │   │   └── catalog/      # Catalog agent proposals
-│   │   ├── components/       # React components
-│   │   └── lib/              # Utilities & API client
-│   │
-│   └── backend/              # TypeScript + Effect-TS
-│       ├── src/
-│       │   ├── index.ts      # Application entry point
-│       │   ├── server.ts     # Node HTTP server with Effect runtime
-│       │   ├── api/          # Route handlers
-│       │   ├── services/     # External service clients
-│       │   ├── agents/       # Document processing agents
-│       │   ├── config/       # Configuration management
-│       │   └── layers/       # Effect dependency injection
-│       └── tests/            # Vitest test suites
-│
-├── packages/
-│   └── ui/                   # Shared shadcn/ui components
-│
-├── config.example.yaml       # Example configuration
-├── docker-compose.yml        # Docker setup
-└── README.md
-```
-
-## Tech Stack
-
-| Layer | Technologies |
-|-------|-------------|
-| **Frontend** | Next.js 16, React 19, TailwindCSS 4, shadcn/ui |
-| **Backend** | TypeScript, Effect-TS, Node HTTP server |
-| **AI/ML** | Ollama (local LLMs), Mistral AI (OCR), Qdrant (vector search) |
-| **Infrastructure** | Docker, Turborepo (monorepo), pnpm |
-
-## Development
-
-### Frontend Commands
-```bash
-pnpm install          # Install dependencies
-pnpm run dev          # Frontend + backend via Portless
-pnpm run dev:web      # Frontend only (port 3765)
-pnpm run build        # Production build
-pnpm run lint         # Biome lint
-pnpm run typecheck    # TypeScript check
-```
-
-### Backend Commands
-```bash
-pnpm run dev:backend  # Backend only (port 8765)
-pnpm run build        # Production build
-pnpm run test         # Run tests with Vitest
-pnpm run typecheck    # TypeScript check
-```
-
-### Pre-commit Hooks
-
-Git hooks are automatically active (located in `.git/hooks/pre-commit`).
-
-```bash
-# Run checks manually
-pnpm run precommit
-```
-
-Active checks: **gitleaks** (secrets), **TypeScript** (types), **Biome** (linting), **large files**, **merge conflicts**
-
-`gitleaks` is expected to be available on contributor machines because lefthook calls
-`gitleaks protect --staged --no-banner`. Install it through your package manager or
-`brew install gitleaks`; CI should keep it as a second gate for protected branches.
-
-Release images use the self-hosted ARC runner label `arc-paperless-llm` and require
-successful main push checks for the exact commit before publishing either image.
-Tagged releases also verify that Flux serves both image versions and revisions,
-then check a page through the in-cluster Service. See [release checks](scripts/release/README.md)
-for the gate, rollout timeouts, and operational prerequisites. Forks can build the
-images locally with Docker if that runner is unavailable.
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `PAPERLESS_URL` | Paperless-ngx base URL |
-| `PAPERLESS_TOKEN` | Paperless API token |
-| `MISTRAL_API_KEY` | Mistral OCR API key |
-| `OLLAMA_URL` | Ollama server URL |
-| `QDRANT_URL` | Qdrant server URL |
-| `PAPERLESS_LLM_API_TOKEN` | Optional backend API token |
-| `PAPERLESS_LLM_TRUSTED_UI_ORIGINS` | Optional comma-separated CORS allowlist |
-
-### Pi Prompt Policy
-
-Pi agent instructions, tools, schemas, and structured placeholders live in TypeScript. Do not
-reintroduce file-backed prompts or `PromptService`; Docker images no longer copy
-`apps/backend/prompts`.
-
-## Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## License
-
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
-
----
-
-<div align="center">
-
-**[Report Bug](https://github.com/beastyrabbit/paperless-llm/issues)** · **[Request Feature](https://github.com/beastyrabbit/paperless-llm/issues)**
-
-</div>
-
-## Live preview
-
-The live dashboard shows document totals, pipeline stages, review queues, and connected AI services.
-
-![Paperless Local LLM dashboard](https://schaffa.dev/f/j76dX_KLVXPQwJRndau2rQ.webp)
+All automated tests use mocked providers. `/health` checks the database;
+`/version` and `/api/version` return `{version, revision}` from the image build.
+The four bilingual legal routes retain the standalone renderer.

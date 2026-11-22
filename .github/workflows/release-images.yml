@@ -1,8 +1,8 @@
-name: Release images
+name: Release image
 
-# A vX.Y.Z tag publishes ghcr.io/beastyrabbit/paperless-llm/{backend,frontend}:X.Y.Z. The homelab
+# A vX.Y.Z tag publishes ghcr.io/beastyrabbit/paperless-llm:X.Y.Z. The homelab
 # (beastyrabbit/kub-homelab) follows the newest X.Y.Z through Flux image automation.
-# Replaces the Forgejo-only publishing in .forgejo/workflows/docker-publish.yml for GitHub releases.
+# The old separate image repositories are no longer published.
 on:
   push:
     tags: ["v*"]
@@ -43,14 +43,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - image: backend
-            dockerfile: apps/backend/Dockerfile
-          - image: frontend
-            dockerfile: Dockerfile.frontend
     steps:
       - uses: actions/checkout@v6
         with:
@@ -70,7 +62,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository }}/${{ matrix.image }}
+          images: ghcr.io/${{ github.repository }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -79,13 +71,12 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: Dockerfile
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            NEXT_TELEMETRY_DISABLED=1
             APP_VERSION=${{ needs.gate.outputs.version }}
             APP_REVISION=${{ needs.gate.outputs.revision }}
 

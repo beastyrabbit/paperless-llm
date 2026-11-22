@@ -7,7 +7,7 @@ if ! command -v rg >/dev/null 2>&1; then
 fi
 
 targets=""
-for path in apps/backend/dist apps/web/.next; do
+for path in dist; do
   if [ -d "$path" ]; then
     targets="$targets $path"
   fi

@@ -1,64 +1,31 @@
 name: Pull Request Checks
-
 on:
   pull_request:
-    branches:
-      - main
+    branches: [main]
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
-
-# Cancel runs superseded by a newer push to the same PR; push, tag and manual runs keep separate groups.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
-
 jobs:
   quality:
-    name: Typecheck, Lint, Test
+    name: Typecheck, lint, test, build
     runs-on: arc-paperless-llm
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
         with:
           version: 9.15.0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Install reference guard tools
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Test
-        run: |
-          node --experimental-strip-types --test scripts/release/*.test.mts
-          pnpm test
-
-      - name: Build artifacts for reference guard
-        run: pnpm build
-
-      - name: Check reference artifacts
-        run: pnpm run check:ref-artifacts
-
-      - name: Install Playwright browsers
-        run: pnpm --filter @repo/web exec playwright install --with-deps chromium
-
-      - name: E2E
-        run: pnpm test:e2e
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: node --experimental-strip-types --test scripts/release/*.test.mts
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm check:artifact
+      - run: pnpm check:ref-artifacts
