@@ -200,13 +200,11 @@ export async function reconcileOcrTagRestorations(ctx: Context) {
       await serviceTags(ctx, job.doc_id, restoreRequested ? "requested" : "clean");
       clearFlags();
     } catch (error) {
-      let deleted = error instanceof HttpError && error.status === 404;
-      if (!deleted) {
-        try {
-          await ctx.paperless.getDocument(job.doc_id);
-        } catch (checkError) {
-          if (checkError instanceof HttpError && checkError.status === 404) deleted = true;
-        }
+      let deleted = false;
+      try {
+        await ctx.paperless.getDocument(job.doc_id);
+      } catch (checkError) {
+        if (checkError instanceof HttpError && checkError.status === 404) deleted = true;
       }
       if (deleted) {
         clearFlags();

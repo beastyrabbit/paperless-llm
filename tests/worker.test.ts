@@ -441,11 +441,11 @@ describe("durable OCR worker recovery", () => {
       ocr_text: "Stadtwerke invoice 120.00 EUR",
     });
 
-    // Fail bulk_edit for doc 1 transiently and for missing doc 999.
+    // Fail bulk_edit for existing doc 1 with 404 (not proof of document deletion) and for missing doc 999 with 400.
     fixture.fail = (url, init) => {
       if (url.pathname === "/api/documents/bulk_edit/" && init.method === "POST") {
         const body = JSON.parse(String(init.body ?? "{}")) as { documents?: number[] };
-        if (body.documents?.includes(1)) return respond({}, 503);
+        if (body.documents?.includes(1)) return respond({}, 404);
         if (body.documents?.includes(999)) return respond({}, 400);
       }
       return undefined;
