@@ -189,12 +189,33 @@ export async function reconcileOcrTagRestorations(ctx: Context) {
   for (const job of pending) {
     const usage = { ...parseJson<Record<string, unknown>>(job.usage_json ?? null, {}) };
     const restoreRequested = usage.restoreRequestedTag === true;
-    await serviceTags(ctx, job.doc_id, restoreRequested ? "requested" : "clean");
-    delete usage.restoreRequestedTag;
-    delete usage.clearedFailedTag;
-    updateJob(ctx.db, job.id, {
-      usage_json: Object.keys(usage).length ? json(usage) : null,
-    });
+    const clearFlags = () => {
+      delete usage.restoreRequestedTag;
+      delete usage.clearedFailedTag;
+      updateJob(ctx.db, job.id, {
+        usage_json: Object.keys(usage).length ? json(usage) : null,
+      });
+    };
+    try {
+      await serviceTags(ctx, job.doc_id, restoreRequested ? "requested" : "clean");
+      clearFlags();
+    } catch (error) {
+      let deleted = error instanceof HttpError && error.status === 404;
+      if (!deleted) {
+        try {
+          await ctx.paperless.getDocument(job.doc_id);
+        } catch (checkError) {
+          if (checkError instanceof HttpError && checkError.status === 404) deleted = true;
+        }
+      }
+      if (deleted) {
+        clearFlags();
+      } else {
+        console.warn(
+          `OCR tag restoration deferred for document ${job.doc_id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
   }
 }
 export class Worker {

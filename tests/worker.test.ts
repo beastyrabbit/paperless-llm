@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { enqueue, getJob, getSource, updateJob } from "../src/db/store.js";
+import { enqueue, getJob, getSource, saveSource, updateJob } from "../src/db/store.js";
 import { retryJob, Worker } from "../src/pipeline/worker.js";
 import { NetworkError } from "../src/util.js";
 import { document, Fixture, respond } from "./helpers.js";
@@ -406,5 +406,78 @@ describe("durable OCR worker recovery", () => {
     };
     expect(metaJob?.state).toBe("done");
     expect(fixture.docs.get(1)?.correspondent).toBe(1);
+  });
+
+  it("isolates OCR tag restoration failures and retires confirmed deleted documents without blocking other jobs", async () => {
+    fixture = new Fixture();
+    fixture.docs.set(1, document(1, { tags: [12, 99] }));
+    fixture.docs.set(2, document(2, { tags: [10, 99], content: "Stadtwerke invoice 120.00 EUR" }));
+    // Seed a done OCR job for doc 1 with a pending restoration flag and another for deleted doc 999.
+    const pendingJob = enqueue(fixture.db, 1, "ocr", "ocr:restore-retry", fixture.ctx.configHash);
+    updateJob(fixture.db, pendingJob.id, {
+      state: "done",
+      usage_json: JSON.stringify({ restoreRequestedTag: true, reservedPages: 1 }),
+    });
+    const deletedJob = enqueue(
+      fixture.db,
+      999,
+      "ocr",
+      "ocr:restore-deleted",
+      fixture.ctx.configHash,
+    );
+    updateJob(fixture.db, deletedJob.id, {
+      state: "done",
+      usage_json: JSON.stringify({ restoreRequestedTag: true }),
+    });
+    // Mark doc 1 and doc 2 OCR done so discovery doesn't enqueue OCR and queues doc 2's metadata.
+    saveSource(fixture.db, {
+      doc_id: 1,
+      ocr_status: "done",
+      ocr_text: "done",
+    });
+    saveSource(fixture.db, {
+      doc_id: 2,
+      ocr_status: "done",
+      ocr_text: "Stadtwerke invoice 120.00 EUR",
+    });
+
+    // Fail bulk_edit for doc 1 transiently and for missing doc 999.
+    fixture.fail = (url, init) => {
+      if (url.pathname === "/api/documents/bulk_edit/" && init.method === "POST") {
+        const body = JSON.parse(String(init.body ?? "{}")) as { documents?: number[] };
+        if (body.documents?.includes(1)) return respond({}, 503);
+        if (body.documents?.includes(999)) return respond({}, 400);
+      }
+      return undefined;
+    };
+
+    const worker = new Worker(fixture.ctx);
+    await worker.tick();
+
+    // Deleted doc 999 had its stale restoration flag retired.
+    expect(getJob(fixture.db, deletedJob.id)?.usage_json).toBeNull();
+    // Transiently failed doc 1 kept its flag for retry, without blocking doc 2.
+    expect(JSON.parse(getJob(fixture.db, pendingJob.id)?.usage_json ?? "{}")).toEqual({
+      restoreRequestedTag: true,
+      reservedPages: 1,
+    });
+    const doc2Meta = fixture.db
+      .prepare("SELECT * FROM jobs WHERE doc_id=2 AND stage='metadata'")
+      .get() as { state: string } | undefined;
+    expect(doc2Meta?.state).toBe("done");
+    expect(fixture.docs.get(2)?.correspondent).toBe(1);
+
+    // Next tick after transient error clears restores doc 1's tag, runs its metadata job, and preserves reservedPages.
+    fixture.fail = undefined;
+    await worker.tick();
+    expect(fixture.docs.get(1)?.tags).not.toContain(12);
+    const doc1Meta = fixture.db
+      .prepare("SELECT * FROM jobs WHERE doc_id=1 AND stage='metadata'")
+      .get() as { state: string } | undefined;
+    expect(doc1Meta?.state).toBe("done");
+    expect(fixture.docs.get(1)?.correspondent).toBe(1);
+    expect(JSON.parse(getJob(fixture.db, pendingJob.id)?.usage_json ?? "{}")).toEqual({
+      reservedPages: 1,
+    });
   });
 });
