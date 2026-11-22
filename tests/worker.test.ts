@@ -379,4 +379,32 @@ describe("durable OCR worker recovery", () => {
     expect(metaJob?.state).toBe("done");
     expect(fixture.docs.get(1)?.correspondent).toBe(1);
   });
+
+  it("reconciles pending OCR tag restoration even after a crash between runOcr and tag restore or a retried non-PDF skip", async () => {
+    fixture = new Fixture((config) => {
+      config.polling.maxAttempts = 1;
+      config.ocr.maxPagesPerDay = 5;
+    });
+    fixture.docs.set(1, document(1, { page_count: 10, tags: [10, 99] }));
+    const worker = new Worker(fixture.ctx);
+    await worker.tick();
+    const ocrJob = fixture.db.prepare("SELECT * FROM jobs WHERE stage='ocr'").get() as {
+      id: string;
+    };
+    expect(fixture.docs.get(1)?.tags).toEqual([99, 12]);
+    // Simulate a crash right after runOcr marked the job done (before tag restoration)
+    // OR discovery marking a retried non-PDF job done.
+    const doc = fixture.docs.get(1);
+    if (doc) doc.mime_type = "image/png";
+    retryJob(fixture.ctx, ocrJob.id);
+    await worker.tick();
+    expect(getJob(fixture.db, ocrJob.id)?.state).toBe("done");
+    expect(fixture.docs.get(1)?.tags).not.toContain(12);
+    const metaJob = fixture.db.prepare("SELECT * FROM jobs WHERE stage='metadata'").get() as {
+      id: string;
+      state: string;
+    };
+    expect(metaJob?.state).toBe("done");
+    expect(fixture.docs.get(1)?.correspondent).toBe(1);
+  });
 });

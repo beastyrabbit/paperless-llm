@@ -180,6 +180,23 @@ export async function metadata(ctx: Context, job: Job) {
     last_error: null,
   });
 }
+export async function reconcileOcrTagRestorations(ctx: Context) {
+  const pending = ctx.db
+    .prepare(
+      "SELECT * FROM jobs WHERE stage='ocr' AND state='done' AND (json_extract(usage_json,'$.restoreRequestedTag')=1 OR json_extract(usage_json,'$.clearedFailedTag')=1)",
+    )
+    .all() as Job[];
+  for (const job of pending) {
+    const usage = { ...parseJson<Record<string, unknown>>(job.usage_json ?? null, {}) };
+    const restoreRequested = usage.restoreRequestedTag === true;
+    await serviceTags(ctx, job.doc_id, restoreRequested ? "requested" : "clean");
+    delete usage.restoreRequestedTag;
+    delete usage.clearedFailedTag;
+    updateJob(ctx.db, job.id, {
+      usage_json: Object.keys(usage).length ? json(usage) : null,
+    });
+  }
+}
 export class Worker {
   readonly owner = id();
   private stopped = false;
@@ -195,6 +212,7 @@ export class Worker {
   }
   async discover() {
     await discoverOcr(this.ctx);
+    await reconcileOcrTagRestorations(this.ctx);
     const tags = await this.ctx.paperless.listEntities("tag");
     const request = tags.find((tag) => tag.name === this.ctx.config.tags.requested);
     if (!request) return;
@@ -255,25 +273,8 @@ export class Worker {
           continue;
         }
         if (job.stage === "ocr") {
-          const outcome = await runOcr(this.ctx, job.doc_id, job);
-          if (outcome === "done" || outcome === "skipped") {
-            const current = getJob(this.ctx.db, job.id);
-            const usage = {
-              ...parseJson<Record<string, unknown>>(current?.usage_json ?? null, {}),
-            };
-            if (usage.restoreRequestedTag === true || usage.clearedFailedTag === true) {
-              await serviceTags(
-                this.ctx,
-                job.doc_id,
-                usage.restoreRequestedTag === true ? "requested" : "clean",
-              );
-              delete usage.restoreRequestedTag;
-              delete usage.clearedFailedTag;
-              updateJob(this.ctx.db, job.id, {
-                usage_json: Object.keys(usage).length ? json(usage) : null,
-              });
-            }
-          }
+          await runOcr(this.ctx, job.doc_id, job);
+          await reconcileOcrTagRestorations(this.ctx);
         } else if (job.stage === "metadata") await metadata(this.ctx, job);
         else throw new Error("Unsupported worker stage");
       } catch (error) {
