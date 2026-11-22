@@ -1,20 +1,29 @@
-# paperless_local_llm
+# Paperless Local LLM
 
-## Project Overview
-OCR + document-processing platform with Next.js frontend and TypeScript/Effect backend.
+Single-package TypeScript ESM application on Node 22/24 LTS. Hono serves JSX pages
+and form/htmx actions; better-sqlite3 stores the durable pipeline journal.
 
-## Mandatory Rules
-- Define Pi agent instructions, tools, schemas, and structured placeholders in TypeScript; do not reintroduce PromptService or prompt-file driven processing paths.
-- Keep local test/build commands passing before changes.
+Project context: https://memex.eland-vega.ts.net/pages/projects/paperless-local-llm.md
 
-## Tooling
-- Full stack dev: `pnpm run dev` (Portless frontend + backend)
-- Frontend: `pnpm install`, `pnpm run dev:web` (3765), `pnpm run build`, `pnpm run lint`, `pnpm run typecheck`
-- Backend: `pnpm run dev:backend` (8765), `pnpm run build`, `pnpm run test`, `pnpm run typecheck`
-- Lint/format: Biome via `pnpm run lint` and `pnpm run format`
-- Hooks: `pnpm run precommit`
+## Commands
 
-## Ports
-- Frontend: `https://paperless-llm-web.localhost:1355` (portless)
-- Backend: `https://paperless-llm-api.localhost:1355` (portless)
-- Fallback: frontend `3765`, backend `8765`
+- `pnpm install --frozen-lockfile`
+- `pnpm dev` starts the one-process application on port 3765.
+- `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`
+- `node --experimental-strip-types --test scripts/release/*.test.mts`
+- `pnpm check:ref-artifacts`
+- `pnpm precommit` runs the local hook checks.
+
+## Constraints
+
+- Keep configuration and schemas in TypeScript and GitOps YAML. Secrets come only
+  from environment variables. Never log provider bodies or raw credentials.
+- Tests mock HTTP and providers. Never call a live AI provider from a test.
+- Preserve the OCR uncertain state and pre-call budget reservation. Never
+  automatically repeat an ambiguous paid request unless explicitly configured.
+- Mutate Paperless tags only through bulk modify_tags deltas.
+- Preserve human edits and unrelated custom fields. Verify remote writes.
+- Run smoke checks during implementation; full verification follows completion.
+- Use pnpm commands for dependency changes. Preserve release-script tests and
+  bilingual legal routes.
+- No Effect, Next.js, TinyBase, Qdrant, Pi runtime, or heavy ORM.

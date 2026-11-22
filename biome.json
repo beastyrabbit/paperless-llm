@@ -7,28 +7,16 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignoreUnknown": false,
-    "maxSize": 1048576,
     "includes": [
-      "**",
-      "!**/node_modules",
-      "!**/.next",
-      "!**/dist",
-      "!**/coverage",
-      "!**/playwright-report",
-      "!**/test-results",
-      "!**/.turbo",
-      "!**/apps/backend/data",
-      "!**/apps/backend/logs",
-      "!**/*.db",
-      "!**/*.tsbuildinfo"
-    ]
+      "src/**",
+      "tests/**",
+      "vitest.config.ts"
+    ],
+    "ignoreUnknown": true
   },
   "formatter": {
-    "enabled": true,
     "indentStyle": "space",
     "indentWidth": 2,
-    "lineEnding": "lf",
     "lineWidth": 100
   },
   "linter": {
@@ -37,47 +25,23 @@
       "recommended": true,
       "correctness": {
         "noUnusedImports": "error",
-        "noUnusedFunctionParameters": "error",
-        "noUnusedVariables": "error"
+        "noUnusedVariables": "error",
+        "noUnusedFunctionParameters": "error"
       },
       "style": {
         "noNonNullAssertion": "error",
-        "useConst": "error",
         "useImportType": "error"
       },
       "suspicious": {
-        "noDocumentCookie": "error",
-        "noExplicitAny": "error",
-        "noGlobalIsNan": "error",
-        "noPrototypeBuiltins": "error"
+        "noExplicitAny": "error"
       }
     }
   },
   "assist": {
-    "enabled": true,
     "actions": {
       "source": {
         "organizeImports": "on"
       }
-    }
-  },
-  "javascript": {
-    "formatter": {
-      "arrowParentheses": "always",
-      "jsxQuoteStyle": "double",
-      "quoteStyle": "double",
-      "semicolons": "always",
-      "trailingCommas": "all"
-    }
-  },
-  "json": {
-    "formatter": {
-      "trailingCommas": "none"
-    }
-  },
-  "css": {
-    "parser": {
-      "tailwindDirectives": true
     }
   }
 }

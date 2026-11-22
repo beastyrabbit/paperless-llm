@@ -1,157 +1,69 @@
-# Paperless Local LLM Configuration
-# Copy this file to config.yaml and fill in your values
-# config.yaml is gitignored and will not be committed
-
-# =============================================================================
-# External Services
-# =============================================================================
-
-# Paperless-ngx Connection
+# Copy to config.yaml and review the cutoff before enabling OCR.
+# Credentials belong in the environment.
 paperless:
-  url: "http://your-paperless-server:8000"
-  token: "your-paperless-api-token"
-
-# Mistral AI (for OCR)
-mistral:
-  api_key: "your-mistral-api-key"
-  model: "mistral-ocr-latest"
-  api_base_url: "https://api.mistral.ai"
-
-# Ollama Server (Local LLM)
-ollama:
-  url: "http://your-ollama-server:11434"
-  model: "gpt-oss:120b"            # Model used for all LLM generation and verification
-  embedding_model: "nomic-embed-text"  # For Qdrant embeddings
-
-# Qdrant Vector Database
-qdrant:
-  url: "http://your-qdrant-server:6333"
-  collection: "paperless-documents"
-
-# =============================================================================
-# Processing Settings
-# =============================================================================
-
-# Auto-Processing (Background Worker)
-auto_processing:
+  url: http://paperless:8000
+  externalUrl: https://paperless.example.org
+  requestTimeoutMs: 30000
+ocr:
   enabled: false
-  interval_minutes: 10             # Check for new documents every X minutes
-  include_untagged: false          # If true, auto-process documents without workflow tags
-  pause_on_user_activity: true     # Pause when user is in Manual Processing mode
-
-# Confirmation Loop Settings
-confirmation:
-  enabled: true
-  max_retries: 3                   # Max metadata revision attempts after verifier rejection
-  min_confidence: 0.7              # Metadata below this confidence requires review
-  require_user_for_new_entities: true  # Require user approval for new tags/correspondents
-
-# =============================================================================
-# Workflow Tags
-# =============================================================================
-
-# Tags used to track document processing state in Paperless
-# These will be created automatically if they don't exist
+  notBefore: "2099-01-01"
+  maxPagesPerDay: 100
+  mistralApiBaseUrl: https://api.mistral.ai
+  mistralModel: mistral-ocr-latest
+  versionMode: in_place
+  allowAutoRetryUncertain: false
+jev:
+  apiBaseUrl: https://api.typesafe.ai/v1/systemone
+  model: jev-latest
+  shortlistLimit: 50
+  thresholds:
+    documentType: 0.9
+    correspondent: 0.9
+    tag: 0.9
+    customField: 0.9
+    semanticCheck: 0.9
+    consolidation: 0.98
+llm:
+  defaultProvider: cloud
+  cloud:
+    baseUrl: https://api.openai.com/v1
+    model: gpt-4.1
+  local:
+    baseUrl: http://aibox:8080/v1
+    model: local-model
+  maxJsonRepairRetries: 1
 tags:
-  todo: "ai-queued"               # Add manually to request processing
-  ocr: "ai-processing"            # Active processing/recovery state
-  metadata: "ai-processing"       # Active processing/recovery state
-  review: "ai-needs-input"        # Waiting for human input
-  index: "ai-processing"          # Active processing/recovery state
-  done: "ai-done"                 # Fully processed
-  failed: "ai-failed"             # Failed processing
-
-# =============================================================================
-# Processing Pipeline
-# =============================================================================
-
-# Enable/disable individual processing steps
-# Order: OCR → Summary → Correspondent → Document Type → Title → Tags → Custom Fields
-pipeline:
-  ocr: true                        # Mistral OCR
-  summary: false                   # Generate document summary (adds as note)
-  correspondent: true              # Correspondent assignment
-  document_type: true              # Document type assignment
-  title: true                      # Title generation
-  tags: true                       # Tag assignment
-  custom_fields: true              # Custom fields (optional based on document type)
-  # Safety bound against infinite workflow loops in full-pipeline SSE processing.
-  max_steps: 10
-
-# =============================================================================
-# Qdrant / Vector Search Settings
-# =============================================================================
-
-vector_search:
-  enabled: true                    # Use Qdrant to find similar documents for context
-  top_k: 5                         # Number of similar documents to retrieve
-  min_score: 0.7                   # Minimum similarity score (0-1)
-
-# =============================================================================
-# Language Settings
-# =============================================================================
-
-language:
-  prompt: "en"                       # Prompt language: en, de (more coming soon)
-
-# =============================================================================
-# Server Settings
-# =============================================================================
-
-# CORS origins are configured with PAPERLESS_LLM_TRUSTED_UI_ORIGINS
-# (or legacy CORS_ORIGINS) in the environment. Local development allows
-# Portless and frontend fallback origins by default outside production.
-
-# =============================================================================
-# Development / Debug Settings
-# =============================================================================
-
-debug:
-  log_level: "INFO"                # DEBUG, INFO, WARNING, ERROR
-  log_prompts: false               # Log full prompts sent to LLM
-  log_responses: false             # Log full LLM responses
-  save_processing_history: true    # Save processing history for each document
-
-# =============================================================================
-# Runtime Safety
-# =============================================================================
-
-http:
-  request_timeout_ms: 120000
-  # Idle watchdog for local Pi/Ollama agent prompts. Slow prompts continue while
-  # the Pi run is active, Pi emits events, or the target model is visible in Ollama /api/ps.
-  agent_prompt_timeout_ms: 120000
-  mistral_retry_attempts: 3
-  mistral_retry_base_delay_ms: 5000
-  rate_limit_enabled: true
-  rate_limit_window_ms: 60000
-  rate_limit_max_requests: 300
-  rate_limit_trust_proxy: false
-
-concurrency:
-  ollama_max_concurrent: 1
-  mistral_max_concurrent: 1
-  ocr_max_concurrent: 1
-
-# OCR usage caps. 0 means unlimited/backward-compatible.
-ocr_budget:
-  daily_page_limit: 0
-  run_page_limit: 0
-  daily_token_limit: 0
-  run_token_limit: 0
-
-# =============================================================================
-# Scheduled Jobs
-# =============================================================================
-
-# Background jobs that run on a schedule
-jobs:
-  schema_cleanup:
-    enabled: false                 # Enable scheduled schema cleanup
-    schedule: "daily"              # daily, weekly, monthly, or cron
-    cron: "0 3 * * *"             # Cron expression (only used if schedule is "cron")
-
-  metadata_enhancement:
-    enabled: false                 # Enable scheduled metadata enhancement
-    schedule: "weekly"             # daily, weekly, monthly, or cron
-    cron: "0 4 * * 0"             # Cron expression (Sundays at 4 AM)
+  requested: ai:requested
+  review: ai:review
+  failed: ai:failed
+  curated:
+    finance: Financial and banking documents
+stagingMode: dependency_aware
+documentTypes:
+  Invoice:
+    titleTemplate: "{correspondent} - {invoice_number}"
+    llmRouting: cloud
+    openFields:
+      - name: invoice_number
+        kind: string
+        required: true
+        maxLength: 128
+      - name: invoice_date
+        kind: date
+        required: true
+      - name: total
+        kind: monetary
+        required: true
+        semanticCheck: true
+    selectFields: []
+polling:
+  enabled: false
+  intervalMs: 30000
+  leaseDurationMs: 300000
+  maxAttempts: 5
+  batchSize: 20
+server:
+  port: 3765
+  host: 0.0.0.0
+  # Empty allows loopback Host headers only (DNS-rebinding protection). Add your proxy/Service hostnames in production:
+  allowedHosts: []

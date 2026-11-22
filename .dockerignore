@@ -28,6 +28,8 @@ dist
 !.env.example
 !.env*.example
 config.yaml
+data
+tests
 *.pem
 *.key
 *.crt

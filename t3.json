@@ -14,7 +14,7 @@
       "command": "pnpm run dev",
       "icon": "play",
       "stopOnSettle": true,
-      "previewUrl": "https://paperless-llm-web.localhost:1355"
+      "previewUrl": "http://localhost:3765"
     },
     {
       "name": "Check",

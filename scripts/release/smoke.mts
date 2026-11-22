@@ -69,7 +69,7 @@ export async function pollDeployment({
     return response;
   };
 
-  // This Service exposes only the frontend port. /api/version proxies to the backend.
+  // The single application exposes both version routes on port 3765.
   // Recreate rollouts temporarily remove all Service endpoints. Allow that outage
   // before polling versions, within the same overall deployment deadline.
   async function waitForService() {
