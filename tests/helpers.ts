@@ -76,6 +76,8 @@ export class Fixture {
     ],
   };
   readonly calls: { url: URL; method: string; body: unknown }[] = [];
+  readonly pendingTasks = new Map<string, () => void>();
+  private nextTaskId = 1;
   references: Record<string, unknown[]> = { workflows: [], saved_views: [], mail_rules: [] };
   isSuperuser = true;
   labelRootStatus?: number;
@@ -148,7 +150,20 @@ export class Fixture {
     };
     if (path === "/ui_settings/")
       return respond({ user: { id: 1, username: "admin", is_superuser: this.isSuperuser } });
-    if (path === "/tasks/") return respond([{ task_id: "task-1", status: "SUCCESS" }]);
+    if (path === "/tasks/") {
+      const taskId = url.searchParams.get("task_id") ?? "task-1";
+      const finish = this.pendingTasks.get(taskId);
+      if (finish) {
+        finish();
+        this.pendingTasks.delete(taskId);
+      }
+      return respond({
+        count: 1,
+        next: null,
+        previous: null,
+        results: [{ task_id: taskId, status: "success" }],
+      });
+    }
     if (path === "/documents/bulk_edit/") {
       const data = body as {
         documents: number[];
@@ -156,17 +171,20 @@ export class Fixture {
         parameters: { add_tags: number[]; remove_tags: number[] };
       };
       if (data.method !== "modify_tags") throw new Error("Expected delta tags");
-      for (const docId of data.documents) {
-        const doc = this.docs.get(docId);
-        if (!doc) throw new Error("Missing fixture doc");
-        doc.tags = [
-          ...new Set([
-            ...doc.tags.filter((tag) => !data.parameters.remove_tags.includes(tag)),
-            ...data.parameters.add_tags,
-          ]),
-        ];
-      }
-      return respond("OK");
+      const taskId = `bulk-task-${this.nextTaskId++}`;
+      this.pendingTasks.set(taskId, () => {
+        for (const docId of data.documents) {
+          const doc = this.docs.get(docId);
+          if (!doc) throw new Error("Missing fixture doc");
+          doc.tags = [
+            ...new Set([
+              ...doc.tags.filter((tag) => !data.parameters.remove_tags.includes(tag)),
+              ...data.parameters.add_tags,
+            ]),
+          ];
+        }
+      });
+      return respond({ result: "OK", task_id: taskId });
     }
     if (path === "/documents/") {
       let rows = [...this.docs.values()];

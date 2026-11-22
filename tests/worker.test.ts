@@ -325,4 +325,58 @@ describe("durable OCR worker recovery", () => {
     expect(job.state).toBe("failed");
     expect(fixture.providerCalls("api.mistral.ai")).toHaveLength(0);
   });
+
+  it("rejects stale saved metadata candidates when OCR content changed before retry", async () => {
+    setup();
+    fixture.fail = (url, init) =>
+      init.method === "PATCH" && url.pathname === "/api/documents/1/"
+        ? respond({}, 503)
+        : undefined;
+    const worker = new Worker(fixture.ctx);
+    await worker.tick();
+    const job = fixture.db.prepare("SELECT * FROM jobs WHERE stage='metadata'").get() as {
+      id: string;
+      state: string;
+    };
+    expect(job.state).toBe("retry_wait");
+    fixture.fail = undefined;
+    const doc = fixture.docs.get(1);
+    if (doc) doc.content = "Completely different OCR content after re-scan";
+    updateJob(fixture.db, job.id, { next_attempt_at: null });
+    await worker.tick();
+    expect(getJob(fixture.db, job.id)?.state).toBe("failed");
+    expect(fixture.docs.get(1)?.correspondent).toBeNull();
+  });
+
+  it("restores ai:requested and resumes metadata after an OCR failure is retried and succeeds", async () => {
+    fixture = new Fixture((config) => {
+      config.polling.maxAttempts = 1;
+      config.ocr.maxPagesPerDay = 5;
+    });
+    fixture.docs.set(1, document(1, { page_count: 10, tags: [10, 99] }));
+    const worker = new Worker(fixture.ctx);
+    await worker.tick();
+    const ocrJob = fixture.db.prepare("SELECT * FROM jobs WHERE stage='ocr'").get() as {
+      id: string;
+      state: string;
+    };
+    expect(ocrJob.state).toBe("failed");
+    expect(fixture.docs.get(1)?.tags).toEqual([99, 12]);
+    // Operator adjusts page count / fixes cause and retries the failed OCR job.
+    const doc = fixture.docs.get(1);
+    if (doc) doc.page_count = 2;
+    retryJob(fixture.ctx, ocrJob.id);
+    await worker.tick();
+    expect(getJob(fixture.db, ocrJob.id)?.state).toBe("done");
+    expect(fixture.docs.get(1)?.tags).toContain(10);
+    expect(fixture.docs.get(1)?.tags).not.toContain(12);
+    // Next tick discovers ai:requested and runs metadata processing.
+    await worker.tick();
+    const metaJob = fixture.db.prepare("SELECT * FROM jobs WHERE stage='metadata'").get() as {
+      id: string;
+      state: string;
+    };
+    expect(metaJob?.state).toBe("done");
+    expect(fixture.docs.get(1)?.correspondent).toBe(1);
+  });
 });

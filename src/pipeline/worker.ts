@@ -103,12 +103,12 @@ export async function metadata(ctx: Context, job: Job) {
   if (!ocrReady(ctx, job.doc_id)) throw new Error("OCR must finish before metadata");
   const saved = parseJson<MetadataProgress>(getJob(ctx.db, job.id)?.response_json ?? null, {});
   const save = () => updateJob(ctx.db, job.id, { response_json: json(saved) });
+  const doc = await ctx.paperless.getDocument(job.doc_id);
+  const contentHash = sha256(doc.content);
+  if (saved.contentHash && saved.contentHash !== contentHash)
+    throw new Error("OCR content changed; request a fresh metadata job");
   let fields = saved.candidates;
   if (!fields) {
-    const doc = await ctx.paperless.getDocument(job.doc_id);
-    const contentHash = sha256(doc.content);
-    if (saved.contentHash && saved.contentHash !== contentHash)
-      throw new Error("OCR content changed; request a fresh metadata job");
     saved.contentHash = contentHash;
     const catalog = await ctx.paperless.catalog();
     const layer2 = saved.classification ?? (await classify(ctx, doc, catalog));
@@ -254,8 +254,27 @@ export class Worker {
           });
           continue;
         }
-        if (job.stage === "ocr") await runOcr(this.ctx, job.doc_id, job);
-        else if (job.stage === "metadata") await metadata(this.ctx, job);
+        if (job.stage === "ocr") {
+          const outcome = await runOcr(this.ctx, job.doc_id, job);
+          if (outcome === "done" || outcome === "skipped") {
+            const current = getJob(this.ctx.db, job.id);
+            const usage = {
+              ...parseJson<Record<string, unknown>>(current?.usage_json ?? null, {}),
+            };
+            if (usage.restoreRequestedTag === true || usage.clearedFailedTag === true) {
+              await serviceTags(
+                this.ctx,
+                job.doc_id,
+                usage.restoreRequestedTag === true ? "requested" : "clean",
+              );
+              delete usage.restoreRequestedTag;
+              delete usage.clearedFailedTag;
+              updateJob(this.ctx.db, job.id, {
+                usage_json: Object.keys(usage).length ? json(usage) : null,
+              });
+            }
+          }
+        } else if (job.stage === "metadata") await metadata(this.ctx, job);
         else throw new Error("Unsupported worker stage");
       } catch (error) {
         if (error instanceof BudgetExhaustedError) {
@@ -271,9 +290,29 @@ export class Worker {
           });
           continue;
         }
+        const failJobTags = async () => {
+          if (job.stage === "ocr") {
+            const [doc, tags] = await Promise.all([
+              this.ctx.paperless.getDocument(job.doc_id),
+              this.ctx.paperless.listEntities("tag"),
+            ]);
+            const requestedId = tags.find((t) => t.name === this.ctx.config.tags.requested)?.id;
+            const current = getJob(this.ctx.db, job.id);
+            const usage = {
+              ...parseJson<Record<string, unknown>>(current?.usage_json ?? null, {}),
+            };
+            if (requestedId !== undefined && doc.tags.includes(requestedId)) {
+              usage.restoreRequestedTag = true;
+            } else {
+              usage.clearedFailedTag = true;
+            }
+            updateJob(this.ctx.db, job.id, { usage_json: json(usage) });
+          }
+          await serviceTags(this.ctx, job.doc_id, "failed");
+        };
         const latest = getJob(this.ctx.db, job.id);
         if (latest?.state === "uncertain" || latest?.state === "failed") {
-          if (latest.state === "failed") await serviceTags(this.ctx, job.doc_id, "failed");
+          if (latest.state === "failed") await failJobTags();
           continue;
         }
         const source = getSource(this.ctx.db, job.doc_id);
@@ -297,7 +336,7 @@ export class Worker {
               ? error.message
               : "Processing failed; inspect state before retry",
         });
-        if (!retry) await serviceTags(this.ctx, job.doc_id, "failed");
+        if (!retry) await failJobTags();
       } finally {
         clearInterval(heartbeat);
       }

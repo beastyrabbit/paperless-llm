@@ -18,7 +18,7 @@ export function fieldValue(
 export async function serviceTags(
   ctx: Context,
   docId: number,
-  result: "review" | "failed" | "clean",
+  result: "requested" | "review" | "failed" | "clean",
 ) {
   const tags = await ctx.paperless.listEntities("tag");
   const names = [ctx.config.tags.requested, ctx.config.tags.review, ctx.config.tags.failed];

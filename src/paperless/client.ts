@@ -195,29 +195,33 @@ export class PaperlessClient {
       : z.object({ task_id: z.string() }).parse(value).task_id;
   }
   async pollTask(taskId: string, timeoutMs = 120_000) {
+    const taskSchema = z
+      .object({
+        task_id: z.string(),
+        status: z.string(),
+        related_document: z.union([z.number(), z.string()]).nullable().optional(),
+      })
+      .passthrough();
+    const responseSchema = z.union([
+      z.array(taskSchema),
+      z.object({ results: z.array(taskSchema) }).passthrough(),
+    ]);
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const tasks = z
-        .array(
-          z
-            .object({
-              task_id: z.string(),
-              status: z.string(),
-              related_document: z.union([z.number(), z.string()]).nullable().optional(),
-            })
-            .passthrough(),
-        )
-        .parse(await this.call("/tasks/", "GET", undefined, { task_id: taskId }));
+      const parsed = responseSchema.parse(
+        await this.call("/tasks/", "GET", undefined, { task_id: taskId }),
+      );
+      const tasks = Array.isArray(parsed) ? parsed : parsed.results;
       const task = tasks.find((entry) => entry.task_id === taskId);
-      if (task?.status === "SUCCESS") return task;
-      if (task?.status === "FAILURE" || task?.status === "REVOKED")
-        throw new Error("Paperless version task failed");
+      const status = task?.status.toLowerCase();
+      if (status === "success") return task;
+      if (status === "failure" || status === "revoked") throw new Error("Paperless task failed");
       await this.sleep(Math.min(1000, Math.max(0, deadline - Date.now())));
     }
     throw new Error("Paperless task timeout");
   }
   async modifyTags(docId: number, add: number[], remove: number[]) {
-    return this.call("/documents/bulk_edit/", "POST", {
+    const response = await this.call("/documents/bulk_edit/", "POST", {
       documents: [docId],
       method: "modify_tags",
       parameters: {
@@ -225,6 +229,9 @@ export class PaperlessClient {
         remove_tags: [...new Set(remove)].filter((tag) => !add.includes(tag)),
       },
     });
+    const task = z.object({ task_id: z.string() }).passthrough().safeParse(response);
+    if (task.success) await this.pollTask(task.data.task_id);
+    return response;
   }
   async patchDocument(docId: number, patch: DocumentPatch) {
     // Tag mutation belongs exclusively to modifyTags.
